@@ -88,8 +88,15 @@ final class AdminPublisherLoader {
             } catch (ManifestError $e) {
                 continue;
             }
-            if ($manifest->isolation !== 'iframe') continue;
-            $entry_url = Bundle::url_for($manifest->id) . $manifest->entry;
+            if ($manifest->isolation === 'iframe') {
+                $entry_url = Bundle::url_for($manifest->id) . $manifest->entry;
+            } else { // inline
+                if ($manifest->mount_mode === MountMode::Root) {
+                    $entry_url = home_url('/__dsgo-host');
+                } else {
+                    $entry_url = home_url(Settings::app_base_path($manifest->id) . '/__dsgo-host');
+                }
+            }
             $out[] = [
                 'id'         => $manifest->id,
                 'bundle_url' => $entry_url,
