@@ -3,7 +3,7 @@ import { InspectorControls, useBlockProps } from '@wordpress/block-editor';
 import { PanelBody, SelectControl, RangeControl, ToggleControl, Notice } from '@wordpress/components';
 import apiFetch from '@wordpress/api-fetch';
 
-interface BlockAttributes {
+interface BlockAttributes extends Record<string, unknown> {
   appId: string;
   height: number;
   autoResize: boolean;
@@ -41,7 +41,8 @@ export default function Edit({ attributes, setAttributes }: EditProps): JSX.Elem
   const blockProps = useBlockProps();
 
   const onPickApp = (id: string) => setAttributes({ appId: id });
-  const onChangeHeight = (h: number) => {
+  const onChangeHeight = (h?: number) => {
+    if (h === undefined) return;
     const clamped = Math.max(100, Math.min(2000, h));
     setAttributes({ height: clamped });
   };

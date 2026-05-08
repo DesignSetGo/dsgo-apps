@@ -50,13 +50,13 @@ const baseAttrs: BlockAttributes = { appId: '', height: 480, autoResize: false }
 const noopSet = jest.fn();
 
 beforeEach(() => {
-  (apiFetch as jest.Mock).mockReset();
+  (apiFetch as unknown as jest.Mock).mockReset();
   noopSet.mockReset();
 });
 
 describe('edit.tsx', () => {
   it('shows empty state when no apps with block mode are installed', async () => {
-    (apiFetch as jest.Mock).mockResolvedValueOnce([
+    (apiFetch as unknown as jest.Mock).mockResolvedValueOnce([
       { id: 'page-only', name: 'Page Only', version: '0.1.0', modes: ['page'], isolation: 'iframe' },
     ]);
     render(<Edit attributes={baseAttrs} setAttributes={noopSet} />);
@@ -66,7 +66,7 @@ describe('edit.tsx', () => {
   });
 
   it('lists only block-capable apps in the picker', async () => {
-    (apiFetch as jest.Mock).mockResolvedValueOnce([
+    (apiFetch as unknown as jest.Mock).mockResolvedValueOnce([
       { id: 'page-only', name: 'Page Only', version: '0.1.0', modes: ['page'], isolation: 'iframe' },
       { id: 'block-app', name: 'Block App', version: '0.2.0', modes: ['page', 'block'], isolation: 'iframe' },
     ]);
@@ -80,7 +80,7 @@ describe('edit.tsx', () => {
   });
 
   it('updates appId attribute when picker selection changes', async () => {
-    (apiFetch as jest.Mock).mockResolvedValueOnce([
+    (apiFetch as unknown as jest.Mock).mockResolvedValueOnce([
       { id: 'block-app', name: 'Block App', version: '0.2.0', modes: ['block'], isolation: 'iframe' },
     ]);
     render(<Edit attributes={baseAttrs} setAttributes={noopSet} />);
@@ -90,7 +90,7 @@ describe('edit.tsx', () => {
   });
 
   it('disables the height slider when autoResize is true', async () => {
-    (apiFetch as jest.Mock).mockResolvedValueOnce([
+    (apiFetch as unknown as jest.Mock).mockResolvedValueOnce([
       { id: 'block-app', name: 'Block App', version: '0.2.0', modes: ['block'], isolation: 'iframe' },
     ]);
     render(<Edit attributes={{ ...baseAttrs, appId: 'block-app', autoResize: true }} setAttributes={noopSet} />);
@@ -99,7 +99,7 @@ describe('edit.tsx', () => {
   });
 
   it('toggle "Show live preview" replaces card with iframe', async () => {
-    (apiFetch as jest.Mock).mockResolvedValueOnce([
+    (apiFetch as unknown as jest.Mock).mockResolvedValueOnce([
       { id: 'block-app', name: 'Block App', version: '0.2.0', modes: ['block'], isolation: 'iframe' },
     ]);
     const { container } = render(
@@ -112,7 +112,7 @@ describe('edit.tsx', () => {
   });
 
   it('clamps height value when slider goes out of range', async () => {
-    (apiFetch as jest.Mock).mockResolvedValueOnce([
+    (apiFetch as unknown as jest.Mock).mockResolvedValueOnce([
       { id: 'block-app', name: 'Block App', version: '0.2.0', modes: ['block'], isolation: 'iframe' },
     ]);
     render(<Edit attributes={{ ...baseAttrs, appId: 'block-app' }} setAttributes={noopSet} />);
