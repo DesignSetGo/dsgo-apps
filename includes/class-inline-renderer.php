@@ -244,6 +244,49 @@ final class InlineRenderer {
     }
 
     /**
+     * Build the publisher-host response (status + headers + body) for an
+     * inline-mode app. Returns the data; does not call header()/echo/exit.
+     * The HTTP-emitting wrapper (stream_publisher_host) reads this and writes
+     * out the response.
+     *
+     * @return array{status:int, headers:array<string,string>, body:string}
+     */
+    public static function dispatch_publisher_host(string $bundle_dir, Manifest $manifest): array {
+        if ($manifest->abilities_publishes === []) {
+            return ['status' => 404, 'headers' => [], 'body' => ''];
+        }
+
+        $entry_abs = $bundle_dir . '/' . $manifest->entry;
+        if (!is_file($entry_abs)) {
+            return ['status' => 500, 'headers' => [], 'body' => ''];
+        }
+
+        $nonce = self::generate_nonce();
+        $body  = self::render_publisher_host($bundle_dir, $manifest, $nonce);
+        $headers = [
+            'Content-Security-Policy' => CSPBuilder::build($manifest->csp, $nonce, $manifest->embeds),
+            'X-Content-Type-Options'  => 'nosniff',
+            'Referrer-Policy'         => 'strict-origin-when-cross-origin',
+            'Cache-Control'           => 'no-store, private',
+            'Content-Type'            => 'text/html; charset=UTF-8',
+        ];
+        return ['status' => 200, 'headers' => $headers, 'body' => $body];
+    }
+
+    /**
+     * HTTP wrapper for dispatch_publisher_host. Sends headers and body, then
+     * exits. Called from maybe_dispatch / maybe_dispatch_root.
+     */
+    private static function stream_publisher_host(string $bundle_dir, Manifest $manifest): void {
+        $resp = self::dispatch_publisher_host($bundle_dir, $manifest);
+        status_header($resp['status']);
+        foreach ($resp['headers'] as $name => $value) {
+            header($name . ': ' . $value);
+        }
+        echo $resp['body'];
+    }
+
+    /**
      * Render a route whose path contains a `:param` placeholder. Returns null
      * to signal a 404 (no entry matches the captured param).
      *
@@ -586,6 +629,11 @@ final class InlineRenderer {
 
         $bundle_dir = self::bundle_dir_for($manifest->id);
 
+        if ($route_path === '/__dsgo-host') {
+            self::stream_publisher_host($bundle_dir, $manifest);
+            exit;
+        }
+
         $resolved = self::resolve_route($manifest, $route_path);
         if ($resolved !== null) {
             [$route, $params] = $resolved;
@@ -713,6 +761,11 @@ final class InlineRenderer {
         }
 
         $bundle_dir = self::bundle_dir_for($manifest->id);
+
+        if ($request_path === '/__dsgo-host') {
+            self::stream_publisher_host($bundle_dir, $manifest);
+            exit;
+        }
 
         $resolved = self::resolve_route($manifest, $request_path);
         if ($resolved !== null) {

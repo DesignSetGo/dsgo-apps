@@ -395,6 +395,45 @@ class InlineRendererTest extends WP_UnitTestCase {
         $this->assertSame('', $output);
     }
 
+    public function test_dispatch_publisher_host_returns_404_when_no_publishes(): void {
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-host-' . uniqid();
+        mkdir($bundle_dir, 0755, true);
+        file_put_contents($bundle_dir . '/index.html', '<html><body>x</body></html>');
+        $manifest = Manifest::validate($this->minimal_inline_manifest()); // no publishes
+
+        $result = InlineRenderer::dispatch_publisher_host($bundle_dir, $manifest);
+
+        $this->assertSame(404, $result['status']);
+    }
+
+    public function test_dispatch_publisher_host_returns_500_when_entry_missing(): void {
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-host-' . uniqid();
+        mkdir($bundle_dir, 0755, true);
+        // entry file intentionally not created
+        $manifest = Manifest::validate($this->publishing_inline_manifest());
+
+        $result = InlineRenderer::dispatch_publisher_host($bundle_dir, $manifest);
+
+        $this->assertSame(500, $result['status']);
+    }
+
+    public function test_dispatch_publisher_host_returns_200_with_csp_header(): void {
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-host-' . uniqid();
+        mkdir($bundle_dir, 0755, true);
+        file_put_contents($bundle_dir . '/index.html', '<!doctype html><html><body><h1>OK</h1></body></html>');
+        $manifest = Manifest::validate($this->publishing_inline_manifest());
+
+        $result = InlineRenderer::dispatch_publisher_host($bundle_dir, $manifest);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString('<h1>OK</h1>', $result['body']);
+        $this->assertArrayHasKey('Content-Security-Policy', $result['headers']);
+        $this->assertStringContainsString("script-src", $result['headers']['Content-Security-Policy']);
+        $this->assertSame('nosniff', $result['headers']['X-Content-Type-Options'] ?? null);
+        $this->assertSame('strict-origin-when-cross-origin', $result['headers']['Referrer-Policy'] ?? null);
+        $this->assertSame('no-store, private', $result['headers']['Cache-Control'] ?? null);
+    }
+
     private function publishing_inline_manifest(): array {
         $arr = $this->minimal_inline_manifest();
         $arr['abilities'] = ['publishes' => [[
