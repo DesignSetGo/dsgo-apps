@@ -211,6 +211,39 @@ final class InlineRenderer {
     }
 
     /**
+     * Build the publisher-host HTML for an inline-mode app that publishes
+     * abilities. Emits the manifest's entry HTML through the shared content
+     * pipeline (rewrite + sanitize + nonce stamp), then injects ONLY the
+     * iframe-mode bridge-client.js script. Skips the dsgo-context JSON island
+     * so client.ts auto-detects iframe transport when loaded into the
+     * publisher's hidden iframe.
+     *
+     * Caller is responsible for sending response headers (CSP, etc.) and
+     * status code; this method returns the HTML body.
+     */
+    public static function render_publisher_host(string $bundle_dir, Manifest $manifest, string $nonce): string {
+        $entry_abs = $bundle_dir . '/' . $manifest->entry;
+        $template = is_file($entry_abs) ? (file_get_contents($entry_abs) ?: '') : '';
+        if ($template === '') {
+            return '';
+        }
+
+        $html = self::finalize_html_common($template, $bundle_dir, $manifest, $nonce);
+
+        $client_url = plugins_url('assets/bridge-client.js', DSGO_APPS_FILE);
+        $client_tag = '<script src="' . esc_url($client_url) . '" nonce="' . esc_attr($nonce) . '"></script>';
+
+        if (preg_match('#</head>#i', $html)) {
+            $html = preg_replace('#</head>#i', $client_tag . '</head>', $html, 1) ?? $html;
+        } elseif (preg_match('#</body>#i', $html)) {
+            $html = preg_replace('#</body>#i', $client_tag . '</body>', $html, 1) ?? $html;
+        } else {
+            $html = $client_tag . $html;
+        }
+        return $html;
+    }
+
+    /**
      * Render a route whose path contains a `:param` placeholder. Returns null
      * to signal a 404 (no entry matches the captured param).
      *

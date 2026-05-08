@@ -313,6 +313,96 @@ class InlineRendererTest extends WP_UnitTestCase {
         $this->assertMatchesRegularExpression('/"aiTimeoutSeconds":\s*90/', $output);
     }
 
+    public function test_render_publisher_host_emits_entry_html_without_theme_wrap(): void {
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-host-' . uniqid();
+        mkdir($bundle_dir, 0755, true);
+        file_put_contents(
+            $bundle_dir . '/index.html',
+            '<!doctype html><html><head><title>Hi</title></head><body><h1>Host</h1></body></html>',
+        );
+        $manifest = Manifest::validate($this->publishing_inline_manifest());
+
+        $output = InlineRenderer::render_publisher_host($bundle_dir, $manifest, 'NONCE-FIXED');
+
+        $this->assertStringContainsString('<h1>Host</h1>', $output);
+        $this->assertStringNotContainsString('id="dsgo-context"', $output);
+        $this->assertStringNotContainsString('parent-bridge-inline.js', $output);
+        $this->assertStringNotContainsString('bridge-client-inline.js', $output);
+        $this->assertStringNotContainsString('window.__dsgoBridgeDeps', $output);
+        $this->assertStringNotContainsString('window.wpApiSettings', $output);
+    }
+
+    public function test_render_publisher_host_injects_iframe_bridge_client_with_nonce(): void {
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-host-' . uniqid();
+        mkdir($bundle_dir, 0755, true);
+        file_put_contents(
+            $bundle_dir . '/index.html',
+            '<!doctype html><html><head></head><body></body></html>',
+        );
+        $manifest = Manifest::validate($this->publishing_inline_manifest());
+
+        $output = InlineRenderer::render_publisher_host($bundle_dir, $manifest, 'NONCE-FIXED');
+
+        $expected_src = esc_url(plugins_url('assets/bridge-client.js', DSGO_APPS_FILE));
+        $this->assertStringContainsString('<script src="' . $expected_src . '"', $output);
+        $this->assertStringContainsString('nonce="NONCE-FIXED"', $output);
+    }
+
+    public function test_render_publisher_host_rewrites_bundle_asset_paths(): void {
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-host-' . uniqid();
+        mkdir($bundle_dir . '/_astro', 0755, true);
+        file_put_contents($bundle_dir . '/_astro/foo.js', '/* x */');
+        file_put_contents(
+            $bundle_dir . '/index.html',
+            '<!doctype html><html><head><script src="/_astro/foo.js"></script></head><body></body></html>',
+        );
+        $arr = $this->publishing_inline_manifest();
+        $arr['id'] = 'demo';
+        $arr['abilities']['publishes'][0]['name'] = 'demo/foo';
+        $manifest = Manifest::validate($arr);
+
+        $output = InlineRenderer::render_publisher_host($bundle_dir, $manifest, 'N');
+
+        $expected_prefix = '/' . \DSGo_Apps\Settings::get_url_prefix() . '/demo/_astro/foo.js';
+        $this->assertStringContainsString('src="' . $expected_prefix . '"', $output);
+    }
+
+    public function test_render_publisher_host_stamps_nonce_on_user_scripts(): void {
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-host-' . uniqid();
+        mkdir($bundle_dir, 0755, true);
+        file_put_contents(
+            $bundle_dir . '/index.html',
+            '<!doctype html><html><head><script>console.log(1);</script></head><body></body></html>',
+        );
+        $manifest = Manifest::validate($this->publishing_inline_manifest());
+
+        $output = InlineRenderer::render_publisher_host($bundle_dir, $manifest, 'NONCE-XYZ');
+
+        $this->assertMatchesRegularExpression(
+            '#<script[^>]*nonce="NONCE-XYZ"[^>]*>console\.log\(1\);</script>#',
+            $output,
+        );
+    }
+
+    public function test_render_publisher_host_returns_empty_string_when_entry_missing(): void {
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-host-' . uniqid();
+        mkdir($bundle_dir, 0755, true);
+        // Note: index.html is intentionally NOT created.
+        $manifest = Manifest::validate($this->publishing_inline_manifest());
+
+        $output = InlineRenderer::render_publisher_host($bundle_dir, $manifest, 'NONCE');
+
+        $this->assertSame('', $output);
+    }
+
+    private function publishing_inline_manifest(): array {
+        $arr = $this->minimal_inline_manifest();
+        $arr['abilities'] = ['publishes' => [[
+            'name' => $arr['id'] . '/foo', 'label' => 'Foo', 'description' => 'd', 'category' => 'content',
+        ]]];
+        return $arr;
+    }
+
     private function minimal_inline_manifest(): array {
         return [
             'manifest_version' => 1, 'id' => 'sample-inline', 'name' => 'Sample',
