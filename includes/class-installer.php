@@ -171,6 +171,7 @@ final class Installer {
             // flushing when the operator edits the prefix in admin.
             Settings::refresh_root_app_id();
             InlineRenderer::bump_cache_version($manifest->id);
+            SitemapProvider::invalidate_cache();
             AbilitiesPublisher::register_for_app($manifest);
 
             self::release_install_lock($manifest->id);

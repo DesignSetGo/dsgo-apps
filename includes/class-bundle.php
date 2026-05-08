@@ -101,16 +101,24 @@ final class Bundle {
      * Returns null when the sidecar is missing (e.g., upgraded bundle from
      * an older installer); callers fall back to filesystem stat.
      *
+     * Memoized within a single request because both InlineRenderer::resolve_asset
+     * and rewrite_bundle_asset_paths read it for the same bundle on every hit.
+     *
      * @return array<string, true>|null  Hash set of bundle-relative paths.
      */
     public static function load_asset_index(string $bundle_dir): ?array {
+        static $cache = [];
         $path = rtrim($bundle_dir, '/') . '/' . self::ASSET_INDEX_FILENAME;
-        if (!is_file($path)) return null;
+        if (array_key_exists($path, $cache)) {
+            return $cache[$path];
+        }
         $raw = @file_get_contents($path);
-        if (!is_string($raw) || $raw === '') return null;
+        if (!is_string($raw) || $raw === '') {
+            return $cache[$path] = null;
+        }
         $decoded = json_decode($raw, true);
         if (!is_array($decoded) || !isset($decoded['files']) || !is_array($decoded['files'])) {
-            return null;
+            return $cache[$path] = null;
         }
         $set = [];
         foreach ($decoded['files'] as $f) {
@@ -118,7 +126,7 @@ final class Bundle {
                 $set[$f] = true;
             }
         }
-        return $set;
+        return $cache[$path] = $set;
     }
 
     public static function recursive_delete(string $dir): void {

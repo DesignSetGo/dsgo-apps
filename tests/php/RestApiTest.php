@@ -82,12 +82,15 @@ class RestApiTest extends WP_UnitTestCase {
         $this->assertTrue($resp->get_data()['can']);
     }
 
-    public function test_can_unknown_cap_returns_false(): void {
+    public function test_can_unknown_cap_returns_400(): void {
+        // /can is restricted to a fixed allowlist so attackers can't enumerate
+        // arbitrary third-party caps. Unknown strings are rejected outright.
         wp_set_current_user($this->admin_id);
         $req = new WP_REST_Request('GET', '/dsgo/v1/can');
         $req->set_query_params(['cap' => 'no_such_cap']);
         $resp = $this->server->dispatch($req);
-        $this->assertFalse($resp->get_data()['can']);
+        $this->assertSame(400, $resp->get_status());
+        $this->assertSame('invalid_params', $resp->get_data()['code']);
     }
 
     /** Mint the per-(user, app) storage nonce that `permit_storage` requires. */
@@ -518,6 +521,7 @@ class RestApiTest extends WP_UnitTestCase {
     // --- ai/prompt endpoint ---------------------------------------------
 
     public function test_ai_prompt_endpoint_returns_text(): void {
+        wp_set_current_user($this->admin_id);
         $this->install_test_app_for_abilities('ai-app', ['read' => ['ai']]);
         \DSGo_Apps\AiBridge::set_factory_for_tests(static fn () => [
             'supports_ai' => true,
@@ -545,13 +549,26 @@ class RestApiTest extends WP_UnitTestCase {
     }
 
     public function test_ai_prompt_endpoint_404_for_unknown_app(): void {
+        wp_set_current_user($this->admin_id);
         $req = new \WP_REST_Request('POST', '/dsgo/v1/apps/no-such/ai/prompt');
         $req->set_body_params(['messages' => [['role' => 'user', 'content' => 'hi']]]);
         $resp = rest_get_server()->dispatch($req);
         $this->assertSame(404, $resp->get_status());
     }
 
+    public function test_ai_prompt_endpoint_401_when_anonymous(): void {
+        // ai.prompt requires an authenticated WP session — billing-amplification guard.
+        wp_set_current_user(0);
+        $this->install_test_app_for_abilities('ai-app-anon', ['read' => ['ai']]);
+        wp_set_current_user(0);
+        $req = new \WP_REST_Request('POST', '/dsgo/v1/apps/ai-app-anon/ai/prompt');
+        $req->set_body_params(['messages' => [['role' => 'user', 'content' => 'hi']]]);
+        $resp = rest_get_server()->dispatch($req);
+        $this->assertSame(401, $resp->get_status());
+    }
+
     public function test_ai_prompt_endpoint_403_when_app_lacks_ai_permission(): void {
+        wp_set_current_user($this->admin_id);
         $this->install_test_app_for_abilities('no-ai-perm', ['read' => ['posts']]);
         $req = new \WP_REST_Request('POST', '/dsgo/v1/apps/no-ai-perm/ai/prompt');
         $req->set_body_params(['messages' => [['role' => 'user', 'content' => 'hi']]]);
@@ -561,6 +578,7 @@ class RestApiTest extends WP_UnitTestCase {
     }
 
     public function test_ai_prompt_endpoint_503_when_no_connector(): void {
+        wp_set_current_user($this->admin_id);
         $this->install_test_app_for_abilities('no-connector', ['read' => ['ai']]);
         \DSGo_Apps\AiBridge::set_factory_for_tests(static fn () => [
             'supports_ai' => false, 'builder' => null, 'resolver_factory' => null,

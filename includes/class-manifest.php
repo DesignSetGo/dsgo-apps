@@ -105,6 +105,9 @@ final readonly class Manifest {
             throw new ManifestError('id', sprintf('"%s" is reserved and cannot be used', $raw['id']));
         }
         self::assert_string($raw, 'name');
+        if (trim($raw['name']) === '') {
+            throw new ManifestError('name', 'must contain non-whitespace characters');
+        }
         if (mb_strlen($raw['name']) > 80) {
             throw new ManifestError('name', 'must be at most 80 characters');
         }
@@ -309,7 +312,8 @@ final readonly class Manifest {
             }
         }
 
-        $modes = [];
+        $modes      = [];
+        $seen_modes = [];
         foreach ($raw['display']['modes'] as $i => $v) {
             if (!is_string($v) || !in_array($v, ['page','block','admin'], true)) {
                 throw new ManifestError(
@@ -317,7 +321,14 @@ final readonly class Manifest {
                     sprintf('"%s" is not one of [page, block, admin]', is_scalar($v) ? (string) $v : gettype($v))
                 );
             }
-            $modes[] = DisplayMode::from($v);
+            if (isset($seen_modes[$v])) {
+                throw new ManifestError(
+                    sprintf('display.modes[%d]', $i),
+                    sprintf('"%s" is duplicated in display.modes', $v)
+                );
+            }
+            $seen_modes[$v] = true;
+            $modes[]        = DisplayMode::from($v);
         }
         if ($modes === []) {
             throw new ManifestError('display.modes', 'must declare at least one mode');

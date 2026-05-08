@@ -122,6 +122,11 @@ final class Plugin {
     }
 
     public static function deactivate(): void {
+        // Clear any pending batched usermeta cleanup jobs so they don't sit in
+        // wp_cron pointing at a hook that no longer has a listener.
+        // wp_unschedule_hook clears events regardless of args; wp_clear_scheduled_hook
+        // would only match events scheduled with no args.
+        wp_unschedule_hook(RestApi::USER_STORAGE_CLEANUP_HOOK);
         flush_rewrite_rules(false);
     }
 }

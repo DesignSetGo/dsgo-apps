@@ -4,9 +4,9 @@
  * Plugin URI:        https://designsetgo.com/apps
  * Description:       Sandboxed AND connected mini-apps for WordPress. Ship a static bundle, get a real indexable URL at /apps/{slug} — multi-page inline rendering with strict CSP, optional sandboxed iframe mode, and a permissioned bridge to your posts, pages, and users.
  * Version:           0.1.0
- * Requires at least: 6.4
- * Tested up to:      6.9
- * Requires PHP:      8.1
+ * Requires at least: 6.5
+ * Tested up to:      7.0
+ * Requires PHP:      8.2
  * Author:            DesignSetGo
  * Author URI:        https://designsetgo.com
  * License:           GPL-2.0-or-later
@@ -21,12 +21,26 @@ declare(strict_types=1);
 
 defined('ABSPATH') || exit;
 
-if (PHP_VERSION_ID < 80100) {
+if (PHP_VERSION_ID < 80200) {
     add_action('admin_notices', static function (): void {
         $msg = sprintf(
             /* translators: %s: current PHP version */
-            __('DesignSetGo Apps requires PHP 8.1 or higher. You are running %s.', 'dsgo-apps'),
+            __('DesignSetGo Apps requires PHP 8.2 or higher. You are running %s.', 'dsgo-apps'),
             PHP_VERSION
+        );
+        echo '<div class="notice notice-error"><p>' . esc_html($msg) . '</p></div>';
+    });
+    return;
+}
+
+global $wp_version;
+if (version_compare((string) $wp_version, '6.5', '<')) {
+    add_action('admin_notices', static function (): void {
+        global $wp_version;
+        $msg = sprintf(
+            /* translators: %s: current WordPress version */
+            __('DesignSetGo Apps requires WordPress 6.5 or higher. You are running %s.', 'dsgo-apps'),
+            (string) $wp_version
         );
         echo '<div class="notice notice-error"><p>' . esc_html($msg) . '</p></div>';
     });

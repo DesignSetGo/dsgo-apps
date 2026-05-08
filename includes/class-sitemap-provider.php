@@ -10,11 +10,31 @@ declare(strict_types=1);
 namespace DSGo_Apps;
 
 final class SitemapProvider extends \WP_Sitemaps_Provider {
+
+    /**
+     * Cross-request cache key for the fully-built URL list.
+     * The transient is invalidated by {@see self::invalidate_cache()}, which
+     * fires on app install/update/delete and URL prefix changes.
+     */
+    private const URL_LIST_TRANSIENT = 'dsgo_apps_sitemap_url_list';
+
+    /** Backstop TTL — a botched invalidation can't strand the cache forever. */
+    private const URL_LIST_TTL = 12 * HOUR_IN_SECONDS;
+
     public function __construct() {
         // WP core's sitemap rewrite regex constrains provider names to [a-z]+
         // (no digits or underscores), so this must stay all lowercase letters.
         $this->name = 'dsgoapps';
         $this->object_type = 'dsgo_app';
+    }
+
+    /**
+     * Drop the cross-request URL list cache. Called from Installer (after a
+     * successful install/update) and from the DELETE app handler so the next
+     * sitemap request rebuilds fresh.
+     */
+    public static function invalidate_cache(): void {
+        delete_transient(self::URL_LIST_TRANSIENT);
     }
 
     /**
@@ -51,6 +71,11 @@ final class SitemapProvider extends \WP_Sitemaps_Provider {
         static $cache = null;
         if ($cache !== null) return $cache;
 
+        $stored = get_transient(self::URL_LIST_TRANSIENT);
+        if (is_array($stored)) {
+            return $cache = $stored;
+        }
+
         $posts = get_posts([
             'post_type'   => PostType::SLUG,
             'post_status' => 'publish',
@@ -69,6 +94,7 @@ final class SitemapProvider extends \WP_Sitemaps_Provider {
                 $urls[] = $u;
             }
         }
+        set_transient(self::URL_LIST_TRANSIENT, $urls, self::URL_LIST_TTL);
         return $cache = $urls;
     }
 

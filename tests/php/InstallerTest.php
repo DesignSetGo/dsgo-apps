@@ -47,6 +47,54 @@ class InstallerTest extends WP_UnitTestCase {
         $this->assertSame('My App', $post->post_title);
     }
 
+    public function test_install_rejects_zip_with_traversal_entry(): void {
+        // A zip containing a `../wp-config.php` entry must be hard-rejected
+        // before extraction. is_safe_zip_entry is unit-tested in BundleTest;
+        // this asserts the safety check is wired into the full install path.
+        $tmp = tempnam(sys_get_temp_dir(), 'dsgo-evil-');
+        $zip = new ZipArchive();
+        $zip->open($tmp, ZipArchive::OVERWRITE);
+        $zip->addFromString('dsgo-app.json', json_encode([
+            'manifest_version' => 1,
+            'id'               => 'evil-app',
+            'name'             => 'Evil',
+            'version'          => '0.1.0',
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'permissions'      => ['read' => [], 'write' => []],
+            'runtime'          => ['sandbox' => 'strict', 'external_origins' => []],
+        ]));
+        $zip->addFromString('index.html', '<!doctype html><html><body>x</body></html>');
+        $zip->addFromString('../wp-config.php', '<?php echo "pwn";');
+        $zip->close();
+
+        try {
+            Installer::install($tmp, $this->admin_id);
+            $this->fail('Expected InstallerError for path-traversal zip entry');
+        } catch (\DSGo_Apps\InstallerError $e) {
+            $this->assertSame('unsafe_path', $e->error_code);
+        }
+        $this->assertNull(get_page_by_path('evil-app', OBJECT, PostType::SLUG));
+        $this->assertFalse(is_dir(\DSGo_Apps\Bundle::dir_for('evil-app')));
+    }
+
+    public function test_install_rejects_zip_with_no_manifest(): void {
+        // Most common real-world failure: user uploads the wrong zip.
+        $tmp = tempnam(sys_get_temp_dir(), 'dsgo-no-manifest-');
+        $zip = new ZipArchive();
+        $zip->open($tmp, ZipArchive::OVERWRITE);
+        $zip->addFromString('index.html', '<!doctype html><html><body>x</body></html>');
+        $zip->close();
+
+        try {
+            Installer::install($tmp, $this->admin_id);
+            $this->fail('Expected InstallerError for missing manifest');
+        } catch (\DSGo_Apps\InstallerError $e) {
+            $this->assertSame('missing_manifest', $e->error_code);
+        }
+    }
+
     public function test_install_injects_bridge_client_script(): void {
         $zip = $this->build_minimal_zip('inject-test');
         Installer::install($zip, $this->admin_id);

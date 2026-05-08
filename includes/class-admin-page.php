@@ -90,9 +90,10 @@ final class AdminPage {
             return;
         }
 
-        $css = plugins_url('assets/admin/admin-page.css', DSGO_APPS_FILE);
-        $js  = plugins_url('assets/admin/admin-page.js', DSGO_APPS_FILE);
-        $ver = (string) filemtime(DSGO_APPS_PATH . 'assets/admin/admin-page.css');
+        $css      = plugins_url('assets/admin/admin-page.css', DSGO_APPS_FILE);
+        $js       = plugins_url('assets/admin/admin-page.js', DSGO_APPS_FILE);
+        $css_path = DSGO_APPS_PATH . 'assets/admin/admin-page.css';
+        $ver      = file_exists($css_path) ? (string) filemtime($css_path) : DSGO_APPS_VERSION;
 
         wp_enqueue_style('dsgo-admin-page', $css, [], $ver);
         wp_enqueue_script('dsgo-admin-page', $js, ['wp-api-fetch', 'wp-i18n'], $ver, true);

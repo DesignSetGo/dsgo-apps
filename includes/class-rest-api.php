@@ -13,6 +13,27 @@ final class RestApi {
 
     public const NAMESPACE = 'dsgo/v1';
 
+    /** Hourly per-app cap on ai.prompt requests (per-IP for anon, per-user for auth). */
+    public const AI_RATE_LIMIT_PER_HOUR = 60;
+
+    /**
+     * Capabilities the /can endpoint will probe. Restricting to a known list
+     * avoids leaking results for arbitrary third-party caps and prevents the
+     * post-meta cap resolver from running on attacker-supplied strings.
+     */
+    private const CAN_ALLOWED_CAPS = [
+        'edit_posts',
+        'edit_pages',
+        'edit_others_posts',
+        'edit_published_posts',
+        'publish_posts',
+        'read',
+        'read_private_posts',
+        'manage_options',
+        'upload_files',
+        'unfiltered_html',
+    ];
+
     public static function register(): void {
         register_rest_route(self::NAMESPACE, '/apps', [
             [
@@ -109,15 +130,19 @@ final class RestApi {
             'callback'            => [self::class, 'abilities_invoke'],
             'permission_callback' => '__return_true',
         ]);
+        // ai.prompt and email.send are mutating operations that consume
+        // billable resources (LLM tokens; outbound mail). Require an
+        // authenticated WP session as a coarse gate; per-manifest permission
+        // checks then run inside the callback against the app's permissions.
         register_rest_route(self::NAMESPACE, "/apps/$app_id_re/ai/prompt", [
             'methods'             => 'POST',
             'callback'            => [self::class, 'ai_prompt'],
-            'permission_callback' => '__return_true',
+            'permission_callback' => static fn () => is_user_logged_in(),
         ]);
         register_rest_route(self::NAMESPACE, "/apps/$app_id_re/email/send", [
             'methods'             => 'POST',
             'callback'            => [self::class, 'email_send'],
-            'permission_callback' => '__return_true',
+            'permission_callback' => static fn () => is_user_logged_in(),
         ]);
     }
 
@@ -125,6 +150,10 @@ final class RestApi {
         $page     = max(1, (int) ($req->get_param('page') ?? 1));
         $per_page = (int) ($req->get_param('per_page') ?? 100);
         $per_page = max(1, min(100, $per_page));
+        // Only run the SQL_CALC_FOUND_ROWS count when the caller asks for it;
+        // the admin UI only needs the totals when paginating beyond the first
+        // page, so default to skipping the extra full-table scan.
+        $want_total = (bool) $req->get_param('counts');
 
         $query = new \WP_Query([
             'post_type'      => PostType::SLUG,
@@ -133,7 +162,7 @@ final class RestApi {
             'paged'          => $page,
             'orderby'        => 'title',
             'order'          => 'ASC',
-            'no_found_rows'  => false,
+            'no_found_rows'  => !$want_total,
         ]);
 
         $url_prefix = Settings::get_url_prefix();
@@ -399,6 +428,7 @@ final class RestApi {
         AbilitiesPublisher::unregister_for_app($id);
         wp_delete_post($post->ID, true);
         Settings::refresh_root_app_id();
+        SitemapProvider::invalidate_cache();
         // No flush_rewrite_rules — see Installer::install for rationale.
         return new \WP_REST_Response(['ok' => true], 200);
     }
@@ -576,7 +606,14 @@ final class RestApi {
     }
 
     public static function can(\WP_REST_Request $req): \WP_REST_Response {
-        return new \WP_REST_Response(['can' => current_user_can($req['cap'])], 200);
+        $cap = (string) $req['cap'];
+        if (!in_array($cap, self::CAN_ALLOWED_CAPS, true)) {
+            return new \WP_REST_Response(
+                ['code' => 'invalid_params', 'message' => 'capability not in allowlist'],
+                400,
+            );
+        }
+        return new \WP_REST_Response(['can' => current_user_can($cap)], 200);
     }
 
     public static function site_info(\WP_REST_Request $req): \WP_REST_Response {
@@ -599,11 +636,17 @@ final class RestApi {
 
     public static function storage_app_get(\WP_REST_Request $req): \WP_REST_Response {
         $post = get_page_by_path($req['app_id'], OBJECT, PostType::SLUG);
+        if (!$post) {
+            return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
+        }
         return new \WP_REST_Response(['value' => Storage::app_get($post->ID, $req['key'])], 200);
     }
 
     public static function storage_app_set(\WP_REST_Request $req): \WP_REST_Response {
         $post = get_page_by_path($req['app_id'], OBJECT, PostType::SLUG);
+        if (!$post) {
+            return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
+        }
         try {
             Storage::app_set($post->ID, $req['key'], $req->get_param('value'));
         } catch (StorageError $e) {
@@ -614,11 +657,17 @@ final class RestApi {
 
     public static function storage_user_get(\WP_REST_Request $req): \WP_REST_Response {
         $post = get_page_by_path($req['app_id'], OBJECT, PostType::SLUG);
+        if (!$post) {
+            return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
+        }
         return new \WP_REST_Response(['value' => Storage::user_get($post->ID, get_current_user_id(), $req['key'])], 200);
     }
 
     public static function storage_user_set(\WP_REST_Request $req): \WP_REST_Response {
         $post = get_page_by_path($req['app_id'], OBJECT, PostType::SLUG);
+        if (!$post) {
+            return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
+        }
         try {
             Storage::user_set($post->ID, get_current_user_id(), $req['key'], $req->get_param('value'));
         } catch (StorageError $e) {
@@ -678,6 +727,13 @@ final class RestApi {
         if (!in_array(Permission::Ai, $manifest->permissions_read, true)) {
             return new \WP_REST_Response(['code' => 'permission_denied', 'message' => 'app lacks "ai" permission'], 403);
         }
+        if (self::ai_rate_limited($manifest->id)) {
+            $cap = (int) apply_filters('dsgo_apps_ai_rate_limit_per_hour', self::AI_RATE_LIMIT_PER_HOUR, $manifest->id);
+            return new \WP_REST_Response(
+                ['code' => 'rate_limited', 'message' => sprintf('app exceeded %d ai.prompt calls/hour', $cap)],
+                429,
+            );
+        }
         $params = [
             'messages'   => $req->get_param('messages'),
             'tools'      => $req->get_param('tools'),
@@ -730,7 +786,9 @@ final class RestApi {
     }
 
     /**
-     * Load + validate the manifest from the route's app_id parameter.
+     * Load the stored manifest for the route's app_id. Manifests were validated
+     * at install time and persisted to post meta as a trusted array, so we
+     * skip re-validation on every bridge call.
      */
     private static function load_manifest_for_request(\WP_REST_Request $req): ?Manifest {
         $app_id = (string) ($req['app_id'] ?? '');
@@ -740,9 +798,23 @@ final class RestApi {
         $raw = get_post_meta($post->ID, 'dsgo_apps_manifest', true);
         if (!is_array($raw)) return null;
         try {
-            return Manifest::validate($raw);
-        } catch (ManifestError $e) {
+            return Manifest::from_array_unchecked($raw);
+        } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    /**
+     * Per-hour transient bucket for ai.prompt. Mirrors EmailBridge::is_rate_limited.
+     */
+    private static function ai_rate_limited(string $app_id): bool {
+        $key   = sprintf('dsgo_ai_rate_%s_%s', $app_id, gmdate('YmdH'));
+        $count = (int) get_transient($key);
+        $cap   = (int) apply_filters('dsgo_apps_ai_rate_limit_per_hour', self::AI_RATE_LIMIT_PER_HOUR, $app_id);
+        if ($count >= $cap) {
+            return true;
+        }
+        set_transient($key, $count + 1, HOUR_IN_SECONDS + 60);
+        return false;
     }
 }

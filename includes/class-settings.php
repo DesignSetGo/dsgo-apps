@@ -51,7 +51,7 @@ final class Settings {
             self::OPTION_HARNESS_SHARE_CONTENT,
             [
                 'type'              => 'boolean',
-                'description'       => __('Allow the harness to read recent published content for context.', 'dsgo-apps'),
+                'description'       => __('Allow the AI app builder to read recent published content for context.', 'dsgo-apps'),
                 'sanitize_callback' => static fn($v) => (bool) $v,
                 'default'           => false,
                 'show_in_rest'      => false,
@@ -151,6 +151,9 @@ final class Settings {
         if ($old === $new) return;
         // Permalink structure didn't change but our rules did — flush.
         flush_rewrite_rules(false);
+        // Sitemap URLs are built off the prefix; drop the cached list so the
+        // next sitemap request reflects the new URL shape.
+        SitemapProvider::invalidate_cache();
     }
 
     public const SETTINGS_PAGE_SLUG = 'dsgo-apps-settings';
@@ -274,9 +277,9 @@ final class Settings {
                     <?php endif; ?>
                 </section>
 
-                <section class="dsgo-card" aria-labelledby="dsgo-settings-harness-heading">
+                <section class="dsgo-card" aria-labelledby="dsgo-settings-ai-context-heading">
                     <header class="dsgo-card__header">
-                        <h2 id="dsgo-settings-harness-heading" class="dsgo-card__title"><?php esc_html_e('Harness data sharing', 'dsgo-apps'); ?></h2>
+                        <h2 id="dsgo-settings-ai-context-heading" class="dsgo-card__title"><?php esc_html_e('AI authoring context', 'dsgo-apps'); ?></h2>
                         <p class="dsgo-card__subtitle">
                             <?php esc_html_e('Controls what context the in-admin app builder may read from this site when generating apps.', 'dsgo-apps'); ?>
                         </p>
@@ -291,9 +294,9 @@ final class Settings {
                                 <?php checked($share_content, true); ?>
                             />
                             <span class="dsgo-toggle__label">
-                                <strong><?php esc_html_e('Share recent content with the harness', 'dsgo-apps'); ?></strong>
+                                <strong><?php esc_html_e('Share recent content with the AI app builder', 'dsgo-apps'); ?></strong>
                                 <span class="dsgo-field__hint">
-                                    <?php esc_html_e('When enabled, the harness can read up to 5 recent published post titles and excerpts to match the site\'s tone and content shape. Posts the visitor cannot read are never included. Off by default — site content stays out of the model\'s context until you opt in.', 'dsgo-apps'); ?>
+                                    <?php esc_html_e('When enabled, the in-admin AI app builder can read up to 5 recent published post titles and excerpts to match your site\'s tone and content shape. Posts the visitor cannot read are never included. Off by default — site content stays out of the model\'s context until you opt in.', 'dsgo-apps'); ?>
                                 </span>
                             </span>
                         </label>
