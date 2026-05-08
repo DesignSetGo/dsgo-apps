@@ -109,8 +109,7 @@ final class SitemapProvider extends \WP_Sitemaps_Provider {
         if ($mount_mode === 'root') {
             $base = '';
         } else {
-            $prefix = Settings::get_url_prefix();
-            $base   = '/' . $prefix . '/' . $slug;
+            $base = Settings::app_base_path($slug);
         }
         $bundle_dir ??= rtrim((string) (wp_upload_dir()['basedir'] ?? ''), '/') . '/dsgo-apps/' . $slug;
 

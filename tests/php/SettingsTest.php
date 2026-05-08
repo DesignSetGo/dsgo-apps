@@ -29,10 +29,28 @@ class SettingsTest extends WP_UnitTestCase {
         }
     }
 
+    public function test_is_valid_url_prefix_accepts_empty_for_no_prefix_mode(): void {
+        $this->assertTrue(Settings::is_valid_url_prefix(''));
+    }
+
     public function test_is_valid_url_prefix_rejects_bad_values(): void {
-        foreach (['', '/', 'WP', '1apps', '-apps', 'apps/', str_repeat('x', 32), 'wp-admin', 'wp-json', 'feed'] as $bad) {
+        foreach (['/', 'WP', '1apps', '-apps', 'apps/', str_repeat('x', 32), 'wp-admin', 'wp-json', 'feed'] as $bad) {
             $this->assertFalse(Settings::is_valid_url_prefix($bad), "expected '$bad' to be rejected");
         }
+    }
+
+    public function test_app_base_path_with_default_prefix(): void {
+        $this->assertSame('/apps/marketing', Settings::app_base_path('marketing'));
+    }
+
+    public function test_app_base_path_with_empty_prefix(): void {
+        update_option(Settings::OPTION_URL_PREFIX, '');
+        $this->assertSame('/marketing', Settings::app_base_path('marketing'));
+    }
+
+    public function test_sanitize_url_prefix_accepts_empty_string(): void {
+        $this->assertSame('', Settings::sanitize_url_prefix(''));
+        $this->assertSame('', Settings::sanitize_url_prefix('  /  '));
     }
 
     public function test_sanitize_url_prefix_strips_slashes_and_lowercases(): void {

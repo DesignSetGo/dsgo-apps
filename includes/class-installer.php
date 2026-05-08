@@ -223,7 +223,7 @@ final class Installer {
         if ($manifest->mount_mode === MountMode::Root) {
             return '/';
         }
-        return '/' . Settings::get_url_prefix() . '/' . $manifest->id;
+        return Settings::app_base_path($manifest->id);
     }
 
     private static function validate_zip_contents(\ZipArchive $zip): void {

@@ -165,13 +165,12 @@ final class RestApi {
             'no_found_rows'  => !$want_total,
         ]);
 
-        $url_prefix = Settings::get_url_prefix();
         $out = [];
         foreach ($query->posts as $p) {
             $manifest   = get_post_meta($p->ID, 'dsgo_apps_manifest', true);
             $isolation  = is_array($manifest) ? ($manifest['isolation'] ?? 'inline') : 'inline';
             $mount_mode = is_array($manifest) ? ($manifest['mount']['mode'] ?? 'prefixed') : 'prefixed';
-            $base_path  = $mount_mode === 'root' ? '/' : '/' . $url_prefix . '/' . $p->post_name;
+            $base_path  = $mount_mode === 'root' ? '/' : Settings::app_base_path($p->post_name);
             $modes      = is_array($manifest) ? ($manifest['display']['modes'] ?? []) : [];
             $out[] = [
                 'id'            => $p->post_name,

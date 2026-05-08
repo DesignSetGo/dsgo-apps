@@ -244,6 +244,16 @@ class InlineRendererTest extends WP_UnitTestCase {
         $this->assertSame('', InlineRenderer::url_prefix_for($manifest));
     }
 
+    public function test_url_prefix_for_no_prefix_mode_uses_app_slug_only(): void {
+        update_option(\DSGo_Apps\Settings::OPTION_URL_PREFIX, '');
+        try {
+            $manifest = Manifest::validate($this->minimal_inline_manifest());
+            $this->assertSame('/sample-inline', InlineRenderer::url_prefix_for($manifest));
+        } finally {
+            delete_option(\DSGo_Apps\Settings::OPTION_URL_PREFIX);
+        }
+    }
+
     public function test_root_mount_rewrites_bundle_assets_to_upload_url(): void {
         // Root-mount apps need static assets routed around PHP entirely so
         // managed-host nginx fast-paths (which 404 unknown .css/.js/.svg

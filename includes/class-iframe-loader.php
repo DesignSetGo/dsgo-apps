@@ -108,7 +108,7 @@ final class IframeLoader {
             'hash'          => '',
             'mountPrefix'   => Settings::get_root_app_id() === $app_id
                 ? ''
-                : '/' . Settings::get_url_prefix() . '/' . $app_id,
+                : Settings::app_base_path($app_id),
         ];
         if (in_array('ai', $manifest['permissions']['read'] ?? [], true)) {
             $context['aiTimeoutSeconds'] = (int) ($manifest['ai']['timeout_seconds'] ?? 60);
@@ -323,7 +323,7 @@ final class IframeLoader {
         if (Settings::get_root_app_id() === $app_id) {
             return $req;
         }
-        $prefix = '/' . Settings::get_url_prefix() . '/' . $app_id;
+        $prefix = Settings::app_base_path($app_id);
         if ($req === $prefix || $req === $prefix . '/') return '/';
         if (str_starts_with($req, $prefix . '/')) {
             $rel = substr($req, strlen($prefix));

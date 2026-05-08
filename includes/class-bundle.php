@@ -267,7 +267,7 @@ final class Bundle {
                     'allow_root_paths'   => $manifest->mount_mode === MountMode::Root,
                     'allow_url_prefix'   => $manifest->mount_mode === MountMode::Root
                         ? null
-                        : '/' . Settings::get_url_prefix() . '/' . $manifest->id,
+                        : Settings::app_base_path($manifest->id),
                     'stylesheet_origins' => $manifest->csp['style_src'] ?? [],
                     'script_origins'     => $manifest->csp['script_src'] ?? [],
                     'embed_origins'      => $manifest->embeds,

@@ -74,4 +74,55 @@ class RewriteTest extends WP_UnitTestCase {
             $wp_rewrite->flush_rules(false);
         }
     }
+
+    public function test_empty_prefix_registers_root_capturing_rule(): void {
+        update_option(\DSGo_Apps\Settings::OPTION_URL_PREFIX, '');
+        try {
+            global $wp_rewrite;
+            Rewrite::register();
+            $wp_rewrite->flush_rules(false);
+            $rules = $wp_rewrite->wp_rewrite_rules();
+
+            $expected_pattern = '^([^/]+)(?:/(.+))?/?$';
+            $this->assertArrayHasKey(
+                $expected_pattern,
+                $rules,
+                'expected empty-prefix mode to register the root-capturing rewrite rule',
+            );
+            $this->assertStringContainsString(Rewrite::QUERY_VAR, $rules[$expected_pattern]);
+        } finally {
+            delete_option(\DSGo_Apps\Settings::OPTION_URL_PREFIX);
+            Rewrite::register();
+            global $wp_rewrite;
+            $wp_rewrite->flush_rules(false);
+        }
+    }
+
+    public function test_empty_prefix_does_not_shadow_real_pages(): void {
+        // With prefix='' our rule registers at 'bottom' so WP's own page
+        // resolution still wins for slugs that map to a real page. Create a
+        // page named 'about' and confirm it resolves to the page, not an app.
+        $page_id = self::factory()->post->create([
+            'post_type'   => 'page',
+            'post_status' => 'publish',
+            'post_title'  => 'About',
+            'post_name'   => 'about',
+        ]);
+        update_option(\DSGo_Apps\Settings::OPTION_URL_PREFIX, '');
+        try {
+            global $wp_rewrite;
+            Rewrite::register();
+            $wp_rewrite->flush_rules(false);
+
+            $this->go_to(home_url('/about/'));
+            $this->assertTrue(is_page('about'), 'real page should win over empty-prefix app rule');
+            $this->assertSame('', (string) get_query_var(Rewrite::QUERY_VAR));
+        } finally {
+            wp_delete_post($page_id, true);
+            delete_option(\DSGo_Apps\Settings::OPTION_URL_PREFIX);
+            Rewrite::register();
+            global $wp_rewrite;
+            $wp_rewrite->flush_rules(false);
+        }
+    }
 }

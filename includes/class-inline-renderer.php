@@ -343,7 +343,7 @@ final class InlineRenderer {
         if ($manifest->mount_mode === MountMode::Root) {
             return '';
         }
-        return '/' . Settings::get_url_prefix() . '/' . $manifest->id;
+        return Settings::app_base_path($manifest->id);
     }
 
     /**
