@@ -1076,4 +1076,28 @@ class ManifestTest extends WP_UnitTestCase {
         $serialized = $manifest->to_array();
         $this->assertSame(['admin', 'current_user'], $serialized['email']['recipients']);
     }
+
+    public function test_media_uploads_default_to_enabled(): void {
+        $manifest = Manifest::validate($this->valid_inline_manifest());
+        $this->assertTrue($manifest->media_uploads_enabled);
+        // Default-on case: round-trip omits the `media` block entirely so
+        // existing manifests stay byte-identical when re-serialized.
+        $this->assertArrayNotHasKey('media', $manifest->to_array());
+    }
+
+    public function test_media_uploads_can_be_disabled_via_manifest(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['media'] = ['uploads' => false];
+        $manifest = Manifest::validate($arr);
+        $this->assertFalse($manifest->media_uploads_enabled);
+        $this->assertSame(['uploads' => false], $manifest->to_array()['media']);
+    }
+
+    public function test_media_uploads_must_be_boolean(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['media'] = ['uploads' => 'no'];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessageMatches('/boolean/i');
+        Manifest::validate($arr);
+    }
 }

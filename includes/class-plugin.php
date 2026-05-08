@@ -32,6 +32,7 @@ final class Plugin {
         require_once $base . 'class-admin-publisher-loader.php';
         require_once $base . 'class-ai-bridge.php';
         require_once $base . 'class-email-bridge.php';
+        require_once $base . 'class-media-bridge.php';
         require_once $base . 'class-html-sanitizer.php';
         require_once $base . 'class-csp-builder.php';
         require_once $base . 'class-permissions.php';

@@ -42,6 +42,11 @@ final class Permissions {
             'abilities.invoke'  => Permission::Abilities,
             'ai.prompt'         => Permission::Ai,
             'email.send'        => Permission::Email,
+            // media.upload is a core, opt-out feature — gated by the WP
+            // `upload_files` cap on the REST permission_callback and by the
+            // manifest's `media.uploads` flag (default true) at the bridge.
+            // No manifest permission is required.
+            'media.upload'      => null,
             'router.navigate'   => null,
         ];
     }
