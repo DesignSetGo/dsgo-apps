@@ -159,19 +159,18 @@ final class InlineRenderer {
     }
 
     /**
-     * Shared post-substitution pipeline: rewrite asset paths, sanitize, stamp
-     * nonces, inject hydration + bridge bootstrap. Both static and dynamic
-     * routes call this.
+     * Pipeline shared by inline-mode route renders and publisher-host renders:
+     * rewrite asset paths, sanitize HTML, stamp per-request nonce on existing
+     * <script>/<style> tags. Does NOT inject the dsgo-context hydration script
+     * or any bridge bootstrap; callers append the appropriate tail.
      */
-    private static function finalize_html(
+    private static function finalize_html_common(
         string $html,
         string $bundle_dir,
         Manifest $manifest,
-        array $context,
         string $nonce,
     ): string {
         $html = self::rewrite_bundle_asset_paths($html, $bundle_dir, $manifest);
-
         $html = HtmlSanitizer::sanitize($html, [
             'nonce'              => $nonce,
             'allow_root_paths'   => $manifest->mount_mode === MountMode::Root,
@@ -180,7 +179,21 @@ final class InlineRenderer {
             'script_origins'     => $manifest->csp['script_src'] ?? [],
             'embed_origins'      => $manifest->embeds,
         ]);
-        $html = self::stamp_nonce_on_existing_tags($html, $nonce);
+        return self::stamp_nonce_on_existing_tags($html, $nonce);
+    }
+
+    /**
+     * Inline-mode route finalize: common pipeline + dsgo-context hydration +
+     * inline bridge bootstrap. Both static and dynamic routes call this.
+     */
+    private static function finalize_html(
+        string $html,
+        string $bundle_dir,
+        Manifest $manifest,
+        array $context,
+        string $nonce,
+    ): string {
+        $html = self::finalize_html_common($html, $bundle_dir, $manifest, $nonce);
 
         $hydration = '<script type="application/json" id="dsgo-context">' .
             wp_json_encode(['bridgeVersion' => 1] + $context) .
