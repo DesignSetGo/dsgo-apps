@@ -191,6 +191,9 @@ final readonly class Manifest {
                     throw new ManifestError("routes", "duplicate path: $path");
                 }
                 $seen_paths[] = $path;
+                if ($path === '/__dsgo-host' || $path === '/__dsgo-host/') {
+                    throw new ManifestError("routes[$i].path", 'route_path_reserved: "/__dsgo-host" is reserved for the abilities publisher host');
+                }
                 $file = $r['file'];
                 if (str_contains($file, '..') || str_starts_with($file, '/') || !preg_match('/\.(html|htm)$/', $file)) {
                     throw new ManifestError("routes[$i].file", 'must be a relative .html/.htm path without ".."');
@@ -504,12 +507,6 @@ final readonly class Manifest {
 
             // ----- publishes validation -----
             if (array_key_exists('publishes', $raw['abilities'])) {
-                if ($isolation !== 'iframe') {
-                    throw new ManifestError(
-                        'abilities.publishes',
-                        'abilities_publishes_iframe_only: publishing is only available for iframe-mode apps',
-                    );
-                }
                 if (!is_array($raw['abilities']['publishes'])) {
                     throw new ManifestError('abilities.publishes', 'must be an array');
                 }

@@ -893,13 +893,29 @@ class ManifestTest extends WP_UnitTestCase {
         $this->assertSame(30, $manifest->abilities_publishes[0]['timeout_seconds']);
     }
 
-    public function test_abilities_publishes_iframe_mode_only(): void {
+    public function test_abilities_publishes_accepted_for_inline_mode(): void {
         $arr = $this->valid_inline_manifest();
         $arr['abilities'] = ['publishes' => [[
             'name' => 'sample/foo', 'label' => 'Foo', 'description' => 'd', 'category' => 'content',
         ]]];
+        $manifest = Manifest::validate($arr);
+        $this->assertCount(1, $manifest->abilities_publishes);
+        $this->assertSame('sample/foo', $manifest->abilities_publishes[0]['name']);
+    }
+
+    public function test_route_path_dsgo_host_is_reserved(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['routes'][] = ['path' => '/__dsgo-host', 'file' => 'host.html'];
         $this->expectException(\DSGo_Apps\ManifestError::class);
-        $this->expectExceptionMessageMatches('/abilities_publishes_iframe_only|iframe/i');
+        $this->expectExceptionMessageMatches('/route_path_reserved|__dsgo-host/i');
+        Manifest::validate($arr);
+    }
+
+    public function test_route_path_dsgo_host_with_trailing_slash_is_reserved(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['routes'][] = ['path' => '/__dsgo-host/', 'file' => 'host.html'];
+        $this->expectException(\DSGo_Apps\ManifestError::class);
+        $this->expectExceptionMessageMatches('/route_path_reserved|__dsgo-host/i');
         Manifest::validate($arr);
     }
 
