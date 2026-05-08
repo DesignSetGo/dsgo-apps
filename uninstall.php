@@ -28,20 +28,6 @@ $wpdb->query(
     )
 );
 
-// Riff session pointer + any stale envelope rows (legacy + current).
-$wpdb->query(
-    $wpdb->prepare(
-        "DELETE FROM {$wpdb->usermeta}
-         WHERE meta_key IN (%s, %s, %s, %s)",
-        '_dsgo_riff_active_session',
-        '_dsgo_harness_riff_sessions',
-        '_dsgo_harness_studio_sessions',
-        '_dsgo_harness_studio_state'
-    )
-);
-
-// Drop the Riff sessions table.
-$wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}dsgo_riff_sessions");
 
 $wpdb->query(
     $wpdb->prepare(
