@@ -113,8 +113,15 @@ final class AdminPage {
 
     public static function render(): void {
         if (!current_user_can('manage_options')) return;
+
+        // Best-effort initial state guess so the layout doesn't flicker between
+        // the empty hero and the has-apps view while the REST fetch resolves.
+        // JS reconciles after the fetch returns.
+        $count_obj      = wp_count_posts(PostType::SLUG);
+        $publish_count  = isset($count_obj->publish) ? (int) $count_obj->publish : 0;
+        $initial_state  = $publish_count > 0 ? 'dsgo-admin--has-apps' : 'dsgo-admin--empty';
         ?>
-        <div class="dsgo-admin" data-dsgo-admin>
+        <div class="dsgo-admin <?php echo esc_attr($initial_state); ?>" data-dsgo-admin>
             <header class="dsgo-admin__hero">
                 <p class="dsgo-admin__eyebrow"><?php esc_html_e('DesignSetGo', 'dsgo-apps'); ?></p>
                 <h1 class="dsgo-admin__title">
@@ -136,8 +143,27 @@ final class AdminPage {
                 ?>
             </header>
 
-            <div class="dsgo-admin__grid">
-                <section class="dsgo-card dsgo-card--install" aria-labelledby="dsgo-install-heading">
+            <div class="dsgo-admin__layout">
+                <section class="dsgo-card dsgo-card--list" aria-labelledby="dsgo-list-heading">
+                    <header class="dsgo-card__header dsgo-card__header--list">
+                        <div class="dsgo-card__header-text">
+                            <h2 id="dsgo-list-heading" class="dsgo-card__title"><?php esc_html_e('Installed apps', 'dsgo-apps'); ?></h2>
+                            <p class="dsgo-card__subtitle" data-dsgo-list-subtitle><?php esc_html_e('Loading…', 'dsgo-apps'); ?></p>
+                        </div>
+                        <button type="button" class="dsgo-install-toggle" data-dsgo-install-toggle
+                                aria-expanded="false" aria-controls="dsgo-install-panel">
+                            <span aria-hidden="true" class="dsgo-install-toggle__icon">+</span>
+                            <span class="dsgo-install-toggle__label"><?php esc_html_e('Install another app', 'dsgo-apps'); ?></span>
+                        </button>
+                    </header>
+                    <ul class="dsgo-applist" data-dsgo-list role="list" aria-busy="true">
+                        <li class="dsgo-applist__skel"></li>
+                        <li class="dsgo-applist__skel"></li>
+                    </ul>
+                </section>
+
+                <section class="dsgo-card dsgo-card--install" id="dsgo-install-panel"
+                         data-dsgo-install-panel aria-labelledby="dsgo-install-heading">
                     <header class="dsgo-card__header">
                         <h2 id="dsgo-install-heading" class="dsgo-card__title"><?php esc_html_e('Install an app', 'dsgo-apps'); ?></h2>
                         <p class="dsgo-card__subtitle" data-dsgo-card-subtitle><?php esc_html_e('Upload a packaged bundle (.zip) containing a dsgo-app.json manifest.', 'dsgo-apps'); ?></p>
@@ -275,17 +301,6 @@ npx designsetgo apps deploy --build</code></pre>
                         </p>
                     </details>
                 </section>
-
-                <section class="dsgo-card dsgo-card--list" aria-labelledby="dsgo-list-heading">
-                    <header class="dsgo-card__header">
-                        <h2 id="dsgo-list-heading" class="dsgo-card__title"><?php esc_html_e('Installed apps', 'dsgo-apps'); ?></h2>
-                        <p class="dsgo-card__subtitle" data-dsgo-list-subtitle><?php esc_html_e('Loading…', 'dsgo-apps'); ?></p>
-                    </header>
-                    <ul class="dsgo-applist" data-dsgo-list role="list" aria-busy="true">
-                        <li class="dsgo-applist__skel"></li>
-                        <li class="dsgo-applist__skel"></li>
-                    </ul>
-                </section>
             </div>
 
             <footer class="dsgo-admin__footnote">
@@ -307,8 +322,10 @@ npx designsetgo apps deploy --build</code></pre>
                     <div class="dsgo-applist__meta"></div>
                 </div>
                 <a class="dsgo-applist__url" target="_blank" rel="noopener noreferrer"></a>
-                <button type="button" class="dsgo-applist__home" data-dsgo-home></button>
-                <button type="button" class="dsgo-applist__delete" data-dsgo-delete aria-label=""><?php esc_html_e('Delete', 'dsgo-apps'); ?></button>
+                <div class="dsgo-applist__actions">
+                    <button type="button" class="dsgo-applist__home" data-dsgo-home></button>
+                    <button type="button" class="dsgo-applist__delete" data-dsgo-delete aria-label=""><?php esc_html_e('Delete', 'dsgo-apps'); ?></button>
+                </div>
             </li>
         </template>
 

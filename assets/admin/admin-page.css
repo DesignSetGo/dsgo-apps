@@ -84,17 +84,25 @@
     margin: 0;
 }
 
-/* GRID ───────────────────────────────────────────────────────────────── */
+/* LAYOUT ─────────────────────────────────────────────────────────────── */
 
-.dsgo-admin__grid {
-    display: grid;
-    grid-template-columns: 1.1fr 0.9fr;
-    gap: 32px;
-    align-items: start;
+.dsgo-admin__layout {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    max-width: 1100px;
 }
-@media (max-width: 960px) {
-    .dsgo-admin__grid { grid-template-columns: 1fr; }
-}
+
+/* Empty state: install card is the hero, list is suppressed. */
+.dsgo-admin--empty .dsgo-card--list { display: none; }
+
+/* Has-apps state: list is primary; install card is collapsed behind a toggle. */
+.dsgo-admin--has-apps .dsgo-card--install { display: none; }
+.dsgo-admin--has-apps .dsgo-card--install.is-open { display: block; }
+
+/* Toggle is only meaningful in the has-apps view. */
+.dsgo-install-toggle { display: none; }
+.dsgo-admin--has-apps .dsgo-install-toggle { display: inline-flex; }
 
 .dsgo-card {
     background: var(--dsgo-surface);
@@ -103,7 +111,62 @@
     padding: 32px;
     animation: dsgo-fade-up 580ms cubic-bezier(.2,.7,.2,1) both;
 }
-.dsgo-card:nth-of-type(2) { animation-delay: 80ms; }
+/* Install card mounts on demand in has-apps mode (display:none → block when
+   toggled open), which re-runs the entrance animation every time. Skip the
+   fade so the panel slides in cleanly without a flash. */
+.dsgo-admin--has-apps .dsgo-card--install { animation: none; }
+
+/* INSTALL TOGGLE ────────────────────────────────────────────────────── */
+
+.dsgo-card__header--list {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.dsgo-card__header-text { min-width: 0; flex: 1 1 auto; }
+
+.dsgo-install-toggle {
+    appearance: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px 8px 12px;
+    border: 1px solid var(--dsgo-accent);
+    border-radius: 999px;
+    background: var(--dsgo-accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 500;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    flex: 0 0 auto;
+}
+.dsgo-install-toggle:hover {
+    background: #174433;
+    border-color: #174433;
+}
+.dsgo-install-toggle:focus-visible {
+    outline: 2px solid var(--dsgo-accent);
+    outline-offset: 2px;
+}
+.dsgo-install-toggle__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    font-size: 16px;
+    line-height: 1;
+    font-weight: 400;
+    transition: transform 220ms cubic-bezier(.2,.7,.2,1);
+}
+.dsgo-install-toggle[aria-expanded="true"] .dsgo-install-toggle__icon {
+    transform: rotate(45deg);
+}
 
 .dsgo-card__header { margin-bottom: 24px; }
 .dsgo-card__title {
@@ -280,10 +343,10 @@
 }
 .dsgo-applist__row {
     display: grid;
-    grid-template-columns: 1fr auto auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
-    gap: 12px;
-    padding: 16px 4px;
+    gap: 12px 20px;
+    padding: 18px 4px;
     border-bottom: 1px solid var(--dsgo-rule-soft);
     transition: background 160ms ease;
     position: relative;
@@ -294,6 +357,19 @@
     content: '';
     position: absolute; left: -12px; top: 8px; bottom: 8px; width: 2px;
     background: var(--dsgo-accent); border-radius: 2px;
+}
+.dsgo-applist__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    grid-column: 3 / 4;
+}
+@media (max-width: 720px) {
+    .dsgo-applist__row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .dsgo-applist__url { grid-column: 1 / -1; justify-self: start; }
+    .dsgo-applist__actions { grid-column: 1 / -1; justify-content: flex-end; }
 }
 .dsgo-applist__main { min-width: 0; }
 .dsgo-applist__title-row {
@@ -682,6 +758,37 @@
     flex: 0 1 220px;
     min-width: 160px;
     font-family: var(--dsgo-mono);
+}
+.dsgo-field--disabled .dsgo-prefix-row__input,
+.dsgo-field--disabled .dsgo-prefix-row__token {
+    opacity: 0.5;
+}
+.dsgo-field--disabled .dsgo-prefix-row__input { cursor: not-allowed; }
+
+.dsgo-prefix-preview {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--dsgo-rule);
+    border-radius: var(--dsgo-radius-sm);
+    background: var(--dsgo-rule-soft);
+}
+.dsgo-prefix-preview__label {
+    margin: 0 0 4px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dsgo-mute);
+}
+.dsgo-prefix-preview__url {
+    margin: 0;
+    font-family: var(--dsgo-mono);
+    font-size: 14px;
+    word-break: break-all;
+}
+.dsgo-prefix-preview__warn {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: #8a4b00;
 }
 
 .dsgo-settings__home {

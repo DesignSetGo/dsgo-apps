@@ -26,6 +26,22 @@
     var listSubtitle = root.querySelector('[data-dsgo-list-subtitle]');
     var rowTemplate = document.querySelector('[data-dsgo-row-template]');
     var consentTemplate = document.querySelector('[data-dsgo-consent-template]');
+    var installPanel = root.querySelector('[data-dsgo-install-panel]');
+    var installToggle = root.querySelector('[data-dsgo-install-toggle]');
+
+    if (installToggle && installPanel) {
+        installToggle.addEventListener('click', function () {
+            var open = installPanel.classList.toggle('is-open');
+            installToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) {
+                // Move focus into the panel for keyboard users so they don't
+                // have to tab past the toggle to reach the dropzone.
+                window.setTimeout(function () {
+                    if (dropzone) dropzone.focus();
+                }, 0);
+            }
+        });
+    }
 
     /** Cached list of apps from the most recent fetch. Used by the consent
      *  copy ("step the existing home down...") to know who's currently home. */
@@ -56,11 +72,24 @@
         });
     }
 
+    function applyState() {
+        var hasApps = apps.length > 0;
+        root.classList.toggle('dsgo-admin--has-apps', hasApps);
+        root.classList.toggle('dsgo-admin--empty', !hasApps);
+        // Collapse the install panel whenever we flip back to empty so the
+        // hero presentation isn't clobbered by an open-panel state.
+        if (!hasApps && installPanel) {
+            installPanel.classList.remove('is-open');
+            if (installToggle) installToggle.setAttribute('aria-expanded', 'false');
+        }
+    }
+
     function renderList(payload) {
         apps = Array.isArray(payload) ? payload : [];
         closeConsent();
         clearChildren(listEl);
         listEl.removeAttribute('aria-busy');
+        applyState();
         if (apps.length === 0) {
             var empty = document.createElement('li');
             empty.className = 'dsgo-applist__empty';
