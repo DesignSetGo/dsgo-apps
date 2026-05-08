@@ -152,7 +152,12 @@ final class AdminPage {
                         </div>
                         <button type="button" class="dsgo-install-toggle" data-dsgo-install-toggle
                                 aria-expanded="false" aria-controls="dsgo-install-panel">
-                            <span aria-hidden="true" class="dsgo-install-toggle__icon">+</span>
+                            <span aria-hidden="true" class="dsgo-install-toggle__icon">
+                                <svg viewBox="0 0 12 12" width="12" height="12" fill="none"
+                                     stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                                    <path d="M6 1.5v9M1.5 6h9" />
+                                </svg>
+                            </span>
                             <span class="dsgo-install-toggle__label"><?php esc_html_e('Install another app', 'dsgo-apps'); ?></span>
                         </button>
                     </header>
