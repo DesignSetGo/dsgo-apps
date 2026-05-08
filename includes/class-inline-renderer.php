@@ -339,22 +339,43 @@ final class InlineRenderer {
      *   - a declared route in `manifest.routes` (anchor navigation between
      *     pages of a multi-route inline app, e.g. `<a href="/about">`).
      *
-     * `<script src="/_astro/foo.js">` becomes
-     * `<script src="/{prefix}/{appId}/_astro/foo.js">` for prefixed mounts;
-     * for root mounts the value is left unchanged. Paths that match nothing
-     * in the bundle are left alone, so links to WP pages, fragments, and
-     * external destinations pass through untouched.
+     * **Prefixed mount.** Both routes and assets get the
+     * `/{prefix}/{appId}` prefix and flow through the rewrite rule into
+     * PHP. `<script src="/_astro/foo.js">` becomes
+     * `<script src="/{prefix}/{appId}/_astro/foo.js">`.
+     *
+     * **Root mount.** Routes are left as site-absolute paths (the
+     * dispatcher catches them on `is_404()` at template_redirect). Assets
+     * are rewritten to the bundle's static upload URL
+     * (`/wp-content/uploads/dsgo-apps/<id>/_astro/foo.js`), so the host's
+     * web server can serve them directly without going through PHP.
+     *
+     * The asset rewrite for root mounts is the workaround for managed-host
+     * nginx fast-paths (GoDaddy MWP, WP Engine, etc.) that 404 any URL
+     * ending in a known static extension before WordPress can run — which
+     * would otherwise prevent the dispatcher from streaming `_astro/*`
+     * assets for root-mounted apps.
+     *
+     * Paths that match nothing in the bundle are left alone, so links to
+     * WP pages, fragments, and external destinations pass through
+     * untouched.
      */
     public static function rewrite_bundle_asset_paths(
         string $html,
         string $bundle_dir,
         Manifest $manifest,
     ): string {
-        $prefix = self::url_prefix_for($manifest);
-        if ($prefix === '') {
-            // Root-mounted: site-absolute paths are already bundle-relative.
-            return $html;
-        }
+        $prefix     = self::url_prefix_for($manifest);
+        $is_root    = $prefix === '';
+        // For root mounts, asset_base is the path-only component of the
+        // upload URL (e.g. `/wp-content/uploads/dsgo-apps/<id>`). The
+        // sanitizer accepts site-absolute paths under that prefix; full
+        // origin URLs would be rejected as `remote_link_stylesheet`.
+        $asset_base = $is_root
+            ? rtrim((string) (wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH) ?: ''), '/')
+            : $prefix;
+        $asset_path = $asset_base;
+
         // Collect declared route paths (e.g. ['/', '/about', '/pricing']) so
         // anchors like `<a href="/about">` can be rewritten even though
         // `/about` doesn't correspond to a literal `/about` file on disk.
@@ -373,7 +394,7 @@ final class InlineRenderer {
             : static fn(string $rel) => $rel !== '' && !str_contains($rel, '..') && is_file($bundle_dir . '/' . $rel);
 
         $tag_re = '#<(a|script|link|img|source|audio|video|iframe)\b([^>]*)>#i';
-        return preg_replace_callback($tag_re, function (array $m) use ($prefix, $routes, $is_bundle_file): string {
+        return preg_replace_callback($tag_re, function (array $m) use ($prefix, $is_root, $asset_base, $asset_path, $routes, $is_bundle_file): string {
             $tag   = strtolower($m[1]);
             $attrs = $m[2];
             // Anchors only rewrite `href`; everything else uses src/href as before.
@@ -383,10 +404,11 @@ final class InlineRenderer {
                 if ($val === null || $val === '') continue;
                 if (!str_starts_with($val, '/')) continue;                                  // already relative
                 if (str_starts_with($val, '//')) continue;                                  // protocol-relative
-                if (str_starts_with($val, $prefix . '/') || $val === $prefix) continue;     // already mapped
-                if (str_starts_with($val, '/wp-content/') ||
-                    str_starts_with($val, '/wp-admin/')   ||
+                if ($prefix !== '' && (str_starts_with($val, $prefix . '/') || $val === $prefix)) continue; // already mapped (prefixed)
+                if ($is_root && $asset_path !== '' && str_starts_with($val, $asset_path . '/')) continue;   // already mapped (root → static)
+                if (str_starts_with($val, '/wp-admin/')   ||
                     str_starts_with($val, '/wp-includes/')) continue;                       // explicit WP paths
+                if (!$is_root && str_starts_with($val, '/wp-content/')) continue;           // /wp-content/ untouched for prefixed mounts
                 // Strip query/fragment for the on-disk lookup; use ~ delimiters
                 // because `#` would conflict with `[?#]` inside the class.
                 $path        = preg_replace('~[?#].*$~', '', $val) ?? $val;
@@ -394,8 +416,19 @@ final class InlineRenderer {
                 $is_route    = isset($routes[$path]);
                 $is_bundle   = $rel !== '' && !str_contains($rel, '..') && $is_bundle_file($rel);
                 if (!$is_route && !$is_bundle) continue;
-                $new_val = $prefix . $val;
-                $attrs   = preg_replace(
+
+                if ($is_root) {
+                    // Routes resolve via the dispatcher; only static bundle
+                    // files need redirection to the upload URL. Skip routes
+                    // and HTML files (HTML must run through PHP for the
+                    // per-request CSP nonce + bridge injection).
+                    if ($is_route) continue;
+                    if (preg_match('#\.html?$#i', $path)) continue;
+                    $new_val = $asset_base . $val;
+                } else {
+                    $new_val = $prefix . $val;
+                }
+                $attrs = preg_replace(
                     '#(\b' . preg_quote($attr, '#') . '\s*=\s*")' . preg_quote($val, '#') . '(")#',
                     '$1' . $new_val . '$2',
                     $attrs,

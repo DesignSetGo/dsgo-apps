@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace DSGo_Apps\Tests;
 
+use DSGo_Apps\Bundle;
 use DSGo_Apps\InlineRenderer;
 use DSGo_Apps\Manifest;
 use WP_UnitTestCase;
@@ -243,17 +244,47 @@ class InlineRendererTest extends WP_UnitTestCase {
         $this->assertSame('', InlineRenderer::url_prefix_for($manifest));
     }
 
-    public function test_root_mount_skips_asset_path_rewrite(): void {
+    public function test_root_mount_rewrites_bundle_assets_to_upload_url(): void {
+        // Root-mount apps need static assets routed around PHP entirely so
+        // managed-host nginx fast-paths (which 404 unknown .css/.js/.svg
+        // requests before WP can run) can serve them directly from the
+        // bundle's actual location on disk.
         $bundle = sys_get_temp_dir() . '/dsgo-rootrewrite-' . uniqid();
         mkdir($bundle . '/_astro', 0755, true);
         file_put_contents($bundle . '/_astro/foo.js', '/* x */');
+        file_put_contents($bundle . '/favicon.svg', '<svg/>');
         $arr = $this->minimal_inline_manifest();
         $arr['mount'] = ['mode' => 'root'];
         $manifest = Manifest::validate($arr);
-        $html = '<script src="/_astro/foo.js"></script>';
+        $html = '<script src="/_astro/foo.js"></script>'
+              . '<link rel="icon" href="/favicon.svg">'
+              . '<a href="/about">about</a>';
         $out = InlineRenderer::rewrite_bundle_asset_paths($html, $bundle, $manifest);
-        // Root mount: site-absolute paths are already correct; nothing to splice.
-        $this->assertSame($html, $out);
+        $upload_path = wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH);
+        $this->assertNotNull($upload_path);
+        $this->assertStringContainsString('src="' . rtrim($upload_path, '/') . '/_astro/foo.js"', $out);
+        $this->assertStringContainsString('href="' . rtrim($upload_path, '/') . '/favicon.svg"', $out);
+        // Anchors targeting routes are NOT redirected — the dispatcher
+        // resolves them via PHP at request time.
+        $this->assertStringContainsString('href="/about"', $out);
+    }
+
+    public function test_root_mount_html_files_left_through_php(): void {
+        // HTML files in the bundle must keep their site-absolute paths so
+        // the dispatcher renders them through PHP (CSP nonce, bridge
+        // injection). Static-extension assets should be redirected; HTML
+        // should not.
+        $bundle = sys_get_temp_dir() . '/dsgo-roothtml-' . uniqid();
+        mkdir($bundle, 0755, true);
+        file_put_contents($bundle . '/some-page.html', '<html></html>');
+        $arr = $this->minimal_inline_manifest();
+        $arr['mount'] = ['mode' => 'root'];
+        $manifest = Manifest::validate($arr);
+        $html = '<a href="/some-page.html">page</a>';
+        $out = InlineRenderer::rewrite_bundle_asset_paths($html, $bundle, $manifest);
+        $this->assertStringContainsString('href="/some-page.html"', $out);
+        $upload_path = wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH);
+        $this->assertStringNotContainsString((string) $upload_path, $out);
     }
 
     public function test_render_emits_ai_timeout_seconds_when_ai_permission_present(): void {
