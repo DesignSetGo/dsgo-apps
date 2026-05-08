@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Posts</title>
+    <link rel="stylesheet" href="/styles/global.css" />
+  </head>
+  <body>
+    <main>
+      <a class="crumb" href="/">&larr; Tour home</a>
+      <h1>Posts</h1>
+      <p class="lede">Read published posts. Visibility honors the visitor&rsquo;s WordPress capabilities &mdash; subscribers and anonymous visitors only see <code>publish</code> posts.</p>
+
+      <h2>Live: <code>dsgo.posts.list({ per_page: 5 })</code></h2>
+      <p>Permission: <span class="perm">posts</span></p>
+      <ul class="bridge-out" id="posts" data-state="loading">
+        <li>Loading&hellip;</li>
+      </ul>
+
+<pre><code>const { items, total, total_pages } = await window.dsgo.posts.list({
+  per_page: 5,
+  search:   '',          // optional
+  status:   ['publish'], // anonymous visitors are forced to ['publish']
+  orderby:  'date',
+  order:    'desc',
+});
+for (const post of items) {
+  // post.id, post.slug, post.title, post.excerpt, post.content (HTML),
+  // post.status, post.protected (bool), post.date, post.modified,
+  // post.author (id), post.link, post.featured_media_url,
+  // post.categories (ids[]), post.tags (ids[])
+}</code></pre>
+
+      <h2>Live: <code>dsgo.posts.get(id)</code></h2>
+      <p>Enter a post ID to fetch its full record. Returns <code>null</code> for missing or non-visible posts.</p>
+      <div class="row">
+        <input class="inp grow" id="post-id" type="number" min="1" placeholder="post id" />
+        <button class="try-btn" id="post-get">Fetch</button>
+      </div>
+      <pre id="post-out" style="display:none"></pre>
+      <p class="status muted" id="post-status">No fetch yet.</p>
+
+<pre><code>const post = await window.dsgo.posts.get(42);
+// post is null when the id doesn&apos;t exist or the visitor can&apos;t read it.</code></pre>
+
+      <div class="note">
+        <strong>Returned shape</strong>
+        Posts include <code>id</code>, <code>slug</code>, <code>title</code>, <code>excerpt</code>, <code>content</code> (HTML), <code>status</code>, <code>protected</code>, <code>date</code>, <code>modified</code>, <code>author</code> (id), <code>link</code>, <code>featured_media_url</code>, <code>categories</code> (ids[]), <code>tags</code> (ids[]). The bridge sanitizes content server-side, but treat it as untrusted &mdash; render with <code>textContent</code> when possible.
+      </div>
+
+      <nav class="footer">
+        <a href="/about">&larr; About</a>
+        <a class="next" href="/pages">Pages &rarr;</a>
+      </nav>
+
+      <script>
+        (async () => {
+          const list = document.getElementById('posts');
+          try { await window.dsgo.ready; } catch (e) {
+            list.dataset.state = 'error'; list.textContent = '';
+            const li = document.createElement('li');
+            li.textContent = 'Bridge unavailable: ' + (e && e.message ? e.message : String(e));
+            list.appendChild(li);
+            return;
+          }
+          try {
+            const result = await window.dsgo.posts.list({ per_page: 5 });
+            list.dataset.state = 'ready';
+            list.textContent = '';
+            if (!result.items || result.items.length === 0) {
+              const li = document.createElement('li');
+              li.textContent = 'No published posts yet.';
+              list.appendChild(li);
+              return;
+            }
+            for (const post of result.items) {
+              const li = document.createElement('li');
+              const a = document.createElement('a');
+              a.href = post.link;
+              a.textContent = post.title || ('Post #' + post.id);
+              const date = document.createElement('span');
+              date.style.cssText = 'color:var(--muted);font-size:0.85em;margin-left:0.5em';
+              date.textContent = post.date ? new Date(post.date).toLocaleDateString() : '';
+              li.append(a, date);
+              list.appendChild(li);
+            }
+          } catch (e) {
+            list.dataset.state = 'error'; list.textContent = '';
+            const li = document.createElement('li');
+            li.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            list.appendChild(li);
+          }
+
+          const idInput = document.getElementById('post-id');
+          const out     = document.getElementById('post-out');
+          const status  = document.getElementById('post-status');
+          document.getElementById('post-get').addEventListener('click', async () => {
+            const id = parseInt(idInput.value, 10);
+            if (!Number.isFinite(id) || id < 1) {
+              status.className = 'status error';
+              status.textContent = 'Enter a positive integer.';
+              out.style.display = 'none';
+              return;
+            }
+            status.className = 'status muted';
+            status.textContent = 'Fetching…';
+            out.style.display = 'none';
+            try {
+              const post = await window.dsgo.posts.get(id);
+              if (post == null) {
+                status.className = 'status error';
+                status.textContent = 'Not found (or not visible to you).';
+                out.style.display = 'none';
+                return;
+              }
+              status.className = 'status ok';
+              status.textContent = 'Got it. Title: ' + (post.title || '(untitled)');
+              out.style.display = 'block';
+              out.textContent = JSON.stringify({
+                id: post.id, title: post.title, link: post.link, date: post.date,
+                author: post.author, excerpt: post.excerpt
+              }, null, 2);
+            } catch (e) {
+              status.className = 'status error';
+              status.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+              out.style.display = 'none';
+            }
+          });
+        })();
+      </script>
+    </main>
+  </body>
+</html>

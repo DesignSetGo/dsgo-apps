@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>AI prompt</title>
+    <link rel="stylesheet" href="/styles/global.css" />
+  </head>
+  <body>
+    <main>
+      <a class="crumb" href="/">&larr; Tour home</a>
+      <h1>AI prompt</h1>
+      <p class="lede"><code>dsgo.ai.prompt()</code> sends a prompt through the site&rsquo;s configured WordPress Connector (Anthropic, OpenAI, Google, &hellip;). The site admin pays for inference; your app never holds an API key.</p>
+
+      <div class="warn">
+        <strong>Real call, real budget</strong>
+        Clicking &ldquo;Run&rdquo; below makes a live LLM request that costs the site admin money (cents at most for short prompts). Don&rsquo;t spam it. If no Connector is configured at <em>Settings &rarr; Connectors</em> in WP admin, the call will return <code>connector_unavailable</code>.
+      </div>
+
+      <h2>Live: <code>dsgo.ai.prompt({ messages, &hellip; })</code></h2>
+      <p>Permission: <span class="perm">ai</span></p>
+      <div class="field">
+        <label for="ai-input">Your prompt</label>
+        <textarea class="inp" id="ai-input">Reply with a haiku about WordPress.</textarea>
+      </div>
+      <button class="try-btn" id="ai-run">Run prompt</button>
+      <p class="status muted" id="ai-status">No run yet.</p>
+      <pre id="ai-out" style="display:none"></pre>
+
+<pre><code>const result = await window.dsgo.ai.prompt({
+  messages: [
+    { role: 'system', content: 'You are a helpful assistant.' },
+    { role: 'user',   content: 'Reply with a haiku about WordPress.' },
+  ],
+  max_tokens: 256,        // optional
+  tools: 'auto',          // optional: 'auto' | string[] of ability names
+});
+
+console.log(result.content);     // assistant&apos;s reply
+console.log(result.tool_calls);  // any abilities the model invoked
+console.log(result.usage);       // { input_tokens, output_tokens }</code></pre>
+
+      <div class="note">
+        <strong>How tool use works</strong>
+        If your manifest declares <code>abilities.consumes</code>, the harness automatically exposes those abilities as tools to the model. The model can call them; the harness validates each call, executes it, and feeds the result back &mdash; all inside a single <code>ai.prompt</code> call. <code>ai.max_tool_calls</code> in the manifest caps the loop (default 5).
+      </div>
+
+      <h3>The full method shape</h3>
+<pre><code>// Returns
+type AiResult = {
+  content: string;
+  usage: { input_tokens: number; output_tokens: number };
+  tool_calls: Array&lt;{
+    name: string;
+    args: Record&lt;string, unknown&gt;;
+    result:
+      | { ok: true;  data: unknown }
+      | { ok: false; error: string; code: string };
+    duration_ms: number;
+  }&gt;;
+};</code></pre>
+
+      <nav class="footer">
+        <a href="/abilities">&larr; Abilities</a>
+        <a class="next" href="/email">Email &rarr;</a>
+      </nav>
+
+      <script>
+        (async () => {
+          const status = document.getElementById('ai-status');
+          const out    = document.getElementById('ai-out');
+          try { await window.dsgo.ready; } catch (e) {
+            status.className = 'status error';
+            status.textContent = 'Bridge unavailable: ' + (e && e.message ? e.message : String(e));
+            return;
+          }
+          document.getElementById('ai-run').addEventListener('click', async () => {
+            const text = document.getElementById('ai-input').value.trim();
+            if (!text) {
+              status.className = 'status error';
+              status.textContent = 'Type a prompt first.';
+              return;
+            }
+            status.className = 'status muted';
+            status.textContent = 'Running… (this will hit the site&rsquo;s configured AI Connector)';
+            out.style.display = 'none';
+            try {
+              const result = await window.dsgo.ai.prompt({
+                messages: [
+                  { role: 'system', content: 'You are a helpful assistant.' },
+                  { role: 'user',   content: text },
+                ],
+              });
+              const outTokens = (result.usage && result.usage.output_tokens) || 0;
+              status.className = 'status ok';
+              status.textContent = 'Returned (' + outTokens + ' output tokens).';
+              out.style.display = 'block';
+              out.textContent = (result.content || '(empty)') + '\n\n— full result —\n' + JSON.stringify(result, null, 2);
+            } catch (e) {
+              status.className = 'status error';
+              status.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            }
+          });
+        })();
+      </script>
+    </main>
+  </body>
+</html>

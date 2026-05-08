@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Email</title>
+    <link rel="stylesheet" href="/styles/global.css" />
+  </head>
+  <body>
+    <main>
+      <a class="crumb" href="/">&larr; Tour home</a>
+      <h1>Email</h1>
+      <p class="lede">Send transactional email through WordPress (<code>wp_mail</code>) without ever seeing the recipient address. The bridge resolves <code>"admin"</code> or <code>"current_user"</code> server-side.</p>
+
+      <div class="warn">
+        <strong>Real send</strong>
+        Clicking &ldquo;Send&rdquo; below dispatches an actual email via the site&rsquo;s mail transport. If the site has no SMTP configured, mails may go to spam or fail silently. Use sparingly.
+      </div>
+
+      <h2>Live: <code>dsgo.email.send({ to, subject, body })</code></h2>
+      <p>Permission: <span class="perm">email</span> &middot; manifest must declare <code>email.recipients</code></p>
+      <p>This starter declares <code>recipients: ["admin"]</code>, so <code>to: "current_user"</code> would be rejected.</p>
+
+      <div class="field">
+        <label for="em-to">Recipient (must be allow-listed in manifest)</label>
+        <select class="inp" id="em-to">
+          <option value="admin">admin (site administrator)</option>
+          <option value="current_user">current_user (will reject — not in manifest)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="em-subj">Subject</label>
+        <input class="inp" id="em-subj" type="text" value="Hello from DSGo Starter" />
+      </div>
+      <div class="field">
+        <label for="em-body">Body (plain text)</label>
+        <textarea class="inp" id="em-body">Hi! This message was sent from the DSGo Starter app via dsgo.email.send().
+
+The bridge resolves the recipient address server-side, so the app never sees it.</textarea>
+      </div>
+      <button class="try-btn" id="em-send">Send</button>
+      <p class="status muted" id="em-status">No send yet.</p>
+
+<pre><code>await window.dsgo.email.send({
+  to:      'admin',           // or 'current_user' (must be in manifest)
+  subject: 'Notification',
+  body:    'Plain text only — no HTML, no headers.',
+});</code></pre>
+
+      <div class="note">
+        <strong>What happens when you call this</strong>
+        The bridge looks up the resolved address (admin email, or the logged-in user&rsquo;s email), validates it, and calls <code>wp_mail()</code>. If <code>to</code> is <code>"current_user"</code> and the visitor is anonymous, you get <code>not_authenticated</code>. If <code>to</code> isn&rsquo;t in your manifest&rsquo;s <code>email.recipients</code>, you get <code>permission_denied</code>.
+      </div>
+
+      <nav class="footer">
+        <a href="/ai">&larr; AI prompt</a>
+        <a class="next" href="/">&uarr; Tour home</a>
+      </nav>
+
+      <script>
+        (async () => {
+          const status = document.getElementById('em-status');
+          try { await window.dsgo.ready; } catch (e) {
+            status.className = 'status error';
+            status.textContent = 'Bridge unavailable: ' + (e && e.message ? e.message : String(e));
+            return;
+          }
+          document.getElementById('em-send').addEventListener('click', async () => {
+            const to      = document.getElementById('em-to').value;
+            const subject = document.getElementById('em-subj').value.trim();
+            const body    = document.getElementById('em-body').value;
+            if (!subject || !body) {
+              status.className = 'status error';
+              status.textContent = 'Subject and body are required.';
+              return;
+            }
+            status.className = 'status muted';
+            status.textContent = 'Sending…';
+            try {
+              await window.dsgo.email.send({ to, subject, body });
+              status.className = 'status ok';
+              status.textContent = 'Sent. Check the ' + to + '’s inbox (or the site’s mail log).';
+            } catch (e) {
+              status.className = 'status error';
+              status.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            }
+          });
+        })();
+      </script>
+    </main>
+  </body>
+</html>

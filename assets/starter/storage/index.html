@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Storage</title>
+    <link rel="stylesheet" href="/styles/global.css" />
+  </head>
+  <body>
+    <main>
+      <a class="crumb" href="/">&larr; Tour home</a>
+      <h1>Storage</h1>
+      <p class="lede">Persistent JSON storage scoped to your app. Two flavors: <strong>app-scoped</strong> (shared across all visitors) and <strong>user-scoped</strong> (per-(app, user)).</p>
+
+      <div class="warn">
+        <strong>Heads up</strong>
+        These demos write real data. The shared counter below is incremented by every visitor &mdash; that&rsquo;s the point of <code>storage.app</code>. If that&rsquo;s not what you want, use <code>storage.user</code> instead (the second demo).
+      </div>
+
+      <h2>Live: <code>dsgo.storage.app</code> (shared counter)</h2>
+      <p>App-scoped, no permission needed (always allowed). Quota: 256 KB per app per site.</p>
+      <div class="row">
+        <p class="grow">Current value: <strong id="counter-val">…</strong></p>
+        <button class="try-btn" id="counter-inc">Increment</button>
+      </div>
+      <p class="status muted" id="counter-status">Loading from storage…</p>
+
+<pre><code>// Read
+const value = (await window.dsgo.storage.app.get('counter')) ?? 0;
+
+// Write
+await window.dsgo.storage.app.set('counter', value + 1);</code></pre>
+
+      <h2>Live: <code>dsgo.storage.user</code> (your private note)</h2>
+      <p>User-scoped. Reads return <code>null</code> when anonymous. Writes <strong>require login</strong> &mdash; anonymous <code>set()</code> rejects with <code>not_authenticated</code>.</p>
+      <div class="field">
+        <label for="note-area">Your note (only you can see this)</label>
+        <textarea class="inp" id="note-area" placeholder="Type a note…"></textarea>
+      </div>
+      <div class="row">
+        <button class="try-btn" id="note-save">Save</button>
+        <button class="try-btn" id="note-clear" style="background:#666">Clear</button>
+      </div>
+      <p class="status muted" id="note-status">Loading from storage…</p>
+
+<pre><code>// Read (always allowed; returns null for anon)
+const note = await window.dsgo.storage.user.get('note');
+
+// Write (rejects with `not_authenticated` for anon)
+await window.dsgo.storage.user.set('note', 'hello');</code></pre>
+
+      <div class="note">
+        <strong>When to reach for which</strong>
+        <code>storage.app</code> for things <em>everyone</em> should see (a featured-of-the-week, a global counter, cached config). <code>storage.user</code> for per-visitor preferences (theme, last-opened tab, todo lists). Both store JSON-serializable values; the bridge encodes/decodes for you.
+      </div>
+
+      <nav class="footer">
+        <a href="/user">&larr; User</a>
+        <a class="next" href="/abilities">Abilities &rarr;</a>
+      </nav>
+
+      <script>
+        (async () => {
+          const valEl    = document.getElementById('counter-val');
+          const cStatus  = document.getElementById('counter-status');
+          try { await window.dsgo.ready; } catch (e) {
+            cStatus.className = 'status error';
+            cStatus.textContent = 'Bridge unavailable: ' + (e && e.message ? e.message : String(e));
+            valEl.textContent = '—';
+            return;
+          }
+
+          async function refreshCounter() {
+            try {
+              const v = await window.dsgo.storage.app.get('counter');
+              valEl.textContent = v == null ? '0' : String(v);
+              cStatus.className = 'status muted';
+              cStatus.textContent = v == null ? 'No value yet — click increment to seed.' : 'Loaded.';
+            } catch (e) {
+              cStatus.className = 'status error';
+              cStatus.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            }
+          }
+          refreshCounter();
+
+          document.getElementById('counter-inc').addEventListener('click', async () => {
+            cStatus.className = 'status muted';
+            cStatus.textContent = 'Saving…';
+            try {
+              const cur = (await window.dsgo.storage.app.get('counter')) || 0;
+              const next = (typeof cur === 'number' ? cur : 0) + 1;
+              await window.dsgo.storage.app.set('counter', next);
+              valEl.textContent = String(next);
+              cStatus.className = 'status ok';
+              cStatus.textContent = 'Saved.';
+            } catch (e) {
+              cStatus.className = 'status error';
+              cStatus.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            }
+          });
+
+          // ── User note
+          const noteArea  = document.getElementById('note-area');
+          const noteStat  = document.getElementById('note-status');
+          try {
+            const stored = await window.dsgo.storage.user.get('note');
+            noteArea.value = (typeof stored === 'string') ? stored : '';
+            noteStat.className = 'status muted';
+            noteStat.textContent = stored == null ? 'No note saved (or you are anonymous).' : 'Loaded.';
+          } catch (e) {
+            noteStat.className = 'status error';
+            noteStat.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+          }
+
+          document.getElementById('note-save').addEventListener('click', async () => {
+            noteStat.className = 'status muted';
+            noteStat.textContent = 'Saving…';
+            try {
+              await window.dsgo.storage.user.set('note', noteArea.value);
+              noteStat.className = 'status ok';
+              noteStat.textContent = 'Saved.';
+            } catch (e) {
+              noteStat.className = 'status error';
+              noteStat.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            }
+          });
+
+          document.getElementById('note-clear').addEventListener('click', async () => {
+            noteStat.className = 'status muted';
+            noteStat.textContent = 'Clearing…';
+            try {
+              await window.dsgo.storage.user.set('note', null);
+              noteArea.value = '';
+              noteStat.className = 'status ok';
+              noteStat.textContent = 'Cleared.';
+            } catch (e) {
+              noteStat.className = 'status error';
+              noteStat.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            }
+          });
+        })();
+      </script>
+    </main>
+  </body>
+</html>

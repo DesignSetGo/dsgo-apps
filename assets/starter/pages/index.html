@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Pages</title>
+    <link rel="stylesheet" href="/styles/global.css" />
+  </head>
+  <body>
+    <main>
+      <a class="crumb" href="/">&larr; Tour home</a>
+      <h1>Pages</h1>
+      <p class="lede">Read published WordPress pages. Same returned shape as posts &mdash; <code>categories</code> and <code>tags</code> are present but typically empty for pages. Use the <code>orderby</code>/<code>search</code> options to navigate the hierarchy your theme exposes.</p>
+
+      <h2>Live: <code>dsgo.pages.list({ per_page: 10 })</code></h2>
+      <p>Permission: <span class="perm">pages</span></p>
+      <ul class="bridge-out" id="pages" data-state="loading">
+        <li>Loading&hellip;</li>
+      </ul>
+
+<pre><code>const { items, total } = await window.dsgo.pages.list({
+  per_page: 10,
+  search:   '',
+  orderby:  'date',  // 'date' | 'title' | 'modified'
+  order:    'asc',
+});</code></pre>
+
+      <h2>Live: <code>dsgo.pages.get(id)</code></h2>
+      <div class="row">
+        <input class="inp grow" id="page-id" type="number" min="1" placeholder="page id" />
+        <button class="try-btn" id="page-get">Fetch</button>
+      </div>
+      <pre id="page-out" style="display:none"></pre>
+      <p class="status muted" id="page-status">No fetch yet.</p>
+
+<pre><code>const page = await window.dsgo.pages.get(2);
+// Returns null when missing or hidden.</code></pre>
+
+      <div class="note">
+        <strong>Same shape as posts</strong>
+        Page records carry the same fields as posts (<code>id</code>, <code>slug</code>, <code>title</code>, <code>excerpt</code>, <code>content</code>, <code>status</code>, <code>protected</code>, <code>date</code>, <code>modified</code>, <code>author</code>, <code>link</code>, <code>featured_media_url</code>, <code>categories</code>, <code>tags</code>). For pages, <code>categories</code>/<code>tags</code> are usually empty arrays.
+      </div>
+
+      <nav class="footer">
+        <a href="/posts">&larr; Posts</a>
+        <a class="next" href="/user">User &amp; permissions &rarr;</a>
+      </nav>
+
+      <script>
+        (async () => {
+          const list = document.getElementById('pages');
+          try { await window.dsgo.ready; } catch (e) {
+            list.dataset.state = 'error'; list.textContent = '';
+            const li = document.createElement('li');
+            li.textContent = 'Bridge unavailable: ' + (e && e.message ? e.message : String(e));
+            list.appendChild(li);
+            return;
+          }
+          try {
+            const result = await window.dsgo.pages.list({ per_page: 10 });
+            list.dataset.state = 'ready';
+            list.textContent = '';
+            if (!result.items || result.items.length === 0) {
+              const li = document.createElement('li');
+              li.textContent = 'No published pages.';
+              list.appendChild(li);
+              return;
+            }
+            for (const p of result.items) {
+              const li = document.createElement('li');
+              const a = document.createElement('a');
+              a.href = p.link;
+              a.textContent = p.title || ('Page #' + p.id);
+              const meta = document.createElement('span');
+              meta.style.cssText = 'color:var(--muted);font-size:0.85em;margin-left:0.5em';
+              meta.textContent = '#' + p.id + (p.date ? ' • ' + new Date(p.date).toLocaleDateString() : '');
+              li.append(a, meta);
+              list.appendChild(li);
+            }
+          } catch (e) {
+            list.dataset.state = 'error'; list.textContent = '';
+            const li = document.createElement('li');
+            li.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            list.appendChild(li);
+          }
+
+          const idInput = document.getElementById('page-id');
+          const out     = document.getElementById('page-out');
+          const status  = document.getElementById('page-status');
+          document.getElementById('page-get').addEventListener('click', async () => {
+            const id = parseInt(idInput.value, 10);
+            if (!Number.isFinite(id) || id < 1) {
+              status.className = 'status error';
+              status.textContent = 'Enter a positive integer.';
+              out.style.display = 'none';
+              return;
+            }
+            status.className = 'status muted';
+            status.textContent = 'Fetching…';
+            out.style.display = 'none';
+            try {
+              const page = await window.dsgo.pages.get(id);
+              if (page == null) {
+                status.className = 'status error';
+                status.textContent = 'Not found.';
+                return;
+              }
+              status.className = 'status ok';
+              status.textContent = 'Got it. Title: ' + (page.title || '(untitled)');
+              out.style.display = 'block';
+              out.textContent = JSON.stringify({
+                id: page.id, slug: page.slug, title: page.title,
+                link: page.link, date: page.date, status: page.status,
+                excerpt: page.excerpt
+              }, null, 2);
+            } catch (e) {
+              status.className = 'status error';
+              status.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            }
+          });
+        })();
+      </script>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>DSGo Starter</title>
+    <link rel="stylesheet" href="/styles/global.css" />
+  </head>
+  <body>
+    <main>
+      <h1>DSGo Starter</h1>
+      <p class="lede">A guided tour of every <strong>v1 bridge surface</strong> with live demos and copy-pastable code on each page.</p>
+
+      <section class="card">
+        <h2>What you&rsquo;re looking at</h2>
+        <p>This app is running inside a <strong>sandboxed iframe-free runtime</strong> at <code>/apps/dsgo-starter/*</code>. Each route below is a real, indexable HTML page served by the DSGo Apps plugin.</p>
+        <p>The plugin injects a global <code>window.dsgo</code> client. Every method is permission-checked server-side against the manifest. Open any page below to see the call, the response, and the producing code.</p>
+      </section>
+
+      <h2>The tour</h2>
+      <ul class="tour-grid">
+        <li><a href="/about">
+          <strong>About</strong>
+          <span>What this starter is + manifest tour</span>
+        </a></li>
+        <li><a href="/posts">
+          <strong>Posts</strong>
+          <span>posts.list, posts.get</span>
+        </a></li>
+        <li><a href="/pages">
+          <strong>Pages</strong>
+          <span>pages.list, pages.get</span>
+        </a></li>
+        <li><a href="/user">
+          <strong>User &amp; permissions</strong>
+          <span>user.current, user.can, denied flows</span>
+        </a></li>
+        <li><a href="/storage">
+          <strong>Storage</strong>
+          <span>app + per-user persistent JSON</span>
+        </a></li>
+        <li><a href="/abilities">
+          <strong>Abilities</strong>
+          <span>abilities.list, abilities.invoke</span>
+        </a></li>
+        <li><a href="/ai">
+          <strong>AI prompt</strong>
+          <span>ai.prompt via WP Connectors</span>
+        </a></li>
+        <li><a href="/email">
+          <strong>Email</strong>
+          <span>email.send to admin or current user</span>
+        </a></li>
+      </ul>
+
+      <h2>Live: <code>dsgo.site.info()</code></h2>
+      <p>Permission: <span class="perm">site_info</span></p>
+      <dl class="kv" id="site-info" data-state="loading">
+        <dt>Loading&hellip;</dt><dd></dd>
+      </dl>
+
+      <h3>The code</h3>
+<pre><code>await window.dsgo.ready;
+const site = await window.dsgo.site.info();
+console.log(site.title, site.url, site.timezone, site.language);</code></pre>
+
+      <nav class="footer">
+        <span></span>
+        <a class="next" href="/about">About this starter &rarr;</a>
+      </nav>
+
+      <script>
+        (async () => {
+          const el = document.getElementById('site-info');
+          const fail = (msg) => {
+            el.dataset.state = 'error';
+            el.textContent = '';
+            const dt = document.createElement('dt'); dt.textContent = 'Error';
+            const dd = document.createElement('dd'); dd.textContent = msg;
+            el.append(dt, dd);
+          };
+          try { await window.dsgo.ready; } catch (e) { return fail('Bridge unavailable: ' + (e && e.message ? e.message : String(e))); }
+          try {
+            const site = await window.dsgo.site.info();
+            el.dataset.state = 'ready';
+            el.textContent = '';
+            const fields = [
+              ['Title',     site.title],
+              ['URL',       site.url],
+              ['Language',  site.language],
+              ['Timezone',  site.timezone],
+              ['Date fmt',  site.date_format],
+              ['Time fmt',  site.time_format],
+            ];
+            for (const [k, v] of fields) {
+              const dt = document.createElement('dt'); dt.textContent = k;
+              const dd = document.createElement('dd'); dd.textContent = v == null || v === '' ? '—' : String(v);
+              el.append(dt, dd);
+            }
+          } catch (e) {
+            fail((e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e)));
+          }
+        })();
+      </script>
+    </main>
+  </body>
+</html>

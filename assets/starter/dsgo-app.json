@@ -1,0 +1,33 @@
+{
+  "manifest_version": 1,
+  "id": "dsgo-starter",
+  "name": "DSGo Starter",
+  "description": "A guided tour of the DSGo Apps bridge: site, posts, pages, user, storage, abilities, AI, and email — every v1 surface, with live demos and copy-pastable code on each page.",
+  "version": "0.2.0",
+  "entry": "index.html",
+  "isolation": "inline",
+  "routes": [
+    { "path": "/",          "file": "index.html",           "title": "DSGo Starter" },
+    { "path": "/about",     "file": "about/index.html",     "title": "About this starter" },
+    { "path": "/posts",     "file": "posts/index.html",     "title": "Posts" },
+    { "path": "/pages",     "file": "pages/index.html",     "title": "Pages" },
+    { "path": "/user",      "file": "user/index.html",      "title": "User & permissions" },
+    { "path": "/storage",   "file": "storage/index.html",   "title": "Storage" },
+    { "path": "/abilities", "file": "abilities/index.html", "title": "Abilities" },
+    { "path": "/ai",        "file": "ai/index.html",        "title": "AI prompt" },
+    { "path": "/email",     "file": "email/index.html",     "title": "Email" }
+  ],
+  "display":     { "modes": ["page"], "default": "page" },
+  "permissions": { "read": ["site_info", "posts", "pages", "user", "abilities", "ai", "email"], "write": [] },
+  "abilities":   { "consumes": ["wp/*", "dsgo/*"] },
+  "email":       { "recipients": ["admin"] },
+  "runtime": {
+    "sandbox": "strict",
+    "csp": {
+      "script_src":  ["self"],
+      "style_src":   ["self"],
+      "img_src":     ["self", "data:"],
+      "connect_src": ["self"]
+    }
+  }
+}
