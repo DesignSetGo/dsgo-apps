@@ -8,10 +8,15 @@
  * the WooCommerce Store API (`/wp-json/wc/store/v1/*`) under the visitor's
  * auth context.
  *
- * Cart-Token persistence: the Store API issues a Cart-Token on first cart
- * touch; we stash it in a per-(app, visitor) transient so the cart survives
- * across requests for guest visitors. Logged-in visitors don't need the token
- * (cart is keyed off user id) but we forward it when present anyway.
+ * Session continuity: we don't manage a separate token store. WC's Store API
+ * calls `wc_load_cart()` on entry, which initializes WC's session handler;
+ * that handler issues the `wp_woocommerce_session_*` cookie on the response
+ * once the cart has contents. The cookie is scoped to `home_url()`, so the
+ * top-window navigation triggered by `checkout.open_hosted_page()` carries
+ * it and `/checkout/` resolves the same cart. Logged-in visitors are keyed
+ * off user id by WC; guests are keyed off the session cookie. We do not
+ * generate or persist a Cart-Token ourselves — its only role is for
+ * stateless client-driven storefronts, which isn't this code path.
  *
  * @package DSGo_Apps
  */
@@ -21,10 +26,6 @@ declare(strict_types=1);
 namespace DSGo_Apps;
 
 final class CommerceBridge {
-
-    private const TRANSIENT_PREFIX = 'dsgo_apps_cart_token_';
-    /** Cart token TTL — Store API tokens default to 48h. Match that. */
-    private const TRANSIENT_TTL    = 48 * HOUR_IN_SECONDS;
 
     /**
      * Whether the configured provider is available on this site.
@@ -245,40 +246,13 @@ final class CommerceBridge {
     }
 
     // -----------------------------------------------------------------------
-    // Cart-Token persistence
-    // -----------------------------------------------------------------------
-
-    private static function cart_token_key(string $app_id, int $visitor_user_id): string {
-        if ($visitor_user_id > 0) {
-            return self::TRANSIENT_PREFIX . $app_id . '_u' . $visitor_user_id;
-        }
-        // Guest visitor — bind to the WP session cookie so two concurrent
-        // anonymous browsers each get their own cart. Falls back to a
-        // per-app shared key on environments without a session cookie
-        // (e.g. PHPUnit), which is fine because tests run isolated.
-        $session = $_COOKIE['wp_woocommerce_session_' . COOKIEHASH] ?? '';
-        if (!is_string($session) || $session === '') {
-            $session = $_COOKIE['PHPSESSID'] ?? '';
-        }
-        $hash = is_string($session) && $session !== '' ? substr(md5($session), 0, 16) : 'anon';
-        return self::TRANSIENT_PREFIX . $app_id . '_g_' . $hash;
-    }
-
-    private static function load_cart_token(string $app_id, int $visitor_user_id): string {
-        $val = get_transient(self::cart_token_key($app_id, $visitor_user_id));
-        return is_string($val) ? $val : '';
-    }
-
-    private static function save_cart_token(string $app_id, int $visitor_user_id, string $token): void {
-        if ($token === '') return;
-        set_transient(self::cart_token_key($app_id, $visitor_user_id), $token, self::TRANSIENT_TTL);
-    }
-
-    // -----------------------------------------------------------------------
     // Store API request — uses rest_do_request() so visitor caps + session
-    // are honored without a real HTTP roundtrip. Forwards Cart-Token from
-    // our session store; captures it back from the response for the next
-    // call.
+    // are honored without a real HTTP roundtrip. Cart continuity is provided
+    // by WC's own session handler: wc_load_cart() (which the Store API
+    // invokes on entry) initializes WC's session and sets the
+    // wp_woocommerce_session_<hash> cookie on the response when the cart
+    // has contents. That cookie carries through the subsequent top-window
+    // navigation to /checkout/, so the same cart resolves there.
     // -----------------------------------------------------------------------
 
     /**
@@ -290,6 +264,16 @@ final class CommerceBridge {
         if (!function_exists('rest_do_request')) {
             return ['ok' => false, 'code' => 'not_implemented', 'message' => 'WordPress REST API unavailable'];
         }
+        // Defensive: wc_load_cart() bootstraps WC's session handler so the
+        // Store API and the redirected /checkout/ page see the same cart.
+        // The Store API invokes it on entry, but calling it explicitly first
+        // ensures the session cookie is issued even on read-only paths
+        // (products.list/get) — which is what binds the visitor's browser
+        // to a cart-store key when they later add an item from a separate
+        // request. Guarded so unit tests without WC don't fatal.
+        if (function_exists('wc_load_cart')) {
+            wc_load_cart();
+        }
         $req = new \WP_REST_Request($method, $path);
         foreach ($query as $k => $v) {
             $req->set_param($k, $v);
@@ -297,10 +281,6 @@ final class CommerceBridge {
         if ($body !== null) {
             $req->set_body_params($body);
             $req->set_header('Content-Type', 'application/json');
-        }
-        $token = self::load_cart_token($manifest->id, $visitor_user_id);
-        if ($token !== '') {
-            $req->set_header('Cart-Token', $token);
         }
         $response = rest_do_request($req);
         if ($response->is_error()) {
@@ -330,10 +310,6 @@ final class CommerceBridge {
             foreach ($headers_raw as $hk => $hv) {
                 $headers[strtolower((string) $hk)] = is_array($hv) ? (string) reset($hv) : (string) $hv;
             }
-        }
-        // Capture refreshed Cart-Token for the next request.
-        if (!empty($headers['cart-token'])) {
-            self::save_cart_token($manifest->id, $visitor_user_id, $headers['cart-token']);
         }
         return ['ok' => true, 'data' => $response->get_data(), 'headers' => $headers];
     }
