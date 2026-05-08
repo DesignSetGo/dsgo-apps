@@ -65,6 +65,51 @@ class CSPBuilderTest extends WP_UnitTestCase {
         $this->assertStringNotContainsString("frame-src 'none'", $header);
     }
 
+    public function test_content_image_origins_includes_uploads_for_commerce_apps(): void {
+        $manifest = \DSGo_Apps\Manifest::validate([
+            'manifest_version' => 1, 'id' => 'shop-csp', 'name' => 'Shop',
+            'version' => '0.1.0', 'entry' => 'index.html', 'isolation' => 'iframe',
+            'display' => ['modes' => ['page'], 'default' => 'page'],
+            'permissions' => ['read' => ['commerce'], 'write' => []],
+            'runtime' => ['sandbox' => 'strict', 'external_origins' => []],
+            'commerce' => ['providers' => ['woocommerce'], 'endpoints' => ['products']],
+        ]);
+        $origins = CSPBuilder::content_image_origins($manifest);
+        $this->assertNotEmpty($origins, 'commerce apps must get uploads origin to render product images');
+        $this->assertStringContainsString('/wp-content/uploads/', $origins[0]);
+    }
+
+    public function test_content_image_origins_includes_gravatar_for_user_reads(): void {
+        $manifest = \DSGo_Apps\Manifest::validate([
+            'manifest_version' => 1, 'id' => 'profile', 'name' => 'P',
+            'version' => '0.1.0', 'entry' => 'index.html', 'isolation' => 'inline',
+            'routes' => [['path' => '/', 'file' => 'index.html']],
+            'display' => ['modes' => ['page'], 'default' => 'page'],
+            'permissions' => ['read' => ['user'], 'write' => []],
+            'runtime' => ['sandbox' => 'strict', 'csp' => [
+                'script_src' => ['self'], 'style_src' => ['self'],
+                'img_src' => ['self'], 'connect_src' => ['self'],
+            ]],
+        ]);
+        $origins = CSPBuilder::content_image_origins($manifest);
+        $this->assertContains('https://secure.gravatar.com', $origins);
+    }
+
+    public function test_content_image_origins_empty_when_no_relevant_permissions(): void {
+        $manifest = \DSGo_Apps\Manifest::validate([
+            'manifest_version' => 1, 'id' => 'static-app', 'name' => 'S',
+            'version' => '0.1.0', 'entry' => 'index.html', 'isolation' => 'inline',
+            'routes' => [['path' => '/', 'file' => 'index.html']],
+            'display' => ['modes' => ['page'], 'default' => 'page'],
+            'permissions' => ['read' => [], 'write' => []],
+            'runtime' => ['sandbox' => 'strict', 'csp' => [
+                'script_src' => ['self'], 'style_src' => ['self'],
+                'img_src' => ['self'], 'connect_src' => ['self'],
+            ]],
+        ]);
+        $this->assertSame([], CSPBuilder::content_image_origins($manifest));
+    }
+
     public function test_script_src_keeps_strict_keywords_out(): void {
         // Script execution is the high-leverage attack surface; the dangerous
         // CSP keywords MUST stay out of script-src. Style-src is permitted to

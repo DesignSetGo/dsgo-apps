@@ -282,6 +282,19 @@ final class CommerceBridge {
             $req->set_body_params($body);
             $req->set_header('Content-Type', 'application/json');
         }
+        // WC's Store API requires a `Nonce` header on every cart-mutating
+        // write (cart/add-item, cart/update-item, cart/remove-item, etc.)
+        // to defeat cross-site CSRF. Inside an internal rest_do_request from
+        // our already-authenticated bridge route, no browser-driven CSRF
+        // path exists — but WC still rejects the call without the header.
+        // Synthesize the nonce against the current user (or visitor=0) and
+        // attach it; wp_verify_nonce on the WC side will accept it because
+        // it was minted in the same session context. Without this, vanilla
+        // guest add-to-cart returns 401 woocommerce_rest_missing_nonce →
+        // surface as "sign in to continue" in the app UI.
+        if ($method === 'POST' && str_starts_with($path, '/wc/store/v1/cart/')) {
+            $req->set_header('Nonce', wp_create_nonce('wc_store_api'));
+        }
         $response = rest_do_request($req);
         if ($response->is_error()) {
             $err = $response->as_error();
@@ -322,14 +335,20 @@ final class CommerceBridge {
      * @param mixed $raw
      */
     private static function shape_product($raw): array {
+        // WC's Store API returns nested fields (images, prices, attributes,
+        // etc.) as stdClass objects. Normalize to associative arrays so
+        // is_array() / array-key access work uniformly across versions.
+        $raw = self::normalize_to_array($raw);
         if (!is_array($raw)) return [];
         $images = [];
         foreach (($raw['images'] ?? []) as $img) {
+            $img = self::normalize_to_array($img);
             if (!is_array($img)) continue;
             $images[] = [
-                'id'  => (int) ($img['id'] ?? 0),
-                'src' => (string) ($img['src'] ?? ''),
-                'alt' => (string) ($img['alt'] ?? ''),
+                'id'        => (int) ($img['id'] ?? 0),
+                'src'       => (string) ($img['src'] ?? ''),
+                'thumbnail' => (string) ($img['thumbnail'] ?? ''),
+                'alt'       => (string) ($img['alt'] ?? ''),
             ];
         }
         return [
@@ -347,7 +366,7 @@ final class CommerceBridge {
             'images'          => $images,
             'type'            => (string) ($raw['type'] ?? 'simple'),
             'has_options'     => (bool) ($raw['has_options'] ?? false),
-            'add_to_cart'     => is_array($raw['add_to_cart'] ?? null) ? $raw['add_to_cart'] : null,
+            'add_to_cart'     => is_array($raw['add_to_cart'] ?? null) ? $raw['add_to_cart'] : (is_object($raw['add_to_cart'] ?? null) ? (array) $raw['add_to_cart'] : null),
         ];
     }
 
@@ -355,29 +374,51 @@ final class CommerceBridge {
      * @param mixed $prices
      */
     private static function shape_price($prices): array {
+        $prices = self::normalize_to_array($prices);
         if (!is_array($prices)) return ['amount' => '', 'currency' => '', 'min' => null, 'max' => null];
+        $price_range = self::normalize_to_array($prices['price_range'] ?? null);
         return [
             'amount'    => (string) ($prices['price'] ?? ''),
             'regular'   => (string) ($prices['regular_price'] ?? ''),
             'sale'      => (string) ($prices['sale_price'] ?? ''),
             'currency'  => (string) ($prices['currency_code'] ?? ''),
-            'min'       => isset($prices['price_range']['min_amount']) ? (string) $prices['price_range']['min_amount'] : null,
-            'max'       => isset($prices['price_range']['max_amount']) ? (string) $prices['price_range']['max_amount'] : null,
+            'min'       => is_array($price_range) && isset($price_range['min_amount']) ? (string) $price_range['min_amount'] : null,
+            'max'       => is_array($price_range) && isset($price_range['max_amount']) ? (string) $price_range['max_amount'] : null,
             'minor_unit' => isset($prices['currency_minor_unit']) ? (int) $prices['currency_minor_unit'] : 2,
         ];
+    }
+
+    /**
+     * Cast stdClass (or nested stdClass) to associative arrays. WC Store API
+     * responses contain a mix of arrays and objects depending on the field;
+     * normalizing once at the bridge boundary keeps the rest of the shape
+     * code free of `is_object` / `(array)` ceremony.
+     *
+     * @param mixed $value
+     * @return mixed
+     */
+    private static function normalize_to_array($value) {
+        if (is_object($value)) {
+            $value = (array) $value;
+        }
+        return $value;
     }
 
     /**
      * @param mixed $raw
      */
     private static function shape_cart($raw): array {
+        $raw = self::normalize_to_array($raw);
         if (!is_array($raw)) return [];
         $items = [];
         foreach (($raw['items'] ?? []) as $item) {
+            $item = self::normalize_to_array($item);
             if (!is_array($item)) continue;
-            $img = is_array($item['images'] ?? null) && isset($item['images'][0]) && is_array($item['images'][0])
-                ? (string) ($item['images'][0]['thumbnail'] ?? $item['images'][0]['src'] ?? '')
+            $first_image = self::normalize_to_array($item['images'][0] ?? null);
+            $img = is_array($first_image)
+                ? (string) ($first_image['thumbnail'] ?? $first_image['src'] ?? '')
                 : '';
+            $item_totals = self::normalize_to_array($item['totals'] ?? null);
             $items[] = [
                 'key'       => (string) ($item['key'] ?? ''),
                 'id'        => (int) ($item['id'] ?? 0),
@@ -385,10 +426,11 @@ final class CommerceBridge {
                 'quantity'  => (int) ($item['quantity'] ?? 0),
                 'permalink' => (string) ($item['permalink'] ?? ''),
                 'image'     => $img,
-                'totals'    => is_array($item['totals'] ?? null) ? $item['totals'] : null,
+                'totals'    => is_array($item_totals) ? $item_totals : null,
             ];
         }
-        $totals = is_array($raw['totals'] ?? null) ? $raw['totals'] : [];
+        $totals = self::normalize_to_array($raw['totals'] ?? null);
+        if (!is_array($totals)) $totals = [];
         return [
             'items'       => $items,
             'items_count' => (int) ($raw['items_count'] ?? 0),

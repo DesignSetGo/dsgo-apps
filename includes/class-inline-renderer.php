@@ -266,13 +266,29 @@ final class InlineRenderer {
         $nonce = self::generate_nonce();
         $body  = self::render_publisher_host($bundle_dir, $manifest, $nonce);
         $headers = [
-            'Content-Security-Policy' => CSPBuilder::build($manifest->csp, $nonce, $manifest->embeds),
+            'Content-Security-Policy' => CSPBuilder::build(self::csp_with_content_origins($manifest), $nonce, $manifest->embeds),
             'X-Content-Type-Options'  => 'nosniff',
             'Referrer-Policy'         => 'strict-origin-when-cross-origin',
             'Cache-Control'           => 'no-store, private',
             'Content-Type'            => 'text/html; charset=UTF-8',
         ];
         return ['status' => 200, 'headers' => $headers, 'body' => $body];
+    }
+
+    /**
+     * Build the effective CSP source map for the manifest, augmenting
+     * `img_src` with the WP uploads root (and gravatar for `user` reads)
+     * when the app's permissions return image URLs from site content.
+     *
+     * @return array{script_src:string[], style_src:string[], img_src:string[], connect_src:string[], font_src?:string[]}
+     */
+    private static function csp_with_content_origins(Manifest $manifest): array {
+        $csp   = $manifest->csp;
+        $extra = CSPBuilder::content_image_origins($manifest);
+        if ($extra !== []) {
+            $csp['img_src'] = array_values(array_unique(array_merge($csp['img_src'] ?? [], $extra)));
+        }
+        return $csp;
     }
 
     /**
@@ -880,7 +896,7 @@ final class InlineRenderer {
             header('X-Content-Type-Options: nosniff');
             header('Referrer-Policy: strict-origin-when-cross-origin');
             header('Permissions-Policy: interest-cohort=()');
-            header('Content-Security-Policy: ' . CSPBuilder::build($manifest->csp, $nonce, $manifest->embeds));
+            header('Content-Security-Policy: ' . CSPBuilder::build(self::csp_with_content_origins($manifest), $nonce, $manifest->embeds));
         }
 
         if ($manifest->theme_wrap === 'header_footer') {
@@ -1124,13 +1140,52 @@ final class InlineRenderer {
     public static function load_dataset(string $bundle_dir, string $app_id, array $route): array {
         $version = self::cache_version($app_id);
         $route_hash = md5($route['path']);
+        $source = (string) $route['dataset']['source'];
+
+        // Live sources (wp:posts, wp:pages, wp:cpt:<slug>, wc:products, plus
+        // any registered via the dsgo_apps_dataset_resolver filter) are
+        // resolved at request time from host content. Bundle-relative .json
+        // paths fall through to the file reader.
+        if (str_contains($source, ':')) {
+            // Cache key contract for live sources:
+            //   - Built-ins (wp:*, wc:products) return globally consistent
+            //     rows, so the default key (app+version+route) is safe.
+            //   - Custom resolvers may depend on the current user, locale,
+            //     query, etc. They opt in to per-context caching by
+            //     returning a non-empty string from the
+            //     `dsgo_apps_dataset_cache_key_extra` filter, or opt out
+            //     entirely by returning 0 from `dsgo_apps_dataset_cache_ttl`.
+            $cache_extra = (string) apply_filters('dsgo_apps_dataset_cache_key_extra', '', $source, $app_id, $route);
+            $cache_ttl   = (int) apply_filters('dsgo_apps_dataset_cache_ttl', HOUR_IN_SECONDS, $source, $app_id, $route);
+            $live_key    = $cache_extra === ''
+                ? "dsgo_ds:{$app_id}:{$version}:{$route_hash}"
+                : "dsgo_ds:{$app_id}:{$version}:{$route_hash}:" . md5($cache_extra);
+
+            if ($cache_ttl > 0) {
+                $cached = get_transient($live_key);
+                if (is_array($cached)) {
+                    return $cached;
+                }
+            }
+            $live = DataSources::resolve($source);
+            if ($live !== null) {
+                if ($cache_ttl > 0) {
+                    set_transient($live_key, $live, $cache_ttl);
+                }
+                return $live;
+            }
+        }
+
+        // Bundle-file path. The file is immutable for the life of an install,
+        // so the default app+version+route key with no resolver context is
+        // correct here.
         $cache_key = "dsgo_ds:{$app_id}:{$version}:{$route_hash}";
         $cached = get_transient($cache_key);
         if (is_array($cached)) {
             return $cached;
         }
 
-        $abs = $bundle_dir . '/' . $route['dataset']['source'];
+        $abs = $bundle_dir . '/' . $source;
         $raw = is_readable($abs) ? file_get_contents($abs) : false;
         if ($raw === false) {
             return [];

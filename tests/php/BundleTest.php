@@ -197,6 +197,34 @@ class BundleTest extends WP_UnitTestCase {
         $this->assertTrue(true); // no exception
     }
 
+    public function test_live_source_skips_bundle_file_validation(): void {
+        // No `data/` file is written; the route uses a live source instead.
+        $dir = sys_get_temp_dir() . '/dsgo-live-bundle-' . uniqid();
+        mkdir($dir, 0755, true);
+        file_put_contents($dir . '/index.html', '<!doctype html><html><body><h1>x</h1></body></html>');
+        file_put_contents($dir . '/post.html',  '<!doctype html><html><body><h1>{{title.rendered}}</h1></body></html>');
+        $manifest = \DSGo_Apps\Manifest::validate([
+            'manifest_version' => 1, 'id' => 'live-shop', 'name' => 'Live',
+            'version' => '0.1.0', 'entry' => 'index.html',
+            'isolation' => 'inline',
+            'routes' => [
+                ['path' => '/', 'file' => 'index.html'],
+                ['path' => '/blog/:slug', 'file' => 'post.html',
+                 'dataset' => ['source' => 'wp:posts', 'id_field' => 'slug']],
+                ['path' => '/shop/:slug', 'file' => 'post.html',
+                 'dataset' => ['source' => 'wc:products', 'id_field' => 'slug']],
+            ],
+            'display' => ['modes' => ['page'], 'default' => 'page'],
+            'permissions' => ['read' => [], 'write' => []],
+            'runtime' => ['sandbox' => 'strict', 'csp' => [
+                'script_src' => ['self'], 'style_src' => ['self'],
+                'img_src' => ['self'], 'connect_src' => ['self'],
+            ]],
+        ]);
+        \DSGo_Apps\Bundle::validate_post_extract($dir, $manifest);
+        $this->assertTrue(true); // no BundleError
+    }
+
     // --- helpers ---------------------------------------------------------
 
     /**

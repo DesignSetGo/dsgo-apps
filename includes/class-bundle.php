@@ -298,6 +298,14 @@ final class Bundle {
     private static function validate_route_dataset(string $bundle_dir, array $route): void {
         $source = $route['dataset']['source'];
         $id_field = $route['dataset']['id_field'];
+        // Live sources (wp:posts, wp:pages, wp:cpt:<slug>, wc:products, plus
+        // any registered via the dsgo_apps_dataset_resolver filter) resolve at
+        // request time from the host, so there's no bundle file to validate.
+        // The Manifest validator already enforced the scheme + id_field
+        // constraints (slug|id) on these.
+        if (str_contains($source, ':')) {
+            return;
+        }
         $abs = $bundle_dir . '/' . $source;
         if (!is_file($abs)) {
             throw new BundleError(

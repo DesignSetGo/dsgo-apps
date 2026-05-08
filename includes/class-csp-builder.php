@@ -73,4 +73,33 @@ final class CSPBuilder {
         }
         return implode(' ', $parts);
     }
+
+    /**
+     * Origins that produce images apps fetch through the bridge: WP uploads
+     * (for product / post / media images) and the gravatar host (for
+     * `dsgo.user.current().avatar_url`). Returned only when the manifest
+     * declares a permission that yields these URLs, so apps that don't read
+     * site content keep the tighter default CSP.
+     *
+     * Uploads are public by design — img-src widening grants no exfil
+     * surface (CSP doesn't control reads, only loads, and the bridge
+     * already returns the URL).
+     *
+     * @return string[]
+     */
+    public static function content_image_origins(Manifest $manifest): array {
+        $reads = array_map(static fn (Permission $p): string => $p->value, $manifest->permissions_read);
+        if (!array_intersect($reads, ['posts', 'pages', 'user', 'media', 'commerce'])) {
+            return [];
+        }
+        $origins = [];
+        $upload  = wp_get_upload_dir();
+        if (!empty($upload['baseurl'])) {
+            $origins[] = rtrim((string) $upload['baseurl'], '/') . '/';
+        }
+        if (in_array('user', $reads, true)) {
+            $origins[] = 'https://secure.gravatar.com';
+        }
+        return $origins;
+    }
 }

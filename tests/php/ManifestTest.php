@@ -842,6 +842,107 @@ class ManifestTest extends WP_UnitTestCase {
         }
     }
 
+    public function test_dataset_source_accepts_custom_scheme(): void {
+        // The dsgo_apps_dataset_resolver filter is documented as a way to
+        // register custom live sources (e.g. `edd:downloads`, `gf:forms`).
+        // Manifest validation must accept any well-formed `<scheme>:<id>`
+        // source so that custom-scheme apps can install at all.
+        foreach (['edd:downloads', 'gf:forms', 'app:user-favorites', 'demo:fixed', 'mu_plugin:rows'] as $source) {
+            $arr = $this->valid_inline_manifest();
+            $arr['routes'][] = [
+                'path' => '/x/:key',
+                'file' => 'x.html',
+                'dataset' => ['source' => $source, 'id_field' => 'key'],
+            ];
+            try {
+                $m = Manifest::validate($arr);
+                $hit = null;
+                foreach ($m->routes as $r) {
+                    if (($r['dataset']['source'] ?? '') === $source) { $hit = $r; break; }
+                }
+                $this->assertNotNull($hit, "expected acceptance of $source");
+                $this->assertSame('key', $hit['dataset']['id_field'], "id_field should round-trip for $source");
+            } catch (\DSGo_Apps\ManifestError $e) {
+                $this->fail("custom scheme rejected: $source ({$e->getMessage()})");
+            }
+        }
+    }
+
+    public function test_dataset_source_rejects_malformed_custom_scheme(): void {
+        // No identifier after colon, leading slash on the id, or path traversal
+        // → still treated as bad input and rejected (otherwise the validator
+        // would accept things that look like file paths or escapes).
+        foreach (['scheme:', ':lonely', 'wp:../escape', 'edd:..', 'edd:foo/../bar'] as $bad) {
+            $arr = $this->valid_inline_manifest();
+            $arr['routes'][] = [
+                'path' => '/x/:k',
+                'file' => 'x.html',
+                'dataset' => ['source' => $bad, 'id_field' => 'k'],
+            ];
+            try {
+                Manifest::validate($arr);
+                $this->fail("expected rejection of malformed source: $bad");
+            } catch (\DSGo_Apps\ManifestError $e) {
+                $this->assertMatchesRegularExpression('/source|dataset/i', $e->getMessage(), $bad);
+            }
+        }
+    }
+
+    public function test_dataset_id_field_unrestricted_for_custom_sources(): void {
+        // Built-in live sources restrict id_field to slug|id (those are the
+        // only fields the resolver guarantees are unique). Custom resolvers
+        // control their own row shape — accept any valid identifier.
+        $arr = $this->valid_inline_manifest();
+        $arr['routes'][] = [
+            'path' => '/x/:key',
+            'file' => 'x.html',
+            'dataset' => ['source' => 'edd:downloads', 'id_field' => 'product_code'],
+        ];
+        $m = Manifest::validate($arr);
+        $hit = null;
+        foreach ($m->routes as $r) {
+            if (($r['dataset']['source'] ?? '') === 'edd:downloads') { $hit = $r; break; }
+        }
+        $this->assertNotNull($hit);
+        $this->assertSame('product_code', $hit['dataset']['id_field']);
+    }
+
+    public function test_dataset_id_field_still_restricted_for_built_in_live_sources(): void {
+        foreach (['wp:posts', 'wp:cpt:case_study', 'wc:products'] as $source) {
+            $arr = $this->valid_inline_manifest();
+            $arr['routes'][] = [
+                'path' => '/x/:key',
+                'file' => 'x.html',
+                'dataset' => ['source' => $source, 'id_field' => 'custom_field'],
+            ];
+            try {
+                Manifest::validate($arr);
+                $this->fail("expected rejection: $source with non-slug/id id_field");
+            } catch (\DSGo_Apps\ManifestError $e) {
+                $this->assertMatchesRegularExpression('/id_field|slug|id/i', $e->getMessage(), $source);
+            }
+        }
+    }
+
+    public function test_dataset_source_accepts_wc_products(): void {
+        foreach (['slug', 'id'] as $id_field) {
+            $arr = $this->valid_inline_manifest();
+            $arr['routes'][] = [
+                'path' => '/shop/:slug',
+                'file' => 'product.html',
+                'dataset' => ['source' => 'wc:products', 'id_field' => $id_field],
+            ];
+            $m = Manifest::validate($arr);
+            $shop = null;
+            foreach ($m->routes as $r) {
+                if ($r['path'] === '/shop/:slug') { $shop = $r; break; }
+            }
+            $this->assertNotNull($shop, "id_field=$id_field");
+            $this->assertSame('wc:products', $shop['dataset']['source']);
+            $this->assertSame($id_field, $shop['dataset']['id_field']);
+        }
+    }
+
     public function test_dataset_id_field_pattern_is_enforced(): void {
         foreach (['1id', 'foo.bar', 'foo-bar', ''] as $bad_id) {
             $arr = $this->valid_inline_manifest();

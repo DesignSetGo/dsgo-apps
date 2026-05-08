@@ -331,11 +331,20 @@ final class Installer {
         $assets_url  = rtrim(plugins_url('assets/', DSGO_APPS_FILE), '/') . '/';
         $external    = $manifest->external_origins;
         $connect_src = $external !== [] ? implode(' ', $external) : "'none'";
+
+        // Apps that read site content (products, posts, users, media) get
+        // image URLs back from the bridge pointing at the WP uploads root.
+        // Without auto-including those origins, every featured_media_url /
+        // product image / user avatar gets CSP-blocked even though the
+        // bridge response contains the URL.
+        $content_origins = CSPBuilder::content_image_origins($manifest);
+        $img_src_extra   = $content_origins !== [] ? ' ' . implode(' ', $content_origins) : '';
+
         return implode('; ', [
             "default-src 'none'",
             "script-src $assets_url $bundle_url 'unsafe-inline'",
             "style-src $bundle_url 'unsafe-inline'",
-            "img-src $bundle_url data: blob:",
+            "img-src $bundle_url data: blob:" . $img_src_extra,
             "font-src $bundle_url",
             "connect-src $connect_src",
             "frame-ancestors 'self'",

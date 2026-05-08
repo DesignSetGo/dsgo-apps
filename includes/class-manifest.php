@@ -233,19 +233,31 @@ final readonly class Manifest {
                     if (!is_string($ds_source) || $ds_source === '') {
                         throw new ManifestError("routes[$i].dataset.source", 'is required and must be a non-empty string');
                     }
-                    // Live WP data sources are resolved at request time from
-                    // the host site's content, so they don't ship inside the
-                    // bundle. Recognized:
+                    // Live data sources are resolved at request time from
+                    // the host site (or a third-party plugin via the
+                    // `dsgo_apps_dataset_resolver` filter) and don't ship
+                    // inside the bundle. Built-ins:
                     //   - `wp:posts`              → built-in `post` post type
                     //   - `wp:pages`              → built-in `page` post type
                     //   - `wp:cpt:<post_type>`    → any registered CPT
-                    // Anything else must be a relative .json file in the bundle.
-                    $is_live = preg_match('/^wp:(posts|pages|cpt:[a-z][a-z0-9_-]*)$/', $ds_source) === 1;
+                    //   - `wc:products`           → WooCommerce products
+                    // Custom schemes (e.g. `edd:downloads`, `gf:forms`) are
+                    // accepted at install time; the resolver filter decides
+                    // at request time whether to serve rows. Sources without
+                    // a `<scheme>:` prefix must be a relative .json file in
+                    // the bundle.
+                    $is_built_in_live = preg_match('/^(wp:(posts|pages|cpt:[a-z][a-z0-9_-]*)|wc:products)$/', $ds_source) === 1;
+                    // Custom-scheme syntax: lower-case scheme, colon, then a
+                    // non-path identifier (no leading slash, no `..`).
+                    $is_custom_live = !$is_built_in_live
+                        && preg_match('/^[a-z][a-z0-9_-]*:[a-z0-9][a-zA-Z0-9_:.\/-]*$/', $ds_source) === 1
+                        && !str_contains($ds_source, '..');
+                    $is_live = $is_built_in_live || $is_custom_live;
                     if (!$is_live) {
                         if (str_starts_with($ds_source, '/') || str_contains($ds_source, '..') || !str_ends_with($ds_source, '.json')) {
                             throw new ManifestError(
                                 "routes[$i].dataset.source",
-                                'must be a relative .json path in the bundle, or a live source ("wp:posts", "wp:pages", "wp:cpt:<slug>")',
+                                'must be a relative .json path in the bundle, a built-in live source ("wp:posts", "wp:pages", "wp:cpt:<slug>", "wc:products"), or a custom "<scheme>:<id>" source backed by the dsgo_apps_dataset_resolver filter',
                             );
                         }
                     }
@@ -253,10 +265,14 @@ final readonly class Manifest {
                     if (!is_string($ds_id) || !preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $ds_id)) {
                         throw new ManifestError("routes[$i].dataset.id_field", 'must match ^[a-zA-Z_][a-zA-Z0-9_]*$ (no dot-notation; top-level field only)');
                     }
-                    if ($is_live && !in_array($ds_id, ['slug', 'id'], true)) {
+                    // Built-in live sources expose only `slug` / `id` as
+                    // unique-and-public lookup keys; restrict to those to
+                    // catch typos. Custom resolvers control their own row
+                    // shape, so any valid identifier is allowed there.
+                    if ($is_built_in_live && !in_array($ds_id, ['slug', 'id'], true)) {
                         throw new ManifestError(
                             "routes[$i].dataset.id_field",
-                            'live WP data sources only support id_field "slug" or "id"',
+                            'built-in live sources only support id_field "slug" or "id"',
                         );
                     }
                     $dataset = ['source' => $ds_source, 'id_field' => $ds_id];

@@ -92,6 +92,10 @@
         if (req.method.startsWith('storage.') && appNonce) {
             headers['X-DSGo-App-Nonce'] = appNonce;
         }
+        // Suppress the parent's apiFetch JSON content-type middleware — the
+        // browser will set `multipart/form-data; boundary=...` itself when we
+        // pass FormData as the request body. Setting it manually here would
+        // strip the boundary parameter and break parsing on the PHP side.
         try {
             const result = await routeToWp(req, { apiFetch, headers, manifest });
             return makeOk(req.id, result);
@@ -271,6 +275,49 @@
                     path: `/dsgo/v1/apps/${manifest.id}/email/send`,
                     method: 'POST',
                     data: params,
+                    headers,
+                });
+            }
+            case 'media.upload': {
+                const params = (req.params ?? {});
+                // Accept Blob (the canonical case — SVG, Canvas.toBlob, fetch().blob())
+                // and File (which extends Blob, so the runtime check covers it).
+                if (typeof Blob === 'undefined' || !(params.file instanceof Blob)) {
+                    // eslint-disable-next-line no-throw-literal
+                    throw { code: 'invalid_params', message: '"file" must be a Blob or File' };
+                }
+                const filename = typeof params.filename === 'string' && params.filename !== ''
+                    ? params.filename
+                    : params.file.name || 'upload.bin';
+                const formData = new FormData();
+                formData.append('file', params.file, filename);
+                formData.append('filename', filename);
+                if (typeof params.alt_text === 'string' && params.alt_text !== '') {
+                    formData.append('alt_text', params.alt_text);
+                }
+                return await af({
+                    path: `/dsgo/v1/apps/${manifest.id}/media/upload`,
+                    method: 'POST',
+                    body: formData,
+                    headers,
+                });
+            }
+            // Commerce — route every commerce.* method through the single dispatcher.
+            // Method "commerce.<group>.<verb>" maps to "/commerce/<group>/<verb>"
+            // (verb's underscores translate to hyphens for URL hygiene).
+            case 'commerce.products.list':
+            case 'commerce.products.get':
+            case 'commerce.cart.get':
+            case 'commerce.cart.add_item':
+            case 'commerce.cart.update_item':
+            case 'commerce.cart.remove_item':
+            case 'commerce.checkout.open_hosted_page': {
+                const tail = req.method.slice('commerce.'.length).replace(/\./g, '/').replace(/_/g, '-');
+                const params = (req.params ?? {});
+                return await af({
+                    path: `/dsgo/v1/apps/${manifest.id}/commerce/${tail}`,
+                    method: 'POST',
+                    data: { params },
                     headers,
                 });
             }
@@ -488,6 +535,25 @@
                 return;
             const h = Math.max(100, Math.min(2000, Math.round(raw)));
             entry.iframe.style.height = h + 'px';
+            return;
+        }
+        // Top-window navigation request from a sandboxed app — used by the commerce
+        // hosted-checkout handoff. Same-origin only; we trust the URL only after
+        // origin validation since the iframe is the source.
+        if (msg.type === 'dsgo:nav-top') {
+            const rawUrl = msg.url;
+            if (typeof rawUrl !== 'string' || rawUrl === '')
+                return;
+            let target;
+            try {
+                target = new URL(rawUrl, window.location.href);
+            }
+            catch {
+                return;
+            }
+            if (target.origin !== window.location.origin)
+                return;
+            window.location.assign(target.href);
             return;
         }
         if (msg.type === 'dsgo:request') {

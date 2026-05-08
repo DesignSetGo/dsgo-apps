@@ -42,6 +42,7 @@ final class Plugin {
         require_once $base . 'class-rewrite.php';
         require_once $base . 'class-storage.php';
         require_once $base . 'class-bundle.php';
+        require_once $base . 'class-data-sources.php';
         require_once $base . 'class-installer.php';
         require_once $base . 'class-artifact-normalizer.php';
         require_once $base . 'class-iframe-loader.php';
@@ -86,6 +87,16 @@ final class Plugin {
         // post-status transitions and explicit deletes.
         add_action('save_post', [self::class, 'invalidate_dynamic_route_cache_for_post'], 10, 2);
         add_action('deleted_post', [self::class, 'invalidate_dynamic_route_cache_for_post'], 10, 2);
+
+        // WooCommerce mutations that don't always trip save_post (stock-only
+        // updates, variation saves) but must still invalidate apps backed by
+        // `wc:products`. `woocommerce_update_product` covers most edits that
+        // change shape; the stock_status hooks handle inventory transitions
+        // that bypass the post-save path.
+        add_action('woocommerce_update_product',             [self::class, 'invalidate_dynamic_route_cache_for_wc_product'], 10, 1);
+        add_action('woocommerce_delete_product',             [self::class, 'invalidate_dynamic_route_cache_for_wc_product'], 10, 1);
+        add_action('woocommerce_product_set_stock_status',   [self::class, 'invalidate_dynamic_route_cache_for_wc_product'], 10, 1);
+        add_action('woocommerce_variation_set_stock_status', [self::class, 'invalidate_dynamic_route_cache_for_wc_product'], 10, 1);
     }
 
     /**
@@ -110,6 +121,26 @@ final class Plugin {
         if ($type === 'post') $matching_sources[] = 'wp:posts';
         if ($type === 'page') $matching_sources[] = 'wp:pages';
         $matching_sources[] = 'wp:cpt:' . $type;
+        if ($type === 'product') $matching_sources[] = 'wc:products';
+
+        self::bump_apps_with_route_source($matching_sources);
+    }
+
+    /**
+     * Bump the render-cache version on every installed DSGo app whose
+     * manifest declares a `wc:products` route. Invoked from WooCommerce
+     * product/variation hooks that don't always fire save_post.
+     */
+    public static function invalidate_dynamic_route_cache_for_wc_product(int $product_id): void {
+        if ($product_id <= 0) return;
+        self::bump_apps_with_route_source(['wc:products']);
+    }
+
+    /**
+     * @param string[] $matching_sources
+     */
+    private static function bump_apps_with_route_source(array $matching_sources): void {
+        if ($matching_sources === []) return;
 
         $apps = get_posts([
             'post_type'      => PostType::SLUG,

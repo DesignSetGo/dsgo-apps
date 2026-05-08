@@ -177,6 +177,97 @@ class InlineRendererDynamicRouteTest extends WP_UnitTestCase {
         delete_option('dsgo_app_cache_version_demo');
     }
 
+    public function test_load_dataset_resolves_wp_posts_live_source(): void {
+        $bundle = sys_get_temp_dir() . '/dsgo-live-' . uniqid();
+        mkdir($bundle, 0755, true);
+        self::factory()->post->create(['post_title' => 'Live One', 'post_name' => 'live-one', 'post_status' => 'publish']);
+
+        $route = ['path' => '/blog/:slug', 'file' => 'post.html',
+                  'dataset' => ['source' => 'wp:posts', 'id_field' => 'slug']];
+
+        $entries = InlineRenderer::load_dataset($bundle, 'demo-live', $route);
+        $this->assertNotEmpty($entries, 'live wp:posts source must return entries');
+        $slugs = array_map(static fn ($e) => $e['slug'] ?? null, $entries);
+        $this->assertContains('live-one', $slugs);
+        delete_option('dsgo_app_cache_version_demo-live');
+    }
+
+    public function test_load_dataset_segregates_cache_by_resolver_context(): void {
+        // A custom resolver that depends on per-request state (mocked here
+        // by a counter) must not leak rows between requests with different
+        // cache-key-extra strings. The dsgo_apps_dataset_cache_key_extra
+        // filter is the public hook for that namespacing.
+        $bundle = sys_get_temp_dir() . '/dsgo-ctx-' . uniqid();
+        mkdir($bundle, 0755, true);
+        $route = ['path' => '/x/:k', 'file' => 'x.html',
+                  'dataset' => ['source' => 'app:per_user', 'id_field' => 'k']];
+        $current = 'alice';
+        add_filter('dsgo_apps_dataset_resolver', function ($resolver, string $source) use (&$current) {
+            if ($source !== 'app:per_user') return $resolver;
+            return static fn () => [['k' => $current, 'name' => $current]];
+        }, 10, 2);
+        add_filter('dsgo_apps_dataset_cache_key_extra', function ($extra, string $source) use (&$current) {
+            return $source === 'app:per_user' ? "user:{$current}" : $extra;
+        }, 10, 2);
+
+        try {
+            $alice = InlineRenderer::load_dataset($bundle, 'ctx-app', $route);
+            $this->assertSame('alice', $alice[0]['k']);
+
+            $current = 'bob';
+            $bob = InlineRenderer::load_dataset($bundle, 'ctx-app', $route);
+            $this->assertSame('bob', $bob[0]['k'], 'switching cache-key-extra must miss the alice cache');
+
+            // Reverting to alice must hit the cached alice rows, not bob's.
+            $current = 'alice';
+            $alice2 = InlineRenderer::load_dataset($bundle, 'ctx-app', $route);
+            $this->assertSame('alice', $alice2[0]['k']);
+        } finally {
+            remove_all_filters('dsgo_apps_dataset_resolver');
+            remove_all_filters('dsgo_apps_dataset_cache_key_extra');
+            delete_option('dsgo_app_cache_version_ctx-app');
+        }
+    }
+
+    public function test_load_dataset_skips_cache_when_ttl_is_zero(): void {
+        $bundle = sys_get_temp_dir() . '/dsgo-noc-' . uniqid();
+        mkdir($bundle, 0755, true);
+        $route = ['path' => '/x/:k', 'file' => 'x.html',
+                  'dataset' => ['source' => 'app:realtime', 'id_field' => 'k']];
+        $calls = 0;
+        add_filter('dsgo_apps_dataset_resolver', function ($resolver, string $source) use (&$calls) {
+            if ($source !== 'app:realtime') return $resolver;
+            return static function () use (&$calls) {
+                $calls++;
+                return [['k' => 'r' . $calls]];
+            };
+        }, 10, 2);
+        add_filter('dsgo_apps_dataset_cache_ttl', function ($ttl, string $source) {
+            return $source === 'app:realtime' ? 0 : $ttl;
+        }, 10, 2);
+
+        try {
+            $a = InlineRenderer::load_dataset($bundle, 'noc-app', $route);
+            $b = InlineRenderer::load_dataset($bundle, 'noc-app', $route);
+            $this->assertSame('r1', $a[0]['k']);
+            $this->assertSame('r2', $b[0]['k']);
+            $this->assertSame(2, $calls, 'resolver must be invoked on every call when ttl is 0');
+        } finally {
+            remove_all_filters('dsgo_apps_dataset_resolver');
+            remove_all_filters('dsgo_apps_dataset_cache_ttl');
+            delete_option('dsgo_app_cache_version_noc-app');
+        }
+    }
+
+    public function test_load_dataset_returns_empty_for_unknown_live_scheme(): void {
+        $bundle = sys_get_temp_dir() . '/dsgo-unknown-' . uniqid();
+        mkdir($bundle, 0755, true);
+        $route = ['path' => '/x/:id', 'file' => 'x.html',
+                  'dataset' => ['source' => 'mystery:thing', 'id_field' => 'slug']];
+        $this->assertSame([], InlineRenderer::load_dataset($bundle, 'demo-unknown', $route));
+        delete_option('dsgo_app_cache_version_demo-unknown');
+    }
+
     public function test_find_entry_matches_id_field_string_or_int(): void {
         $entries = [
             ['id' => 'alice', 'name' => 'Alice'],
