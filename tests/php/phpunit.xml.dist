@@ -5,7 +5,7 @@
     colors="true"
 >
     <testsuites>
-        <testsuite name="DSGo Apps">
+        <testsuite name="DSGo Apps Free">
             <directory>./</directory>
             <exclude>./bootstrap.php</exclude>
         </testsuite>

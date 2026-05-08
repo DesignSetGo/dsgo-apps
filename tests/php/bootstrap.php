@@ -1,6 +1,6 @@
 <?php
 /**
- * PHPUnit bootstrap for DesignSetGo Apps.
+ * PHPUnit bootstrap for DSGo Apps (free tier).
  *
  * @package DSGo_Apps
  */
@@ -22,8 +22,3 @@ tests_add_filter('muplugins_loaded', static function (): void {
 });
 
 require $_tests_dir . '/includes/bootstrap.php';
-
-// Activate hooks don't fire in the test environment, so install the Riff
-// sessions table here. dbDelta is idempotent — calling on repeated suite
-// runs is harmless.
-\DSGo_Apps\Harness_Sessions::install_schema();
