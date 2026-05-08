@@ -16,6 +16,10 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+// Exception messages constructed below are never echoed to clients; the REST
+// layer catches them and returns sanitized error_code + filtered messages.
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped
+
 final class ArtifactNormalizerError extends \RuntimeException {
     public readonly string $error_code;
     public readonly string $bare_message;
@@ -84,9 +88,10 @@ final class ArtifactNormalizer {
             $zip->close();
 
             // Drop staging files; only the zip needs to survive for the caller
-            // to hand off to Installer::install.
-            @unlink($html_path);
-            @unlink($manifest_path);
+            // to hand off to Installer::install. WP_Filesystem can't run reliably
+            // here (REST has no FTP/SSH context).
+            @unlink($html_path); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
+            @unlink($manifest_path); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
             return $zip_path;
         } catch (\Throwable $e) {
             self::recursive_delete($work_dir);
@@ -248,13 +253,18 @@ final class ArtifactNormalizer {
         $base = get_temp_dir();
         for ($i = 0; $i < 5; $i++) {
             $candidate = rtrim($base, '/\\') . '/dsgo-artifact-' . wp_generate_password(8, false, false);
-            if (mkdir($candidate, 0700, false)) {
+            // Per-request scratch dir under get_temp_dir(); WP_Filesystem can't
+            // run without an FTP/SSH context during REST.
+            if (mkdir($candidate, 0700, false)) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir
                 return $candidate;
             }
         }
         throw new ArtifactNormalizerError('fs_error', 'could not create temp working directory');
     }
 
+    // Recursive delete operates on the per-request artifact temp dir we just
+    // created above. WP_Filesystem can't be relied on here (REST context).
+    // phpcs:disable WordPress.WP.AlternativeFunctions.unlink_unlink,WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
     private static function recursive_delete(string $dir): void {
         if (!is_dir($dir)) return;
         $items = scandir($dir);
@@ -270,4 +280,5 @@ final class ArtifactNormalizer {
         }
         @rmdir($dir);
     }
+    // phpcs:enable WordPress.WP.AlternativeFunctions.unlink_unlink,WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
 }

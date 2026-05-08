@@ -303,8 +303,10 @@ final class RestApi {
             if (is_string($zip_path)) {
                 $work_dir = dirname($zip_path);
                 if (is_dir($work_dir) && str_contains($work_dir, 'dsgo-artifact-')) {
-                    @unlink($zip_path);
-                    @rmdir($work_dir);
+                    // Per-request temp scratch dir; WP_Filesystem can't operate
+                    // on get_temp_dir() reliably without an FTP/SSH context.
+                    @unlink($zip_path); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
+                    @rmdir($work_dir); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
                 }
             }
         }
@@ -321,6 +323,10 @@ final class RestApi {
     private static function looks_like_zip(array $upload): bool {
         $tmp = isset($upload['tmp_name']) ? (string) $upload['tmp_name'] : '';
         if ($tmp !== '' && is_readable($tmp)) {
+            // Reading the first 4 bytes of an upload to magic-sniff. WP_Filesystem
+            // has no streaming primitive for this — get_contents() would slurp
+            // the entire upload into memory for a 4-byte check.
+            // phpcs:disable WordPress.WP.AlternativeFunctions.file_system_operations_fopen,WordPress.WP.AlternativeFunctions.file_system_operations_fread,WordPress.WP.AlternativeFunctions.file_system_operations_fclose
             $fh = @fopen($tmp, 'rb');
             if ($fh !== false) {
                 $head = (string) fread($fh, 4);
@@ -328,6 +334,7 @@ final class RestApi {
                 // PK\x03\x04 — local file header magic for zip archives.
                 if (str_starts_with($head, "PK\x03\x04")) return true;
             }
+            // phpcs:enable WordPress.WP.AlternativeFunctions.file_system_operations_fopen,WordPress.WP.AlternativeFunctions.file_system_operations_fread,WordPress.WP.AlternativeFunctions.file_system_operations_fclose
         }
         $filename = isset($upload['name']) ? (string) $upload['name'] : '';
         if ($filename !== '' && preg_match('/\.zip$/i', $filename) === 1) return true;
@@ -403,8 +410,11 @@ final class RestApi {
             };
             return new \WP_REST_Response(['code' => $e->error_code, 'message' => $e->bare_message], $status);
         } finally {
-            if (is_file($zip_path)) @unlink($zip_path);
-            if (is_dir($work_dir)) @rmdir($work_dir);
+            // Per-request scratch dir under get_temp_dir(); WP_Filesystem can't
+            // be relied on without an FTP context, and these paths are always
+            // bounded to dsgo-starter-* / dsgo-artifact-* directories we created.
+            if (is_file($zip_path)) @unlink($zip_path); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
+            if (is_dir($work_dir)) @rmdir($work_dir); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
         }
     }
 
@@ -535,6 +545,9 @@ final class RestApi {
         $value_prefix = $wpdb->esc_like('dsgo_apps_storage_user_' . $post_id . '_') . '%';
         $size_key     = 'dsgo_apps_storage_size_user_' . $post_id;
 
+        // No usermeta API can match by meta_key prefix across all users; this
+        // runs from a cron-bounded batch so caching is intentionally skipped.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
         $ids = $wpdb->get_col($wpdb->prepare(
             "SELECT umeta_id FROM {$wpdb->usermeta}
              WHERE meta_key LIKE %s OR meta_key = %s
@@ -546,7 +559,10 @@ final class RestApi {
         if (!$ids) {
             return;
         }
+        // Bulk DELETE by umeta_id uses an IN-clause with as many %d placeholders
+        // as ids; prepare() expands them safely. Cron-bounded batch — no caching.
         $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
         $wpdb->query($wpdb->prepare(
             "DELETE FROM {$wpdb->usermeta} WHERE umeta_id IN ($placeholders)",
             ...array_map('intval', $ids),

@@ -20,13 +20,18 @@ global $wpdb;
 // matches events that were scheduled with no args.
 wp_unschedule_hook('dsgo_apps_cleanup_user_storage');
 
-$post_ids = $wpdb->get_col(
+// Uninstall runs once and must enumerate every dsgo_app post and every
+// per-user storage row regardless of object cache state. WP's high-level APIs
+// don't expose meta_key prefix matching across users.
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound
+$dsgo_post_ids = $wpdb->get_col(
     $wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = %s", 'dsgo_app')
 );
-foreach ($post_ids as $id) {
+foreach ($dsgo_post_ids as $id) {
     wp_delete_post((int) $id, true);
 }
 
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 $wpdb->query(
     $wpdb->prepare(
         "DELETE FROM {$wpdb->usermeta} WHERE meta_key LIKE %s OR meta_key LIKE %s",
@@ -47,6 +52,7 @@ delete_option('dsgo_apps_activation_notice');
 // renderer's per-app cache version uses `dsgo_app_cache_version_` (singular).
 // Also remove the rate-limit transients (both halves: value + timeout) so
 // they don't linger across a reinstall.
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
 $wpdb->query(
     $wpdb->prepare(
         "DELETE FROM {$wpdb->options}
@@ -70,8 +76,9 @@ $wpdb->query(
 wp_cache_delete('alloptions', 'options');
 wp_cache_delete('notoptions', 'options');
 
-$upload   = wp_upload_dir();
-$apps_dir = trailingslashit($upload['basedir']) . 'dsgo-apps';
+// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound
+$dsgo_upload = wp_upload_dir();
+$apps_dir = trailingslashit($dsgo_upload['basedir']) . 'dsgo-apps';
 if (is_dir($apps_dir)) {
     require_once __DIR__ . '/includes/class-bundle.php';
     \DSGo_Apps\Bundle::recursive_delete($apps_dir);

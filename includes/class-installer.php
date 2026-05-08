@@ -9,6 +9,10 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+// Exception messages constructed below are never echoed to clients; the REST
+// layer catches them and returns sanitized error_code + filtered messages.
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped
+
 final readonly class InstallResult {
     public function __construct(
         public string $app_id,
@@ -185,7 +189,9 @@ final class Installer {
             if (!$zip_closed) { @$zip->close(); }
             Bundle::recursive_delete($bundle_dir);
             if ($rollback !== null) {
-                @rename($rollback, $bundle_dir);
+                // Roll back to the stashed prior install. WP_Filesystem::move()
+                // requires an FTP/SSH context that isn't available during REST.
+                @rename($rollback, $bundle_dir); // phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename
             }
             self::release_install_lock($manifest->id);
             if ($e instanceof InstallerError) {
@@ -257,7 +263,9 @@ final class Installer {
             return null;
         }
         $stash = rtrim($bundle_dir, '/') . '.previous-' . uniqid();
-        if (!@rename($bundle_dir, $stash)) {
+        // Atomic stash of the existing install dir so we can roll back if extract fails.
+        // WP_Filesystem::move() requires an FTP/SSH context unavailable in REST.
+        if (!@rename($bundle_dir, $stash)) { // phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename
             throw new InstallerError('fs_error', 'cannot stash existing bundle');
         }
         return $stash;

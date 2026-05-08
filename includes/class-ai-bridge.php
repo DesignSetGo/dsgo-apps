@@ -254,7 +254,9 @@ final class AiBridge {
     private static function log_telemetry(string $app_id, float $start, string $outcome, int $tool_count): void {
         if (!defined('WP_DEBUG_LOG') || !WP_DEBUG_LOG) return;
         $duration_ms = (int) ((microtime(true) - $start) * 1000);
-        error_log(sprintf(
+        // Gated on WP_DEBUG_LOG; only emits when the site owner has explicitly
+        // opted into debug logging.
+        error_log(sprintf( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
             '[dsgo-ai] app=%s outcome=%s duration_ms=%d tool_calls=%d',
             $app_id, $outcome, $duration_ms, $tool_count,
         ));

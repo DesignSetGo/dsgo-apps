@@ -9,6 +9,10 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+// Exception messages constructed below are never echoed to clients; the REST
+// layer catches them and returns sanitized error_code + filtered messages.
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped
+
 final class Permissions {
 
     /** @var array<string, ?Permission>|null */

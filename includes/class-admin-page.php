@@ -14,6 +14,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class AdminPage {
 
     public const MENU_SLUG = 'dsgo-apps';

@@ -14,6 +14,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class AdminPublisherLoader {
 
     /** Cache the collection so emit + enqueue don't both pay the cost. */

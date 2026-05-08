@@ -9,6 +9,10 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+// Exception messages constructed below are never echoed to clients; the REST
+// layer catches them and returns sanitized error_code + filtered messages.
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped
+
 final class BundleError extends \RuntimeException {
     public function __construct(
         public readonly string $error_code,
@@ -145,10 +149,12 @@ final class Bundle {
             if (is_dir($path) && !is_link($path)) {
                 self::recursive_delete($path);
             } else {
-                @unlink($path);
+                // Recursive delete inside the bundle install dir; WP_Filesystem
+                // requires an FTP/SSH context that isn't available during REST.
+                @unlink($path); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
             }
         }
-        @rmdir($dir);
+        @rmdir($dir); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
     }
 
     /**
@@ -213,6 +219,9 @@ final class Bundle {
         // wp_tempnam() lives in wp-admin/includes/file.php which isn't loaded
         // during REST requests — use the native function instead.
         $tmp = tempnam(sys_get_temp_dir(), 'dsgo-harness-bundle-');
+        // Per-request scratch dir under sys_get_temp_dir(); WP_Filesystem can't
+        // operate on the system temp dir without an FTP/SSH context.
+        // phpcs:disable WordPress.WP.AlternativeFunctions.unlink_unlink,WordPress.WP.AlternativeFunctions.file_system_operations_mkdir
         if (file_exists($tmp)) {
             unlink($tmp);
         }
@@ -233,6 +242,7 @@ final class Bundle {
                 throw new BundleError('write_failed', sprintf('could not write %s', $rel));
             }
         }
+        // phpcs:enable WordPress.WP.AlternativeFunctions.unlink_unlink,WordPress.WP.AlternativeFunctions.file_system_operations_mkdir
         // Run the existing post-extract validator for parity with the installer path.
         self::validate_post_extract($tmp, $manifest);
         return $tmp;

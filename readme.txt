@@ -1,14 +1,14 @@
 === DesignSetGo Apps ===
 Contributors: designsetgo
-Tags: apps, web-apps, sandbox, vibe-coding, ai, bridge, cli
-Requires at least: 6.5
+Tags: apps, sandbox, ai, iframe, bridge
+Requires at least: 6.9
 Tested up to: 7.0
 Requires PHP: 8.2
 Stable tag: 0.1.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Sandboxed AND connected web apps for WordPress — anything from a single-block widget to a full multi-page application. Real indexable URLs, a permissioned bridge to your site's data, and a CLI deploy from your terminal.
+Sandboxed AND connected web apps for WordPress: ship a static bundle, get a real /apps/{slug} URL plus a permissioned bridge to site data.
 
 == Description ==
 

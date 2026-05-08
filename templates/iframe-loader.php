@@ -11,6 +11,10 @@
 declare(strict_types=1);
 
 defined('ABSPATH') || exit;
+// Standalone iframe host document with its own <head>; wp_enqueue_script() can't
+// register into a non-WP-themed response. Scripts are always loaded from WP core
+// or this plugin's own /assets/ via esc_url().
+// phpcs:disable WordPress.WP.EnqueuedResources.NonEnqueuedScript
 ?>
 <!doctype html>
 <html lang="<?php echo esc_attr(str_replace('_', '-', get_locale())); ?>">

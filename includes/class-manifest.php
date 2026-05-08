@@ -9,6 +9,11 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+// Exception messages constructed below are never echoed to clients; manifest
+// validation errors are caught by the REST layer and translated into safe
+// error responses, and at install time admins see a curated message.
+// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped
+
 enum DisplayMode: string {
     case Page  = 'page';
     case Block = 'block';
@@ -216,12 +221,31 @@ final readonly class Manifest {
                     if (!is_string($ds_source) || $ds_source === '') {
                         throw new ManifestError("routes[$i].dataset.source", 'is required and must be a non-empty string');
                     }
-                    if (str_starts_with($ds_source, '/') || str_contains($ds_source, '..') || !str_ends_with($ds_source, '.json')) {
-                        throw new ManifestError("routes[$i].dataset.source", 'must be a relative path ending in ".json" without ".."');
+                    // Live WP data sources are resolved at request time from
+                    // the host site's content, so they don't ship inside the
+                    // bundle. Recognized:
+                    //   - `wp:posts`              → built-in `post` post type
+                    //   - `wp:pages`              → built-in `page` post type
+                    //   - `wp:cpt:<post_type>`    → any registered CPT
+                    // Anything else must be a relative .json file in the bundle.
+                    $is_live = preg_match('/^wp:(posts|pages|cpt:[a-z][a-z0-9_-]*)$/', $ds_source) === 1;
+                    if (!$is_live) {
+                        if (str_starts_with($ds_source, '/') || str_contains($ds_source, '..') || !str_ends_with($ds_source, '.json')) {
+                            throw new ManifestError(
+                                "routes[$i].dataset.source",
+                                'must be a relative .json path in the bundle, or a live source ("wp:posts", "wp:pages", "wp:cpt:<slug>")',
+                            );
+                        }
                     }
                     $ds_id = $r['dataset']['id_field'] ?? null;
                     if (!is_string($ds_id) || !preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $ds_id)) {
                         throw new ManifestError("routes[$i].dataset.id_field", 'must match ^[a-zA-Z_][a-zA-Z0-9_]*$ (no dot-notation; top-level field only)');
+                    }
+                    if ($is_live && !in_array($ds_id, ['slug', 'id'], true)) {
+                        throw new ManifestError(
+                            "routes[$i].dataset.id_field",
+                            'live WP data sources only support id_field "slug" or "id"',
+                        );
                     }
                     $dataset = ['source' => $ds_source, 'id_field' => $ds_id];
                 } elseif ($has_param) {
@@ -738,7 +762,7 @@ final readonly class Manifest {
     }
 
     private static function is_valid_https_origin(string $origin): bool {
-        $parsed = parse_url($origin);
+        $parsed = wp_parse_url($origin);
         if (!is_array($parsed)) return false;
         if (($parsed['scheme'] ?? '') !== 'https') return false;
         if (!isset($parsed['host']) || $parsed['host'] === '') return false;

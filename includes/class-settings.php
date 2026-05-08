@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class Settings {
 
     public const OPTION_URL_PREFIX           = 'dsgo_apps_url_prefix';

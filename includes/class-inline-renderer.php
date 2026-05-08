@@ -12,6 +12,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class InlineRenderer {
 
     /**
@@ -345,6 +347,13 @@ final class InlineRenderer {
      * loads, and parent-bridge-inline must register its message listener before
      * bridge-client-inline.js can post any requests.
      */
+    // The inline bridge runtime must be emitted as inline <script> tags inside
+    // the rendered app document with strict CSP nonces and a load-bearing
+    // serial execution order (window.__dsgoBridgeDeps read synchronously by
+    // parent-bridge-inline). wp_enqueue_script() can't satisfy any of those
+    // constraints — registered scripts can't bypass the per-document CSP and
+    // can't guarantee nonce attachment to the inline assemble snippet.
+    // phpcs:disable WordPress.WP.EnqueuedResources.NonEnqueuedScript
     private static function bridge_bootstrap_html(Manifest $manifest, string $nonce): string {
         $manifest_pub = IframeLoader::manifest_public_view($manifest->to_array());
         $perm_map     = Permissions::to_array();
@@ -404,6 +413,7 @@ final class InlineRenderer {
 
         return $preloads . $globals . $deps . $assemble . $host . $client;
     }
+    // phpcs:enable WordPress.WP.EnqueuedResources.NonEnqueuedScript
 
     public static function generate_nonce(): string {
         return rtrim(strtr(base64_encode(random_bytes(16)), '+/', '-_'), '=');
@@ -682,11 +692,12 @@ final class InlineRenderer {
             ob_start();
             try {
                 get_header();
-                echo '<main class="dsgo-error">' . $style;
+                // $style is a static <style> block; $home is built with esc_url + esc_html__ above.
+                echo '<main class="dsgo-error">' . $style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
                 echo '<p class="dsgo-error__status">404</p>';
                 echo '<h1 class="dsgo-error__title">' . esc_html($title) . '</h1>';
                 echo '<p class="dsgo-error__body">' . esc_html($body) . '</p>';
-                echo '<p class="dsgo-error__home">' . $home . '</p>';
+                echo '<p class="dsgo-error__home">' . $home . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
                 echo '</main>';
                 get_footer();
                 $rendered = (ob_get_length() ?: 0) > 0;
@@ -698,7 +709,8 @@ final class InlineRenderer {
         }
         if (!$rendered) {
             $lang = esc_attr(str_replace('_', '-', get_locale()));
-            echo '<!doctype html><html lang="' . $lang . '"><head><meta charset="utf-8">'
+            // $lang is esc_attr'd; $style is a static block; $home is pre-escaped above.
+            echo '<!doctype html><html lang="' . $lang . '"><head><meta charset="utf-8">' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
                 . '<meta name="viewport" content="width=device-width,initial-scale=1">'
                 . '<title>' . esc_html($title) . '</title>'
                 . '<style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#1a1a1a;background:#fafaf7;margin:0}</style>'
@@ -786,14 +798,14 @@ final class InlineRenderer {
     }
 
     private static function current_request_path(): string {
-        $uri = $_SERVER['REQUEST_URI'] ?? '/';
-        $uri = is_string($uri) ? $uri : '/';
-        $path = parse_url($uri, PHP_URL_PATH);
+        $uri = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash((string) $_SERVER['REQUEST_URI'])) : '/';
+        if ($uri === '') $uri = '/';
+        $path = wp_parse_url($uri, PHP_URL_PATH);
         if (!is_string($path) || $path === '') {
             return '/';
         }
         // Trim site subdirectory (e.g. WP installed at /blog/).
-        $home_path = parse_url(home_url('/'), PHP_URL_PATH);
+        $home_path = wp_parse_url(home_url('/'), PHP_URL_PATH);
         if (is_string($home_path) && $home_path !== '' && $home_path !== '/' && str_starts_with($path, $home_path)) {
             $path = substr($path, strlen(rtrim($home_path, '/')));
             if ($path === '') $path = '/';
@@ -827,8 +839,8 @@ final class InlineRenderer {
      * Server-derived; matches what `dsgo.context.search` is documented to hold.
      */
     private static function current_search_string(): string {
-        $qs = $_SERVER['QUERY_STRING'] ?? '';
-        if (!is_string($qs) || $qs === '') {
+        $qs = isset($_SERVER['QUERY_STRING']) ? sanitize_text_field(wp_unslash((string) $_SERVER['QUERY_STRING'])) : '';
+        if ($qs === '') {
             return '';
         }
         return '?' . $qs;
@@ -875,11 +887,13 @@ final class InlineRenderer {
             $body  = self::extract_body_content($rendered);
             $reset = self::inject_route_meta($route['title'] ?? null, $route['description'] ?? null);
             get_header();
-            echo $body;
+            // $body is the install-time-validated, render-time-sanitized app body (HtmlSanitizer + render_route pipeline).
+            echo $body; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
             get_footer();
             $reset();
         } else {
-            echo $rendered;
+            // $rendered is a full document produced by render_route() against an install-time-validated bundle.
+            echo $rendered; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
         }
     }
 
@@ -916,7 +930,8 @@ final class InlineRenderer {
                 'locale'      => get_locale(),
                 'theme'       => 'light',
             ];
-            echo self::render_route($bundle_dir, $manifest, $custom, $context, $nonce);
+            // render_route returns a document built from install-time-validated bundle + sanitized HTML.
+            echo self::render_route($bundle_dir, $manifest, $custom, $context, $nonce); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
             return;
         }
         echo '<!doctype html><title>Not found</title><h1>Not found</h1>';
@@ -938,8 +953,8 @@ final class InlineRenderer {
             ? 'public, max-age=31536000, immutable'
             : 'public, max-age=300, must-revalidate';
 
-        $client_etag = $_SERVER['HTTP_IF_NONE_MATCH'] ?? '';
-        $client_ims  = $_SERVER['HTTP_IF_MODIFIED_SINCE'] ?? '';
+        $client_etag = isset($_SERVER['HTTP_IF_NONE_MATCH']) ? sanitize_text_field(wp_unslash((string) $_SERVER['HTTP_IF_NONE_MATCH'])) : '';
+        $client_ims  = isset($_SERVER['HTTP_IF_MODIFIED_SINCE']) ? sanitize_text_field(wp_unslash((string) $_SERVER['HTTP_IF_MODIFIED_SINCE'])) : '';
         $not_modified = ($client_etag !== '' && trim($client_etag) === $etag)
             || ($client_ims !== '' && $mtime > 0 && strtotime((string) $client_ims) >= $mtime);
 
@@ -956,7 +971,11 @@ final class InlineRenderer {
             status_header(304);
             return;
         }
-        readfile($abs);
+        // Streaming a static asset to the response. WP_Filesystem has no
+        // streaming equivalent (its get_contents() reads into memory, breaking
+        // large bundles) and the path is bounded inside the install dir by
+        // resolve_asset(). readfile() is the right tool for the job.
+        readfile($abs); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile
     }
 
     private static function is_fingerprinted_asset(string $abs): bool {

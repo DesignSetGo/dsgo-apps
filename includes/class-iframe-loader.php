@@ -52,9 +52,9 @@ final class IframeLoader {
     }
 
     private static function current_request_path(): string {
-        $uri  = $_SERVER['REQUEST_URI'] ?? '/';
-        $uri  = is_string($uri) ? $uri : '/';
-        $path = parse_url($uri, PHP_URL_PATH);
+        $uri  = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash((string) $_SERVER['REQUEST_URI'])) : '/';
+        if ($uri === '') $uri = '/';
+        $path = wp_parse_url($uri, PHP_URL_PATH);
         if (!is_string($path) || $path === '') return '/';
         // Normalize "/foo/" → "/foo", but keep the bare root as "/".
         if ($path !== '/' && str_ends_with($path, '/')) {
@@ -285,6 +285,10 @@ final class IframeLoader {
         ];
         $bridge_url = plugins_url('assets/parent-bridge.js', DSGO_APPS_FILE);
 
+        // The parent-bridge runtime is intentionally inline-emitted into the post body so a
+        // single instance is shared by every embed on the page. wp_enqueue_script() can't
+        // express the "exactly once across N block render() calls" contract reliably.
+        // phpcs:disable WordPress.WP.EnqueuedResources.NonEnqueuedScript
         $out  = '<script>window.wpApiSettings='
               . wp_json_encode(['root' => $rest_root, 'nonce' => $rest_nonce])
               . ';</script>';
@@ -297,6 +301,7 @@ final class IframeLoader {
               . 'af.use(af.createNonceMiddleware(window.wpApiSettings.nonce));'
               . 'af.__dsgoConfigured=true;})();</script>';
         $out .= '<script src="' . esc_url($bridge_url) . '" defer></script>';
+        // phpcs:enable WordPress.WP.EnqueuedResources.NonEnqueuedScript
         return $out;
     }
 
@@ -307,14 +312,14 @@ final class IframeLoader {
      * because iframe-mode never passes through the inline renderer.
      */
     private static function iframe_app_relative_path(string $app_id): string {
-        $uri = $_SERVER['REQUEST_URI'] ?? '/';
-        $uri = is_string($uri) ? $uri : '/';
-        $req = parse_url($uri, PHP_URL_PATH);
+        $uri = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash((string) $_SERVER['REQUEST_URI'])) : '/';
+        if ($uri === '') $uri = '/';
+        $req = wp_parse_url($uri, PHP_URL_PATH);
         if (!is_string($req) || $req === '') {
             return '/';
         }
         // Trim any home subdirectory (WP installed at /sub/).
-        $home_path = parse_url(home_url('/'), PHP_URL_PATH);
+        $home_path = wp_parse_url(home_url('/'), PHP_URL_PATH);
         if (is_string($home_path) && $home_path !== '' && $home_path !== '/' && str_starts_with($req, $home_path)) {
             $req = substr($req, strlen(rtrim($home_path, '/')));
             if ($req === '') $req = '/';
@@ -333,8 +338,8 @@ final class IframeLoader {
     }
 
     private static function iframe_search_string(): string {
-        $qs = $_SERVER['QUERY_STRING'] ?? '';
-        return is_string($qs) && $qs !== '' ? '?' . $qs : '';
+        $qs = isset($_SERVER['QUERY_STRING']) ? sanitize_text_field(wp_unslash((string) $_SERVER['QUERY_STRING'])) : '';
+        return $qs !== '' ? '?' . $qs : '';
     }
 
     /**
@@ -372,9 +377,11 @@ final class IframeLoader {
             ob_start();
             try {
                 get_header();
-                echo '<main class="dsgo-error">' . $style;
+                // $style is a constant <style> block authored above; safe to echo.
+                echo '<main class="dsgo-error">' . $style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
                 echo '<p class="dsgo-error__status">' . esc_html((string) $status) . '</p>';
-                echo $title_html . $body_html . $home_link;
+                // $title_html / $body_html / $home_link were each built above with esc_html / esc_url.
+                echo $title_html . $body_html . $home_link; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
                 echo '</main>';
                 get_footer();
                 $rendered = (ob_get_length() ?: 0) > 0;
@@ -386,7 +393,8 @@ final class IframeLoader {
         }
         if (!$rendered) {
             $lang = esc_attr(str_replace('_', '-', get_locale()));
-            echo '<!doctype html><html lang="' . $lang . '"><head><meta charset="utf-8">'
+            // $lang/$style/$title_html/$body_html/$home_link are all pre-escaped above (esc_attr/esc_html/esc_url) or static authored markup.
+            echo '<!doctype html><html lang="' . $lang . '"><head><meta charset="utf-8">' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
                 . '<meta name="viewport" content="width=device-width,initial-scale=1">'
                 . '<title>' . esc_html($title) . '</title>'
                 . '<style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#1a1a1a;background:#fafaf7;margin:0}</style>'

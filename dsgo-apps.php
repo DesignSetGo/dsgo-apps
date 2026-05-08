@@ -4,7 +4,7 @@
  * Plugin URI:        https://designsetgo.com/apps
  * Description:       Sandboxed AND connected mini-apps for WordPress. Ship a static bundle, get a real indexable URL at /apps/{slug} — multi-page inline rendering with strict CSP, optional sandboxed iframe mode, and a permissioned bridge to your posts, pages, and users.
  * Version:           0.1.0
- * Requires at least: 6.5
+ * Requires at least: 6.9
  * Tested up to:      7.0
  * Requires PHP:      8.2
  * Author:            DesignSetGo
@@ -34,12 +34,12 @@ if (PHP_VERSION_ID < 80200) {
 }
 
 global $wp_version;
-if (version_compare((string) $wp_version, '6.5', '<')) {
+if (version_compare((string) $wp_version, '6.9', '<')) {
     add_action('admin_notices', static function (): void {
         global $wp_version;
         $msg = sprintf(
             /* translators: %s: current WordPress version */
-            __('DesignSetGo Apps requires WordPress 6.5 or higher. You are running %s.', 'dsgo-apps'),
+            __('DesignSetGo Apps requires WordPress 6.9 or higher. You are running %s.', 'dsgo-apps'),
             (string) $wp_version
         );
         echo '<div class="notice notice-error"><p>' . esc_html($msg) . '</p></div>';
