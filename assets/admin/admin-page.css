@@ -5,9 +5,9 @@
  * settings panel.
  */
 
-/* Shared design-system tokens — consumed by both .dsgo-admin (settings page)
- * and .dsgo-riff (Build-with-AI fullscreen). Keep this list canonical;
- * page-specific layers add only their own deltas (e.g. --dsgo-bg-2). */
+/* Shared design-system tokens. Surfaces that re-use this palette can adopt
+ * the `.dsgo-admin` class on their root element to inherit the tokens; this
+ * stylesheet is the canonical source so any drift is caught here. */
 .dsgo-admin,
 .dsgo-riff {
     --dsgo-bg:       #fbf9f4;

@@ -119,183 +119,27 @@
         del.setAttribute('aria-label', sprintf(__('Uninstall %s', 'dsgo-apps'), app.name || app.id));
         del.addEventListener('click', function () { confirmDelete(app); });
 
-        // Add an "Edit in Riff" deep-link next to the home/delete actions.
-        // The dsgo_app param is stable across draft expirations (drafts
-        // expire in 10 days; app_id is forever) and stays in the URL after
-        // page load so reload / bookmark / share-link all keep the user
-        // anchored to this app.
-        if (app.id) {
-            var editBtn = document.createElement('a');
-            editBtn.className = 'dsgo-applist__edit';
-            var editHref = window.location.pathname.replace(/[^/]*$/, '') +
-                'admin.php?page=dsgo-apps-build&dsgo_app=' + encodeURIComponent(app.id);
-            editBtn.href = editHref;
-            editBtn.textContent = __('Edit in Riff', 'dsgo-apps');
-            editBtn.setAttribute('aria-label', sprintf(__('Edit %s in Riff', 'dsgo-apps'), app.name || app.id));
-            // Insert between the URL field and the delete button so it
-            // reads naturally: "look at it / edit it / remove it".
-            var insertBefore = del || homeBtn || null;
-            if (insertBefore && insertBefore.parentNode) {
-                insertBefore.parentNode.insertBefore(editBtn, insertBefore);
-            } else {
-                node.appendChild(editBtn);
-            }
-        }
+        // Extension seam: Pro (or any third-party plugin enqueued on this
+        // page) listens for this event to inject row-level actions.
+        // detail.app: the app object from /dsgo/v1/apps; detail.node: the
+        // <li>; detail.beforeDelete: the delete button (insertion anchor).
+        document.dispatchEvent(new CustomEvent('dsgo:apps:row-rendered', {
+            detail: { app: app, node: node, beforeDelete: del },
+        }));
 
         return node;
     }
 
-    function fetchDrafts() {
-        return fetch(cfg.restRoot + 'harness/drafts', {
-            headers: { 'X-WP-Nonce': cfg.nonce, Accept: 'application/json' },
-            credentials: 'same-origin',
-        }).then(function (r) {
-            if (!r.ok) return { drafts: [] }; // soft-fail — drafts are optional
-            return r.json();
-        }).catch(function () { return { drafts: [] }; });
-    }
-
-    function renderDraftRow(draft) {
-        var li = document.createElement('li');
-        li.className = 'dsgo-applist__row dsgo-applist__row--draft';
-        li.dataset.token = draft.token;
-
-        var main = document.createElement('div');
-        main.className = 'dsgo-applist__main';
-
-        var titleRow = document.createElement('div');
-        titleRow.className = 'dsgo-applist__title-row';
-
-        var title = document.createElement('span');
-        title.className = 'dsgo-applist__title';
-        title.textContent = draft.name || draft.app_id || __('Untitled draft', 'dsgo-apps');
-
-        // Reuse the home-badge pill shape; the accent + uppercase text is
-        // enough to distinguish a draft visually without adding CSS surface.
-        var badge = document.createElement('span');
-        badge.className = 'dsgo-applist__home-badge';
-        badge.textContent = __('DRAFT', 'dsgo-apps');
-
-        titleRow.appendChild(title);
-        titleRow.appendChild(badge);
-        main.appendChild(titleRow);
-
-        var meta = document.createElement('div');
-        meta.className = 'dsgo-applist__meta';
-        var bits = [];
-        if (draft.app_id) bits.push(draft.app_id);
-        if (draft.version) bits.push('v' + draft.version);
-        if (draft.expires_at) {
-            var hrs = Math.max(0, Math.round((new Date(draft.expires_at).getTime() - Date.now()) / 36e5));
-            bits.push(sprintf(__('expires in %dh', 'dsgo-apps'), hrs));
-        }
-        meta.textContent = bits.join('  ·  ');
-        main.appendChild(meta);
-
-        li.appendChild(main);
-
-        // Actions
-        var openBtn = document.createElement('a');
-        openBtn.className = 'dsgo-applist__url';
-        // Include BOTH params for drafts so Riff can fall back gracefully:
-        // dsgo_app finds an existing session for that app (most useful when
-        // the draft was generated against an already-installed app);
-        // dsgo_open hydrates from the draft zip when no installed bundle
-        // exists yet. Riff prefers app-by-id, then falls through to draft.
-        var openHref = window.location.pathname.replace(/[^/]*$/, '') +
-            'admin.php?page=dsgo-apps-build';
-        if (draft.app_id) {
-            openHref += '&dsgo_app=' + encodeURIComponent(draft.app_id);
-        }
-        if (draft.token) {
-            openHref += '&dsgo_open=' + encodeURIComponent(draft.token);
-        }
-        openBtn.href = openHref;
-        openBtn.textContent = __('Open in Riff ↗', 'dsgo-apps');
-        li.appendChild(openBtn);
-
-        var deployBtn = document.createElement('button');
-        deployBtn.type = 'button';
-        deployBtn.className = 'dsgo-applist__home';
-        deployBtn.textContent = __('Deploy', 'dsgo-apps');
-        deployBtn.addEventListener('click', function () { deployDraft(draft, deployBtn); });
-        li.appendChild(deployBtn);
-
-        var discardBtn = document.createElement('button');
-        discardBtn.type = 'button';
-        discardBtn.className = 'dsgo-applist__delete';
-        discardBtn.setAttribute('aria-label', sprintf(__('Discard draft %s', 'dsgo-apps'), draft.name || draft.app_id));
-        discardBtn.textContent = __('Discard', 'dsgo-apps');
-        discardBtn.addEventListener('click', function () { discardDraft(draft, li); });
-        li.appendChild(discardBtn);
-
-        return li;
-    }
-
-    function deployDraft(draft, btn) {
-        btn.disabled = true;
-        btn.textContent = __('Deploying…', 'dsgo-apps');
-        fetch(cfg.restRoot + 'harness/deploy', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'X-WP-Nonce': cfg.nonce, 'Content-Type': 'application/json', Accept: 'application/json' },
-            body: JSON.stringify({ token: draft.token }),
-        }).then(function (r) {
-            return r.json().then(function (body) { return { ok: r.ok, body: body }; });
-        }).then(function (res) {
-            if (!res.ok || !res.body || res.body.ok === false) {
-                btn.disabled = false;
-                btn.textContent = __('Deploy', 'dsgo-apps');
-                window.alert(sprintf(__('Deploy failed: %s', 'dsgo-apps'), (res.body && res.body.message) || 'unknown'));
-                return;
-            }
-            refresh();
-        }).catch(function (err) {
-            btn.disabled = false;
-            btn.textContent = __('Deploy', 'dsgo-apps');
-            window.alert(sprintf(__('Deploy failed: %s', 'dsgo-apps'), err.message));
-        });
-    }
-
-    function discardDraft(draft, rowEl) {
-        if (!window.confirm(sprintf(__('Discard the draft “%s”? This cannot be undone.', 'dsgo-apps'), draft.name || draft.app_id))) return;
-        fetch(cfg.restRoot + 'harness/draft/' + encodeURIComponent(draft.token), {
-            method: 'DELETE',
-            credentials: 'same-origin',
-            headers: { 'X-WP-Nonce': cfg.nonce, Accept: 'application/json' },
-        }).then(function () { rowEl.remove(); refresh(); });
-    }
-
-    function renderDrafts(drafts) {
-        // Remove any prior draft rows so refresh() is idempotent.
-        Array.prototype.slice.call(listEl.querySelectorAll('.dsgo-applist__row--draft, .dsgo-applist__draft-heading')).forEach(function (n) { n.remove(); });
-        if (!Array.isArray(drafts) || drafts.length === 0) return;
-
-        // Lightweight heading — reuses .dsgo-applist__empty for muted text styling.
-        var heading = document.createElement('li');
-        heading.className = 'dsgo-applist__empty dsgo-applist__draft-heading';
-        heading.style.fontWeight = '600';
-        heading.style.textTransform = 'uppercase';
-        heading.style.fontSize = '11px';
-        heading.style.letterSpacing = '0.08em';
-        heading.style.padding = '12px 0 6px';
-        heading.textContent = sprintf(__('Drafts (%d) — not yet deployed', 'dsgo-apps'), drafts.length);
-        listEl.insertBefore(heading, listEl.firstChild);
-
-        // Insert in reverse so newest ends up at top under the heading.
-        for (var i = drafts.length - 1; i >= 0; i--) {
-            listEl.insertBefore(renderDraftRow(drafts[i]), heading.nextSibling);
-        }
-    }
-
     function refresh() {
         listEl.setAttribute('aria-busy', 'true');
-        return Promise.all([fetchApps(), fetchDrafts()])
-            .then(function (results) {
-                renderList(results[0]);
-                var draftsPayload = results[1] || {};
-                var drafts = Array.isArray(draftsPayload.drafts) ? draftsPayload.drafts : [];
-                renderDrafts(drafts);
+        return fetchApps()
+            .then(function (payload) {
+                renderList(payload);
+                // Extension seam: dispatched after the full list re-renders so
+                // Pro can repaint its drafts heading / supplemental rows.
+                document.dispatchEvent(new CustomEvent('dsgo:apps:list-refreshed', {
+                    detail: { apps: apps, listEl: listEl },
+                }));
             })
             .catch(function (err) {
                 clearChildren(listEl);
@@ -306,6 +150,10 @@
                 listSubtitle.textContent = __('Failed to load.', 'dsgo-apps');
             });
     }
+
+    // Public API: extensions can call window.DSGoAdminPage.refresh() after
+    // mutating server state (e.g. deploying a draft → installs an app).
+    window.DSGoAdminPage = { refresh: refresh };
 
     // ─── Consent panels ─────────────────────────────────────────────────
 
