@@ -76,6 +76,60 @@ final class Plugin {
             // Slug must be all-lowercase letters; see SitemapProvider::$name.
             $sitemaps->registry->add_provider('dsgoapps', new SitemapProvider());
         });
+        // When a post is saved or deleted, dynamic-route renders that
+        // resolved against a live `wp:posts` / `wp:pages` / `wp:cpt:<slug>`
+        // source can be stale. Bump the per-app render-cache version on
+        // every install so the next request re-resolves the entry. Cheap:
+        // it just rotates a UUID in a single option, and only fires on
+        // post-status transitions and explicit deletes.
+        add_action('save_post', [self::class, 'invalidate_dynamic_route_cache_for_post'], 10, 2);
+        add_action('deleted_post', [self::class, 'invalidate_dynamic_route_cache_for_post'], 10, 2);
+    }
+
+    /**
+     * Bump the render-cache version on every installed DSGo app whose
+     * manifest declares at least one route backed by a `wp:*` live source
+     * for this post's post type. Limits the work to apps that actually
+     * care about this content, instead of clobbering every app's cache.
+     */
+    public static function invalidate_dynamic_route_cache_for_post(int $post_id, $post = null): void {
+        $post = $post instanceof \WP_Post ? $post : get_post($post_id);
+        if (!$post instanceof \WP_Post) {
+            return;
+        }
+        // Skip post revisions and autosaves — they aren't reachable through
+        // a live data source (revisions are post_type=revision; autosaves
+        // are post_status=auto-draft).
+        if (wp_is_post_revision($post)) return;
+        if ($post->post_status === 'auto-draft' || $post->post_status === 'inherit') return;
+
+        $type = $post->post_type;
+        $matching_sources = [];
+        if ($type === 'post') $matching_sources[] = 'wp:posts';
+        if ($type === 'page') $matching_sources[] = 'wp:pages';
+        $matching_sources[] = 'wp:cpt:' . $type;
+
+        $apps = get_posts([
+            'post_type'      => PostType::SLUG,
+            'post_status'    => 'publish',
+            'posts_per_page' => -1,
+            'no_found_rows'  => true,
+            'fields'         => 'ids',
+        ]);
+        foreach ($apps as $app_post_id) {
+            $manifest = get_post_meta((int) $app_post_id, 'dsgo_apps_manifest', true);
+            if (!is_array($manifest) || empty($manifest['routes'])) continue;
+            foreach ($manifest['routes'] as $route) {
+                $src = $route['dataset']['source'] ?? null;
+                if (is_string($src) && in_array($src, $matching_sources, true)) {
+                    $app_id = $manifest['id'] ?? null;
+                    if (is_string($app_id) && $app_id !== '') {
+                        InlineRenderer::bump_cache_version($app_id);
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     public static function activate(): void {
