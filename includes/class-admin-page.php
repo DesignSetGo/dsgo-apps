@@ -122,6 +122,17 @@ final class AdminPage {
                 <p class="dsgo-admin__lede">
                     <?php esc_html_e('Sandboxed mini-apps with a permissioned bridge to your site’s data. Drop in a bundle, or deploy from your terminal.', 'dsgo-apps'); ?>
                 </p>
+                <?php
+                /**
+                 * Single extension point for Pro (or any third party) to inject
+                 * page-level actions into the apps-list admin surface. Free
+                 * intentionally has zero references to Pro — Pro registers a
+                 * listener on this hook from its own bootstrap.
+                 *
+                 * @param array{page:string} $context
+                 */
+                do_action('dsgo_apps_admin_actions', ['page' => 'apps-list']);
+                ?>
             </header>
 
             <div class="dsgo-admin__grid">
