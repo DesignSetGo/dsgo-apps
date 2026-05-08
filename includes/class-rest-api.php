@@ -144,6 +144,15 @@ final class RestApi {
             'callback'            => [self::class, 'email_send'],
             'permission_callback' => static fn () => is_user_logged_in(),
         ]);
+        // media.upload — core, opt-out: every app gets it unless the manifest
+        // sets `media.uploads: false`. The visitor must hold the WP
+        // `upload_files` capability (Author+ by default), so anonymous and
+        // contributor-tier visitors can never reach the bridge handler.
+        register_rest_route(self::NAMESPACE, "/apps/$app_id_re/media/upload", [
+            'methods'             => 'POST',
+            'callback'            => [self::class, 'media_upload'],
+            'permission_callback' => static fn () => is_user_logged_in() && current_user_can('upload_files'),
+        ]);
     }
 
     public static function list_apps(\WP_REST_Request $req): \WP_REST_Response {
@@ -754,6 +763,38 @@ final class RestApi {
         if (isset($result['reason']))        $body['reason'] = $result['reason'];
         if (isset($result['wp_error_code'])) $body['wp_error_code'] = $result['wp_error_code'];
         return new \WP_REST_Response($body, $status);
+    }
+
+    public static function media_upload(\WP_REST_Request $req): \WP_REST_Response {
+        $manifest = self::load_manifest_for_request($req);
+        if ($manifest === null) {
+            return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
+        }
+        if (!MediaBridge::is_enabled_for_app($manifest)) {
+            return new \WP_REST_Response(
+                ['code' => 'permission_denied', 'message' => 'media uploads are disabled for this app'],
+                403,
+            );
+        }
+        $files = $req->get_file_params();
+        $file  = isset($files['file']) && is_array($files['file']) ? $files['file'] : [];
+        $params = [
+            'filename' => $req->get_param('filename'),
+            'alt_text' => $req->get_param('alt_text'),
+        ];
+        $result = MediaBridge::upload($manifest, get_current_user_id(), $file, $params);
+        if ($result['ok']) {
+            return new \WP_REST_Response($result['data'], 201);
+        }
+        $status = match ($result['code']) {
+            'permission_denied' => 403,
+            'not_authenticated' => 401,
+            'invalid_params'    => 400,
+            'rate_limited'      => 429,
+            'payload_too_large' => 413,
+            default             => 500,
+        };
+        return new \WP_REST_Response(['code' => $result['code'], 'message' => $result['message'] ?? ''], $status);
     }
 
     public static function email_send(\WP_REST_Request $req): \WP_REST_Response {

@@ -89,6 +89,13 @@ final readonly class Manifest {
         public array $abilities_publishes = [],
         /** @var EmailRecipient[] */
         public array $email_recipients = [],
+        /**
+         * Whether the app may call `dsgo.media.upload()`. Core, opt-out: every
+         * app gets media uploads unless the manifest declares `media.uploads:
+         * false`. Capability gating piggybacks on WP's `upload_files`, so the
+         * default is safe — only Authors+ can actually upload at runtime.
+         */
+        public bool $media_uploads_enabled = true,
     ) {}
 
     public static function validate(array $raw): self {
@@ -528,6 +535,24 @@ final readonly class Manifest {
             throw new ManifestError('abilities.consumes', 'abilities_consumes_required: must be present when "abilities" is in permissions.read');
         }
 
+        // Media block — every key is optional, used only to opt out of the
+        // core media-upload feature. No corresponding permission entry: the
+        // bridge defaults the feature ON for every app and gates uploads on
+        // the WP `upload_files` capability of the rendering visitor.
+        $media_uploads_enabled = true;
+        if (array_key_exists('media', $raw)) {
+            if (!is_array($raw['media'])) {
+                throw new ManifestError('media', 'must be an object');
+            }
+            if (array_key_exists('uploads', $raw['media'])) {
+                $val = $raw['media']['uploads'];
+                if (!is_bool($val)) {
+                    throw new ManifestError('media.uploads', 'must be a boolean');
+                }
+                $media_uploads_enabled = $val;
+            }
+        }
+
         $external = [];
         if (array_key_exists('external_origins', $raw['runtime'])) {
             if (!is_array($raw['runtime']['external_origins'])) {
@@ -621,6 +646,7 @@ final readonly class Manifest {
             ai_timeout_seconds: $ai_timeout_seconds,
             abilities_publishes: $abilities_publishes,
             email_recipients: $email_recipients,
+            media_uploads_enabled: $media_uploads_enabled,
         );
     }
 
@@ -842,6 +868,7 @@ final readonly class Manifest {
                 static fn ($v) => is_string($v) ? EmailRecipient::tryFrom($v) : null,
                 is_array($raw['email']['recipients'] ?? null) ? $raw['email']['recipients'] : [],
             ))),
+            media_uploads_enabled: !isset($raw['media']['uploads']) || $raw['media']['uploads'] !== false,
         );
     }
 
@@ -907,6 +934,11 @@ final readonly class Manifest {
             $out['email'] = [
                 'recipients' => array_map(fn (EmailRecipient $r) => $r->value, $this->email_recipients),
             ];
+        }
+        // Only emit `media` when the app opts out — keeping the manifest
+        // round-trip stable for the (overwhelmingly common) default-on case.
+        if ($this->media_uploads_enabled === false) {
+            $out['media'] = ['uploads' => false];
         }
         return $out;
     }

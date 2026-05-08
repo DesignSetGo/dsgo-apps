@@ -25,6 +25,8 @@ class PermissionsTest extends WP_UnitTestCase {
         $this->assertNull(Permissions::required('storage.user.get'));
         $this->assertNull(Permissions::required('storage.user.set'));
         $this->assertNull(Permissions::required('bridge.ping'));
+        // media.upload is core/opt-out — no manifest permission required.
+        $this->assertNull(Permissions::required('media.upload'));
     }
 
     public function test_unknown_method_throws(): void {

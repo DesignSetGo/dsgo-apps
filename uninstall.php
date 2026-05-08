@@ -55,13 +55,17 @@ $wpdb->query(
             OR option_name LIKE %s
             OR option_name LIKE %s
             OR option_name LIKE %s
+            OR option_name LIKE %s
+            OR option_name LIKE %s
             OR option_name LIKE %s",
         $wpdb->esc_like('dsgo_apps_') . '%',
         $wpdb->esc_like('dsgo_app_cache_version_') . '%',
         $wpdb->esc_like('_transient_dsgo_email_rate_') . '%',
         $wpdb->esc_like('_transient_timeout_dsgo_email_rate_') . '%',
         $wpdb->esc_like('_transient_dsgo_ai_rate_') . '%',
-        $wpdb->esc_like('_transient_timeout_dsgo_ai_rate_') . '%'
+        $wpdb->esc_like('_transient_timeout_dsgo_ai_rate_') . '%',
+        $wpdb->esc_like('_transient_dsgo_media_rate_') . '%',
+        $wpdb->esc_like('_transient_timeout_dsgo_media_rate_') . '%'
     )
 );
 
