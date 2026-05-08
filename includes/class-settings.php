@@ -70,8 +70,22 @@ final class Settings {
         return $value;
     }
 
+    /**
+     * Build the URL path under which an app is served, sans trailing slash.
+     * Returns '/{prefix}/{id}' normally, or '/{id}' when the prefix is empty.
+     * Caller is expected to pass a non-empty $app_id; passing '' would yield
+     * '/' and conflict with the existing root-mount-mode special case.
+     */
+    public static function app_base_path(string $app_id): string {
+        $prefix = self::get_url_prefix();
+        return $prefix === '' ? '/' . $app_id : '/' . $prefix . '/' . $app_id;
+    }
+
     public static function is_valid_url_prefix(string $candidate): bool {
-        if ($candidate === '') return false;
+        // Empty = "no prefix" mode; apps mount at /{slug} directly. Reserved-name
+        // and shape rules below only run for non-empty input — there's no path
+        // segment to clash with WP internals when the prefix is empty.
+        if ($candidate === '') return true;
         if (strlen($candidate) > 31) return false;
         if (!preg_match('/^[a-z][a-z0-9-]{0,30}$/', $candidate)) return false;
         if (in_array($candidate, self::RESERVED_PREFIXES, true)) return false;
@@ -94,7 +108,7 @@ final class Settings {
                 'invalid_prefix',
                 sprintf(
                     /* translators: %s: prefix the user submitted */
-                    __('"%s" is not a valid URL prefix. Use 1–31 lowercase letters, digits, or hyphens, starting with a letter, and avoid reserved WordPress paths.', 'dsgo-apps'),
+                    __('"%s" is not a valid URL prefix. Use up to 31 lowercase letters, digits, or hyphens, starting with a letter, or leave blank to mount apps at the site root. Reserved WordPress paths are rejected.', 'dsgo-apps'),
                     $candidate === '' ? '(empty)' : $candidate,
                 ),
             );
@@ -179,16 +193,24 @@ final class Settings {
         }
         $css      = plugins_url('assets/admin/admin-page.css', DSGO_APPS_FILE);
         $css_path = DSGO_APPS_PATH . 'assets/admin/admin-page.css';
-        $ver      = file_exists($css_path) ? (string) (int) filemtime($css_path) : '0';
-        wp_enqueue_style('dsgo-admin-page', $css, [], $ver);
+        $css_ver  = file_exists($css_path) ? (string) (int) filemtime($css_path) : '0';
+        wp_enqueue_style('dsgo-admin-page', $css, [], $css_ver);
+
+        $js      = plugins_url('assets/admin/settings-page.js', DSGO_APPS_FILE);
+        $js_path = DSGO_APPS_PATH . 'assets/admin/settings-page.js';
+        $js_ver  = file_exists($js_path) ? (string) (int) filemtime($js_path) : '0';
+        wp_enqueue_script('dsgo-settings-page', $js, [], $js_ver, true);
     }
 
     public static function render_settings_page(): void {
         if (!current_user_can('manage_options')) return;
-        $prefix      = self::get_url_prefix();
-        $root_slug   = self::get_root_app_id();
-        $apps_url    = admin_url('admin.php?page=' . AdminPage::MENU_SLUG);
+        $prefix        = self::get_url_prefix();
+        $no_prefix     = $prefix === '';
+        $root_slug     = self::get_root_app_id();
+        $apps_url      = admin_url('admin.php?page=' . AdminPage::MENU_SLUG);
         $share_content = (bool) get_option(self::OPTION_HARNESS_SHARE_CONTENT, false);
+        $home          = untrailingslashit(home_url('/'));
+        $sample_slug   = $root_slug !== null ? $root_slug : 'my-app';
         ?>
         <div class="dsgo-admin dsgo-admin--settings">
             <header class="dsgo-admin__hero">
@@ -213,11 +235,28 @@ final class Settings {
                     <header class="dsgo-card__header">
                         <h2 id="dsgo-settings-prefix-heading" class="dsgo-card__title"><?php esc_html_e('URL prefix', 'dsgo-apps'); ?></h2>
                         <p class="dsgo-card__subtitle">
-                            <?php esc_html_e('The path segment under which prefixed-mount apps are served. Each app gets its own slug below this.', 'dsgo-apps'); ?>
+                            <?php esc_html_e('The path segment under which prefixed-mount apps are served. Each app gets its own slug below this — or remove the prefix to mount apps directly at the site root.', 'dsgo-apps'); ?>
                         </p>
                     </header>
 
-                    <div class="dsgo-field">
+                    <div class="dsgo-field dsgo-field--toggle">
+                        <label class="dsgo-toggle">
+                            <input
+                                type="checkbox"
+                                id="dsgo_apps_url_prefix_enabled"
+                                <?php checked(!$no_prefix); ?>
+                                data-dsgo-prefix-toggle
+                            />
+                            <span class="dsgo-toggle__label">
+                                <strong><?php esc_html_e('Use a URL prefix', 'dsgo-apps'); ?></strong>
+                                <span class="dsgo-field__hint">
+                                    <?php esc_html_e('Recommended. Keeps app URLs grouped under one path (e.g. /apps/my-app) and avoids slug collisions with anything else on your site — pages, posts, custom post types, archives, or other plugin URLs.', 'dsgo-apps'); ?>
+                                </span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div class="dsgo-field<?php echo $no_prefix ? ' dsgo-field--disabled' : ''; ?>" data-dsgo-prefix-field>
                         <label class="dsgo-field__label" for="dsgo_apps_url_prefix">
                             <?php esc_html_e('Path segment', 'dsgo-apps'); ?>
                         </label>
@@ -238,7 +277,27 @@ final class Settings {
                             <code class="dsgo-prefix-row__token">/{app}/{path}</code>
                         </div>
                         <p class="dsgo-field__hint">
-                            <?php esc_html_e('Lowercase letters, digits, hyphens. 1–31 chars. Must start with a letter. Default: "apps". Reserved WordPress paths are rejected.', 'dsgo-apps'); ?>
+                            <?php esc_html_e('Lowercase letters, digits, hyphens. 1–31 chars. Must start with a letter. Default: "apps". Reserved WordPress paths are rejected. Leave blank to mount apps at the site root.', 'dsgo-apps'); ?>
+                        </p>
+                    </div>
+
+                    <div class="dsgo-prefix-preview" aria-live="polite">
+                        <p class="dsgo-prefix-preview__label"><?php esc_html_e('Apps will be served at:', 'dsgo-apps'); ?></p>
+                        <p class="dsgo-prefix-preview__url">
+                            <code data-dsgo-prefix-preview
+                                  data-home="<?php echo esc_attr($home); ?>"
+                                  data-slug="<?php echo esc_attr($sample_slug); ?>">
+                                <?php
+                                if ($no_prefix) {
+                                    echo esc_html($home . '/' . $sample_slug);
+                                } else {
+                                    echo esc_html($home . '/' . $prefix . '/' . $sample_slug);
+                                }
+                                ?>
+                            </code>
+                        </p>
+                        <p class="dsgo-prefix-preview__warn" data-dsgo-prefix-warn<?php echo $no_prefix ? '' : ' hidden'; ?>>
+                            <?php esc_html_e('Heads up: with no prefix, an app slug that matches any other path on this site (a page, post, custom-post-type permalink, archive base, or a URL registered by another plugin) will not load — the other content wins. Pick app slugs that don\'t collide.', 'dsgo-apps'); ?>
                         </p>
                     </div>
                 </section>
@@ -277,6 +336,13 @@ final class Settings {
                     <?php endif; ?>
                 </section>
 
+                <?php
+                // The "share recent content" toggle is only consumed by the Pro
+                // harness's get_recent_posts tool. Hide the UI when Pro isn't
+                // active — the option is still registered above so any saved
+                // value persists across Pro disable/enable.
+                if (defined('DSGO_APPS_PRO_VERSION')) :
+                ?>
                 <section class="dsgo-card" aria-labelledby="dsgo-settings-ai-context-heading">
                     <header class="dsgo-card__header">
                         <h2 id="dsgo-settings-ai-context-heading" class="dsgo-card__title"><?php esc_html_e('AI authoring context', 'dsgo-apps'); ?></h2>
@@ -302,6 +368,7 @@ final class Settings {
                         </label>
                     </div>
                 </section>
+                <?php endif; ?>
 
                 <div class="dsgo-actions dsgo-actions--settings">
                     <button type="submit" class="button button-primary button-hero" name="submit">
