@@ -1,0 +1,26 @@
+{
+  "name": "designsetgo/apps",
+  "description": "DesignSetGo Apps — sandboxed mini-app runtime for WordPress",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=8.2"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9.6",
+    "yoast/phpunit-polyfills": "^1.1",
+    "wp-coding-standards/wpcs": "^3.0",
+    "phpcompatibility/phpcompatibility-wp": "^2.1",
+    "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+    "doctrine/instantiator": "^1.5 || ~2.0.0"
+  },
+  "config": {
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    }
+  },
+  "scripts": {
+    "test": "phpunit -c tests/php/phpunit.xml.dist",
+    "lint": "phpcs --standard=WordPress-Extra --extensions=php includes/ dsgo-apps.php uninstall.php"
+  }
+}
