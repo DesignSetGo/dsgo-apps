@@ -153,6 +153,16 @@ final class RestApi {
             'callback'            => [self::class, 'media_upload'],
             'permission_callback' => static fn () => is_user_logged_in() && current_user_can('upload_files'),
         ]);
+
+        // Commerce — single dispatcher route. Action path is "<group>/<verb>"
+        // e.g. "products/list", "cart/add-item", "checkout/open-hosted-page".
+        // Permissions checked inside the callback against manifest.commerce.
+        $commerce_action_re = '(?P<commerce_action>[a-z][a-z0-9_-]*\/[a-z][a-z0-9_-]*)';
+        register_rest_route(self::NAMESPACE, "/apps/$app_id_re/commerce/$commerce_action_re", [
+            'methods'             => 'POST',
+            'callback'            => [self::class, 'commerce_invoke'],
+            'permission_callback' => '__return_true',
+        ]);
     }
 
     public static function list_apps(\WP_REST_Request $req): \WP_REST_Response {
@@ -810,6 +820,41 @@ final class RestApi {
             default             => 500,
         };
         return new \WP_REST_Response(['code' => $result['code'], 'message' => $result['message'] ?? ''], $status);
+    }
+
+    public static function commerce_invoke(\WP_REST_Request $req): \WP_REST_Response {
+        $manifest = self::load_manifest_for_request($req);
+        if ($manifest === null) {
+            return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
+        }
+        if (!in_array(Permission::Commerce, $manifest->permissions_read, true)) {
+            return new \WP_REST_Response(['code' => 'permission_denied', 'message' => 'app lacks "commerce" permission'], 403);
+        }
+        $raw_action = (string) $req['commerce_action'];
+        // Wire format uses "products/list" etc.; bridge action is "products.list".
+        $action = str_replace(['/', '-'], ['.', '_'], $raw_action);
+        $params = $req->get_param('params');
+        if ($params !== null && !is_array($params)) {
+            return new \WP_REST_Response(['code' => 'invalid_params', 'message' => '"params" must be an object when provided'], 400);
+        }
+        $result = CommerceBridge::invoke($action, $params ?? [], $manifest, get_current_user_id());
+        if ($result['ok']) {
+            return new \WP_REST_Response($result['data'] ?? null, 200);
+        }
+        $status = match ($result['code']) {
+            'permission_denied' => 403,
+            'not_authenticated' => 401,
+            'not_found'         => 404,
+            'invalid_params'    => 400,
+            'rate_limited'      => 429,
+            'unknown_method'    => 404,
+            'not_implemented'   => 501,
+            default             => 500,
+        };
+        $body = ['code' => $result['code'], 'message' => $result['message'] ?? ''];
+        if (isset($result['reason']))        $body['reason'] = $result['reason'];
+        if (isset($result['wp_error_code'])) $body['wp_error_code'] = $result['wp_error_code'];
+        return new \WP_REST_Response($body, $status);
     }
 
     public static function email_send(\WP_REST_Request $req): \WP_REST_Response {

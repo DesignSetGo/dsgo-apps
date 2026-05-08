@@ -28,6 +28,7 @@ enum Permission: string {
     case Ai        = 'ai';
     case Abilities = 'abilities';
     case Email     = 'email';
+    case Commerce  = 'commerce';
 }
 
 enum EmailRecipient: string {
@@ -101,6 +102,10 @@ final readonly class Manifest {
          * default is safe — only Authors+ can actually upload at runtime.
          */
         public bool $media_uploads_enabled = true,
+        /** @var string[] commerce providers e.g. ["woocommerce"] */
+        public array $commerce_providers = [],
+        /** @var string[] commerce endpoints e.g. ["products","cart","checkout"] */
+        public array $commerce_endpoints = [],
     ) {}
 
     public static function validate(array $raw): self {
@@ -574,6 +579,58 @@ final readonly class Manifest {
             }
         }
 
+        // Commerce — required when "commerce" permission is present.
+        // Mirrors abilities.consumes shape: typed allow-list, providers + endpoints.
+        $commerce_providers = [];
+        $commerce_endpoints = [];
+        $has_commerce_perm = in_array(Permission::Commerce, $perms, true);
+        if (array_key_exists('commerce', $raw)) {
+            if (!$has_commerce_perm) {
+                throw new ManifestError('commerce', 'commerce_options_misplaced: "commerce" options require "commerce" in permissions.read');
+            }
+            if (!is_array($raw['commerce'])) {
+                throw new ManifestError('commerce', 'must be an object');
+            }
+            if (!array_key_exists('providers', $raw['commerce'])) {
+                throw new ManifestError('commerce.providers', 'commerce_providers_required: must be present when "commerce" is in permissions.read');
+            }
+            if (!is_array($raw['commerce']['providers']) || $raw['commerce']['providers'] === []) {
+                throw new ManifestError('commerce.providers', 'must be a non-empty array');
+            }
+            $allowed_providers = ['woocommerce'];
+            $seen_p = [];
+            foreach ($raw['commerce']['providers'] as $i => $p) {
+                if (!is_string($p) || !in_array($p, $allowed_providers, true)) {
+                    throw new ManifestError("commerce.providers[$i]", sprintf('"%s" is not a supported provider (v1: woocommerce)', is_scalar($p) ? (string) $p : gettype($p)));
+                }
+                if (isset($seen_p[$p])) {
+                    throw new ManifestError("commerce.providers[$i]", sprintf('commerce_providers_duplicate: "%s"', $p));
+                }
+                $seen_p[$p] = true;
+                $commerce_providers[] = $p;
+            }
+            if (!array_key_exists('endpoints', $raw['commerce'])) {
+                throw new ManifestError('commerce.endpoints', 'commerce_endpoints_required: must be present when "commerce" is in permissions.read');
+            }
+            if (!is_array($raw['commerce']['endpoints']) || $raw['commerce']['endpoints'] === []) {
+                throw new ManifestError('commerce.endpoints', 'must be a non-empty array');
+            }
+            $allowed_endpoints = ['products', 'cart', 'checkout'];
+            $seen_e = [];
+            foreach ($raw['commerce']['endpoints'] as $i => $e) {
+                if (!is_string($e) || !in_array($e, $allowed_endpoints, true)) {
+                    throw new ManifestError("commerce.endpoints[$i]", sprintf('"%s" must be one of products, cart, checkout', is_scalar($e) ? (string) $e : gettype($e)));
+                }
+                if (isset($seen_e[$e])) {
+                    throw new ManifestError("commerce.endpoints[$i]", sprintf('commerce_endpoints_duplicate: "%s"', $e));
+                }
+                $seen_e[$e] = true;
+                $commerce_endpoints[] = $e;
+            }
+        } elseif ($has_commerce_perm) {
+            throw new ManifestError('commerce', 'commerce_options_required: must be present when "commerce" is in permissions.read');
+        }
+
         $external = [];
         if (array_key_exists('external_origins', $raw['runtime'])) {
             if (!is_array($raw['runtime']['external_origins'])) {
@@ -668,6 +725,8 @@ final readonly class Manifest {
             abilities_publishes: $abilities_publishes,
             email_recipients: $email_recipients,
             media_uploads_enabled: $media_uploads_enabled,
+            commerce_providers: $commerce_providers,
+            commerce_endpoints: $commerce_endpoints,
         );
     }
 
@@ -890,6 +949,12 @@ final readonly class Manifest {
                 is_array($raw['email']['recipients'] ?? null) ? $raw['email']['recipients'] : [],
             ))),
             media_uploads_enabled: !isset($raw['media']['uploads']) || $raw['media']['uploads'] !== false,
+            commerce_providers: is_array($raw['commerce']['providers'] ?? null)
+                ? array_values(array_filter($raw['commerce']['providers'], 'is_string'))
+                : [],
+            commerce_endpoints: is_array($raw['commerce']['endpoints'] ?? null)
+                ? array_values(array_filter($raw['commerce']['endpoints'], 'is_string'))
+                : [],
         );
     }
 
@@ -960,6 +1025,12 @@ final readonly class Manifest {
         // round-trip stable for the (overwhelmingly common) default-on case.
         if ($this->media_uploads_enabled === false) {
             $out['media'] = ['uploads' => false];
+        }
+        if ($this->commerce_providers !== [] || $this->commerce_endpoints !== []) {
+            $out['commerce'] = [
+                'providers' => $this->commerce_providers,
+                'endpoints' => $this->commerce_endpoints,
+            ];
         }
         return $out;
     }

@@ -1100,4 +1100,81 @@ class ManifestTest extends WP_UnitTestCase {
         $this->expectExceptionMessageMatches('/boolean/i');
         Manifest::validate($arr);
     }
+
+    // --- Commerce permission --------------------------------------------------
+
+    public function test_permission_enum_includes_commerce(): void {
+        $this->assertSame('commerce', Permission::Commerce->value);
+    }
+
+    public function test_commerce_permission_requires_commerce_block(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['permissions']['read'][] = 'commerce';
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessageMatches('/commerce_options_required|commerce/i');
+        Manifest::validate($arr);
+    }
+
+    public function test_commerce_block_without_commerce_permission_rejected(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['commerce'] = ['providers' => ['woocommerce'], 'endpoints' => ['products']];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessageMatches('/commerce_options_misplaced|commerce/i');
+        Manifest::validate($arr);
+    }
+
+    public function test_commerce_providers_required(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['permissions']['read'][] = 'commerce';
+        $arr['commerce'] = ['endpoints' => ['products']];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessageMatches('/commerce_providers_required|providers/i');
+        Manifest::validate($arr);
+    }
+
+    public function test_commerce_providers_rejects_unknown(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['permissions']['read'][] = 'commerce';
+        $arr['commerce'] = ['providers' => ['shopify'], 'endpoints' => ['products']];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessageMatches('/woocommerce|provider/i');
+        Manifest::validate($arr);
+    }
+
+    public function test_commerce_endpoints_required(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['permissions']['read'][] = 'commerce';
+        $arr['commerce'] = ['providers' => ['woocommerce']];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessageMatches('/commerce_endpoints_required|endpoints/i');
+        Manifest::validate($arr);
+    }
+
+    public function test_commerce_endpoints_rejects_unknown(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['permissions']['read'][] = 'commerce';
+        $arr['commerce'] = ['providers' => ['woocommerce'], 'endpoints' => ['orders']];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessageMatches('/products.*cart.*checkout|endpoints/i');
+        Manifest::validate($arr);
+    }
+
+    public function test_commerce_endpoints_rejects_duplicates(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['permissions']['read'][] = 'commerce';
+        $arr['commerce'] = ['providers' => ['woocommerce'], 'endpoints' => ['products', 'products']];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessageMatches('/duplicate/i');
+        Manifest::validate($arr);
+    }
+
+    public function test_commerce_to_array_round_trips(): void {
+        $arr = $this->valid_inline_manifest();
+        $arr['permissions']['read'][] = 'commerce';
+        $arr['commerce'] = ['providers' => ['woocommerce'], 'endpoints' => ['products', 'cart', 'checkout']];
+        $manifest = Manifest::validate($arr);
+        $serialized = $manifest->to_array();
+        $this->assertSame(['woocommerce'], $serialized['commerce']['providers']);
+        $this->assertSame(['products', 'cart', 'checkout'], $serialized['commerce']['endpoints']);
+    }
 }

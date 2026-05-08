@@ -48,6 +48,13 @@ final class Permissions {
             // No manifest permission is required.
             'media.upload'      => null,
             'router.navigate'   => null,
+            'commerce.products.list'           => Permission::Commerce,
+            'commerce.products.get'            => Permission::Commerce,
+            'commerce.cart.get'                => Permission::Commerce,
+            'commerce.cart.add_item'           => Permission::Commerce,
+            'commerce.cart.update_item'        => Permission::Commerce,
+            'commerce.cart.remove_item'        => Permission::Commerce,
+            'commerce.checkout.open_hosted_page' => Permission::Commerce,
         ];
     }
 

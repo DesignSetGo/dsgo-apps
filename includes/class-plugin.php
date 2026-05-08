@@ -29,6 +29,7 @@ final class Plugin {
         require_once $base . 'class-manifest.php';
         require_once $base . 'class-abilities-bridge.php';
         require_once $base . 'class-abilities-publisher.php';
+        require_once $base . 'class-commerce-bridge.php';
         require_once $base . 'class-admin-publisher-loader.php';
         require_once $base . 'class-ai-bridge.php';
         require_once $base . 'class-email-bridge.php';
