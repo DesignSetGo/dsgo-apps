@@ -189,10 +189,14 @@ final class MediaBridge {
         // the uninstaller scrub bridge-uploaded media if site policy demands.
         update_post_meta($attachment_id, self::SOURCE_META_KEY, $manifest->id);
 
-        $alt_text = isset($params['alt_text']) && is_string($params['alt_text']) ? trim($params['alt_text']) : '';
-        if ($alt_text !== '') {
+        $alt_input = isset($params['alt_text']) && is_string($params['alt_text']) ? trim($params['alt_text']) : '';
+        // Sanitize once and reuse — the response's `alt_text` is contractually
+        // the value saved against the attachment, so it must match what
+        // `_wp_attachment_image_alt` actually holds (e.g. tags stripped).
+        $alt_saved = $alt_input !== '' ? sanitize_text_field($alt_input) : '';
+        if ($alt_saved !== '') {
             // Mirror the convention used by core media editing UI.
-            update_post_meta($attachment_id, '_wp_attachment_image_alt', sanitize_text_field($alt_text));
+            update_post_meta($attachment_id, '_wp_attachment_image_alt', $alt_saved);
         }
 
         $metadata = wp_generate_attachment_metadata($attachment_id, $upload_path);
@@ -218,7 +222,7 @@ final class MediaBridge {
             'filename'  => wp_basename($upload_path),
             'width'     => $width,
             'height'    => $height,
-            'alt_text'  => $alt_text,
+            'alt_text'  => $alt_saved,
         ]];
     }
 

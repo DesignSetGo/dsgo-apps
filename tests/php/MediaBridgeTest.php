@@ -145,6 +145,25 @@ class MediaBridgeTest extends WP_UnitTestCase {
         $this->assertSame('A red square', $result['data']['alt_text']);
     }
 
+    public function test_upload_alt_text_response_matches_persisted_value_after_sanitization(): void {
+        // The response's `alt_text` is contractually "the alt text saved
+        // against the attachment", so when sanitization strips tags the
+        // payload must reflect what was actually persisted, not the raw input.
+        wp_set_current_user($this->author_id);
+        $manifest = $this->manifest();
+        $result = MediaBridge::upload(
+            $manifest,
+            $this->author_id,
+            $this->fake_file(),
+            ['alt_text' => "  <b>A red\nsquare</b>  "],
+        );
+        $this->assertTrue($result['ok']);
+        $persisted = get_post_meta($result['data']['id'], '_wp_attachment_image_alt', true);
+        $this->assertSame($persisted, $result['data']['alt_text']);
+        // Sanity check: sanitize_text_field strips tags + normalizes whitespace.
+        $this->assertStringNotContainsString('<', (string) $result['data']['alt_text']);
+    }
+
     public function test_upload_honors_filename_override(): void {
         wp_set_current_user($this->author_id);
         $manifest = $this->manifest();
