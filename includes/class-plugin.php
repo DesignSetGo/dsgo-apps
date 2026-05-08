@@ -19,14 +19,6 @@ final class Plugin {
 
     private function __construct() {
         $this->load_dependencies();
-        // Schema check happens here (not on a hook) because Plugin is
-        // instantiated from the `plugins_loaded` callback — adding another
-        // `plugins_loaded` handler from inside a `plugins_loaded` callback
-        // doesn't reliably re-enter the action, leaving the table missing
-        // for users who installed before the schema landed. The check
-        // itself is one autoloaded option lookup; only a stale version
-        // triggers dbDelta.
-        Harness_Sessions::maybe_install_schema();
         $this->register_hooks();
     }
 
@@ -53,23 +45,6 @@ final class Plugin {
         require_once $base . 'class-rest-api.php';
         require_once $base . 'class-sitemap-provider.php';
         require_once $base . 'class-admin-page.php';
-        require_once $base . 'class-harness-validator.php';
-        require_once $base . 'class-harness-autofix.php';
-        require_once $base . 'class-harness-skills.php';
-        require_once $base . 'class-harness-tools.php';
-        require_once $base . 'class-harness-prompt.php';
-        require_once $base . 'class-harness-models.php';
-        require_once $base . 'class-harness-provider.php';
-        require_once $base . 'class-harness-critic.php';
-        require_once $base . 'class-harness-generator.php';
-        require_once $base . 'class-harness-stream.php';
-        require_once $base . 'class-harness-run-checkpoint.php';
-        require_once $base . 'class-harness-storage.php';
-        require_once $base . 'class-harness-state.php';
-        require_once $base . 'class-harness-sessions.php';
-        require_once $base . 'class-harness-cli.php';
-        require_once $base . 'class-harness-rest-controller.php';
-        require_once $base . 'class-harness-admin-page.php';
     }
 
     private function register_hooks(): void {
@@ -86,35 +61,11 @@ final class Plugin {
             register_block_type_from_metadata(DSGO_APPS_PATH . 'block/build');
         });
         add_action('init', [Settings::class, 'register']);
-        add_action('init', static function (): void {
-            \register_setting('dsgo_apps', 'dsgo_apps_harness_model', [
-                'type'              => 'string',
-                'default'           => '',
-                'sanitize_callback' => 'sanitize_text_field',
-                'show_in_rest'      => false,
-            ]);
-            // Opt-in: lets the harness sample recent post titles/excerpts to inform
-            // tone and content shape on apps that surface site content. Off by
-            // default — site content stays out of the model's context unless
-            // explicitly enabled by a site admin via Settings → DSGo Apps.
-            // Registered under dsgo_apps_settings so the settings-page form can save it.
-            \register_setting('dsgo_apps_settings', 'dsgo_apps_harness_share_content', [
-                'type'              => 'boolean',
-                'default'           => false,
-                'sanitize_callback' => static fn($v): bool => (bool) $v,
-                'show_in_rest'      => false,
-            ]);
-        });
         AdminPage::register();
-        Harness_Admin_Page::register();
         add_action('admin_notices', [self::class, 'maybe_render_activation_notice']);
         AdminPublisherLoader::register();
         add_action('rest_api_init', [RestApi::class, 'register']);
-        add_action('rest_api_init', static function (): void {
-            (new Harness_REST_Controller())->register_routes();
-        });
         add_action(RestApi::USER_STORAGE_CLEANUP_HOOK, [RestApi::class, 'cleanup_user_storage_batch'], 10, 1);
-        add_action('dsgo_apps_prune_harness_drafts', [Harness_Storage::class, 'prune_expired']);
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch'], 5);
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch_root'], 7);
         add_action('template_redirect', [IframeLoader::class, 'maybe_dispatch_root'], 8);
@@ -134,23 +85,11 @@ final class Plugin {
         Rewrite::register();
         flush_rewrite_rules(false);
 
-        // Riff sessions table — created on activate so it exists immediately.
-        // Also re-checked on plugins_loaded for users who never deactivate
-        // (e.g. via composer update) so a schema bump auto-applies.
-        Harness_Sessions::install_schema();
-        update_option(Harness_Sessions::DB_VERSION_OPT, Harness_Sessions::DB_VERSION, false);
-
         $upload_dir = wp_upload_dir();
         $apps_dir   = trailingslashit($upload_dir['basedir']) . 'dsgo-apps';
         if (!is_dir($apps_dir)) {
             wp_mkdir_p($apps_dir);
             file_put_contents($apps_dir . '/index.html', '<!-- silence is golden -->');
-        }
-
-        // Schedule daily draft-pruning cron (offset by 1 hour so first run
-        // doesn't fire immediately on activation).
-        if (!wp_next_scheduled('dsgo_apps_prune_harness_drafts')) {
-            wp_schedule_event(time() + 3600, 'daily', 'dsgo_apps_prune_harness_drafts');
         }
 
         // One-shot welcome notice so admins land on the install screen instead
@@ -183,7 +122,6 @@ final class Plugin {
     }
 
     public static function deactivate(): void {
-        wp_clear_scheduled_hook('dsgo_apps_prune_harness_drafts');
         flush_rewrite_rules(false);
     }
 }

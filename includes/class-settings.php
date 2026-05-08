@@ -48,18 +48,6 @@ final class Settings {
 
         register_setting(
             'dsgo_apps_settings',
-            Harness_Models::OPTION_TIER_MODELS,
-            [
-                'type'              => 'array',
-                'description'       => __('Per-tier AI model assignments for the harness (routing + main).', 'dsgo-apps'),
-                'sanitize_callback' => [self::class, 'sanitize_harness_models'],
-                'default'           => ['routing' => '', 'main' => ''],
-                'show_in_rest'      => false,
-            ],
-        );
-
-        register_setting(
-            'dsgo_apps_settings',
             self::OPTION_HARNESS_SHARE_CONTENT,
             [
                 'type'              => 'boolean',
@@ -72,36 +60,6 @@ final class Settings {
 
         add_action('admin_menu', [self::class, 'register_settings_page']);
         add_action('update_option_' . self::OPTION_URL_PREFIX, [self::class, 'on_prefix_changed'], 10, 2);
-    }
-
-    /**
-     * Sanitize the per-tier model assignments array. Empty string per tier is
-     * always valid — it means "use the registry default for that tier". A
-     * non-empty value must look like a plausible provider model ID (loose
-     * regex, since IDs differ across providers).
-     *
-     * @param mixed $candidate
-     * @return array{routing:string,main:string}
-     */
-    public static function sanitize_harness_models(mixed $candidate): array {
-        $out = ['routing' => '', 'main' => ''];
-        if (!is_array($candidate)) {
-            return $out;
-        }
-        foreach (Harness_Models::TIERS as $tier) {
-            $val = isset($candidate[$tier]) && is_string($candidate[$tier]) ? trim($candidate[$tier]) : '';
-            if ($val === '') {
-                continue;
-            }
-            // Accept anything matching the loose model-id shape used across
-            // providers (lowercase letters/digits, hyphens, periods, underscores,
-            // up to 96 chars). Anything else gets dropped silently — the option
-            // still persists, just with the offending tier set to empty (default).
-            if (preg_match('/^[a-z0-9._-]{1,96}$/i', $val)) {
-                $out[$tier] = $val;
-            }
-        }
-        return $out;
     }
 
     public static function get_url_prefix(): string {
@@ -222,62 +180,12 @@ final class Settings {
         wp_enqueue_style('dsgo-admin-page', $css, [], $ver);
     }
 
-    /**
-     * Enumerate all text-generation models exposed by configured Connectors,
-     * grouped by provider id. Used by the Settings page to populate per-tier
-     * <select> elements without depending on JS / REST. Returns [] silently
-     * when WP AI Client is unavailable.
-     *
-     * @return array<string,list<array{id:string,label:string}>>
-     */
-    private static function list_available_models_for_settings(): array {
-        if (!function_exists('wp_supports_ai') || !\wp_supports_ai()) {
-            return [];
-        }
-        try {
-            $registry = \WordPress\AiClient\AiClient::defaultRegistry();
-            $req = \WordPress\AiClient\Providers\Models\DTO\ModelRequirements::fromArray([
-                'requiredCapabilities' => ['text_generation'],
-                'requiredOptions'      => [],
-            ]);
-            $grouped = [];
-            foreach ($registry->getRegisteredProviderIds() as $pid) {
-                $pid = strtolower((string) $pid);
-                if (!$registry->isProviderConfigured($pid)) {
-                    continue;
-                }
-                $models = $registry->findProviderModelsMetadataForSupport($pid, $req);
-                $entries = [];
-                foreach ($models as $meta) {
-                    $id = (string) $meta->getId();
-                    $label = method_exists($meta, 'getName') ? ((string) ($meta->getName() ?: $id)) : $id;
-                    $entries[] = ['id' => $id, 'label' => $label];
-                }
-                if (!empty($entries)) {
-                    $grouped[$pid] = $entries;
-                }
-            }
-            return $grouped;
-        } catch (\Throwable $e) {
-            return [];
-        }
-    }
-
     public static function render_settings_page(): void {
         if (!current_user_can('manage_options')) return;
         $prefix      = self::get_url_prefix();
         $root_slug   = self::get_root_app_id();
         $apps_url    = admin_url('admin.php?page=' . AdminPage::MENU_SLUG);
         $share_content = (bool) get_option(self::OPTION_HARNESS_SHARE_CONTENT, false);
-
-        // Harness model assignments. Build the list of available models once,
-        // grouped by provider, then render two <select>s — one per tier.
-        $tier_assignments = Harness_Models::get_tier_assignments();
-        $available_models = self::list_available_models_for_settings();
-        $tier_defaults    = [
-            'routing' => Harness_Models::resolve_for_tier('routing', Harness_Models::detect_active_provider()),
-            'main'    => Harness_Models::resolve_for_tier('main',    Harness_Models::detect_active_provider()),
-        ];
         ?>
         <div class="dsgo-admin dsgo-admin--settings">
             <header class="dsgo-admin__hero">
@@ -363,78 +271,6 @@ final class Settings {
                                 <a href="<?php echo esc_url($apps_url); ?>"><?php esc_html_e('Pick one on the Apps page →', 'dsgo-apps'); ?></a>
                             </p>
                         </div>
-                    <?php endif; ?>
-                </section>
-
-                <section class="dsgo-card" aria-labelledby="dsgo-settings-harness-models-heading">
-                    <header class="dsgo-card__header">
-                        <h2 id="dsgo-settings-harness-models-heading" class="dsgo-card__title"><?php esc_html_e('Harness model assignments', 'dsgo-apps'); ?></h2>
-                        <p class="dsgo-card__subtitle">
-                            <?php esc_html_e('Pick the AI model used for each role in the build loop. Leaving a tier on "Use default" lets DesignSetGo pick the most appropriate model from your configured Connectors.', 'dsgo-apps'); ?>
-                        </p>
-                    </header>
-
-                    <?php if (empty($available_models)): ?>
-                        <p class="dsgo-field__hint">
-                            <?php
-                            printf(
-                                /* translators: %s: link to the WordPress Connectors settings */
-                                esc_html__('No AI Connectors are configured yet. %s before assigning models.', 'dsgo-apps'),
-                                '<a href="' . esc_url(admin_url('options-connectors.php')) . '">' . esc_html__('Set one up under Settings → Connectors', 'dsgo-apps') . '</a>',
-                            );
-                            ?>
-                        </p>
-                    <?php else: ?>
-                        <?php
-                        $tier_meta = [
-                            'routing' => [
-                                'label' => __('Routing', 'dsgo-apps'),
-                                'hint'  => __('Used on iteration 1 for intent classification and skill picking. Pick something cheap (Haiku, GPT mini, Gemini Flash). Falls back to the cheapest available model when set to "Use default".', 'dsgo-apps'),
-                            ],
-                            'main' => [
-                                'label' => __('Main', 'dsgo-apps'),
-                                'hint'  => __('Used from iteration 2 onward to write code, validate, and finish the bundle. Pick your strongest model (Sonnet, GPT-5, Gemini Pro).', 'dsgo-apps'),
-                            ],
-                        ];
-                        foreach (Harness_Models::TIERS as $tier):
-                            $assigned = $tier_assignments[$tier];
-                            $resolved = $tier_defaults[$tier];
-                            $field_id = 'dsgo_apps_harness_models_' . $tier;
-                        ?>
-                            <div class="dsgo-field">
-                                <label class="dsgo-field__label" for="<?php echo esc_attr($field_id); ?>">
-                                    <?php echo esc_html($tier_meta[$tier]['label']); ?>
-                                </label>
-                                <select
-                                    name="<?php echo esc_attr(Harness_Models::OPTION_TIER_MODELS . '[' . $tier . ']'); ?>"
-                                    id="<?php echo esc_attr($field_id); ?>"
-                                    class="dsgo-input"
-                                >
-                                    <option value="" <?php selected($assigned, ''); ?>>
-                                        <?php
-                                        if ($resolved !== '') {
-                                            /* translators: %s: model id resolved from the registry */
-                                            printf(esc_html__('Use default (%s)', 'dsgo-apps'), esc_html($resolved));
-                                        } else {
-                                            esc_html_e('Use default', 'dsgo-apps');
-                                        }
-                                        ?>
-                                    </option>
-                                    <?php foreach ($available_models as $pid => $entries): ?>
-                                        <optgroup label="<?php echo esc_attr(ucfirst($pid)); ?>">
-                                            <?php foreach ($entries as $entry): ?>
-                                                <option value="<?php echo esc_attr($entry['id']); ?>" <?php selected($assigned, $entry['id']); ?>>
-                                                    <?php echo esc_html($entry['label']); ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        </optgroup>
-                                    <?php endforeach; ?>
-                                </select>
-                                <p class="dsgo-field__hint">
-                                    <?php echo esc_html($tier_meta[$tier]['hint']); ?>
-                                </p>
-                            </div>
-                        <?php endforeach; ?>
                     <?php endif; ?>
                 </section>
 
