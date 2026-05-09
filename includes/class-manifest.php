@@ -106,6 +106,34 @@ final readonly class Manifest {
         public array $commerce_providers = [],
         /** @var string[] commerce endpoints e.g. ["products","cart","checkout"] */
         public array $commerce_endpoints = [],
+        /**
+         * Block stylesheet sources to ship alongside post/page content. Empty
+         * means "off" — the default; nothing extra is sent. Recognized values:
+         *   - "core"        WP core block library + theme stylesheets
+         *   - "designsetgo" partner DesignSetGo Blocks plugin styles (when active)
+         *   - "auto"        any registered block actually used in the content
+         * @var string[]
+         */
+        public array $content_block_styles = [],
+        /**
+         * Theme global styles (theme.json compiled CSS). v1 supports:
+         *   - "off"    nothing shipped
+         *   - "global" wp_get_global_stylesheet() output
+         */
+        public string $content_theme_styles = 'off',
+        /**
+         * Allowlist filter applied to the union of "auto" + "designsetgo"
+         * block-name lookups before resolving handles. Glob patterns:
+         * "namespace/*" or "namespace/name". Empty = no allowlist filtering.
+         * @var string[]
+         */
+        public array $content_block_styles_allowlist = [],
+        /**
+         * Denylist filter applied last; matched block names are dropped even
+         * if allowlisted. Same glob shape as the allowlist.
+         * @var string[]
+         */
+        public array $content_block_styles_denylist = [],
     ) {}
 
     public static function validate(array $raw): self {
@@ -647,6 +675,77 @@ final readonly class Manifest {
             throw new ManifestError('commerce', 'commerce_options_required: must be present when "commerce" is in permissions.read');
         }
 
+        // Content block — opt-in shipping of block/theme stylesheets alongside
+        // posts.get / pages.get / dataset rows so apps can render WP block
+        // markup with the styles WP would normally enqueue on the front end.
+        // Every key is optional; omitting the block keeps the default-off
+        // behavior (only `content.rendered` HTML is shipped, no styles).
+        $content_block_styles = [];
+        $content_theme_styles = 'off';
+        $content_block_styles_allowlist = [];
+        $content_block_styles_denylist = [];
+        if (array_key_exists('content', $raw)) {
+            if (!is_array($raw['content'])) {
+                throw new ManifestError('content', 'must be an object');
+            }
+            if (array_key_exists('blockStyles', $raw['content'])) {
+                $bs = $raw['content']['blockStyles'];
+                // Accept the "auto" string shorthand for ["core","designsetgo","auto"].
+                if (is_string($bs)) {
+                    if ($bs === 'off') {
+                        $content_block_styles = [];
+                    } elseif ($bs === 'auto') {
+                        $content_block_styles = ['core', 'designsetgo', 'auto'];
+                    } else {
+                        throw new ManifestError('content.blockStyles', 'string form must be "off" or "auto"; use an array for explicit sources');
+                    }
+                } elseif (is_array($bs)) {
+                    $allowed_sources = ['core', 'designsetgo', 'auto'];
+                    $seen_sources = [];
+                    foreach ($bs as $i => $src) {
+                        if (!is_string($src) || !in_array($src, $allowed_sources, true)) {
+                            throw new ManifestError(
+                                "content.blockStyles[$i]",
+                                sprintf('"%s" must be one of "core", "designsetgo", "auto"', is_scalar($src) ? (string) $src : gettype($src)),
+                            );
+                        }
+                        if (isset($seen_sources[$src])) {
+                            throw new ManifestError("content.blockStyles[$i]", sprintf('duplicate value "%s"', $src));
+                        }
+                        $seen_sources[$src] = true;
+                        $content_block_styles[] = $src;
+                    }
+                } else {
+                    throw new ManifestError('content.blockStyles', 'must be a string ("off"|"auto") or array of sources');
+                }
+            }
+            if (array_key_exists('themeStyles', $raw['content'])) {
+                $ts = $raw['content']['themeStyles'];
+                if (!is_string($ts) || !in_array($ts, ['off', 'global'], true)) {
+                    throw new ManifestError('content.themeStyles', 'must be "off" or "global" in v1');
+                }
+                $content_theme_styles = $ts;
+            }
+            foreach (['blockStyleAllowlist' => &$content_block_styles_allowlist,
+                     'blockStyleDenylist'  => &$content_block_styles_denylist] as $key => &$target) {
+                if (!array_key_exists($key, $raw['content'])) continue;
+                $list = $raw['content'][$key];
+                if (!is_array($list)) {
+                    throw new ManifestError("content.$key", 'must be an array');
+                }
+                foreach ($list as $i => $pat) {
+                    if (!is_string($pat) || !preg_match('#^[a-z0-9-]+/(?:[a-z0-9-]+|\*|[a-z0-9-]+\*)$#', $pat)) {
+                        throw new ManifestError(
+                            "content.{$key}[$i]",
+                            sprintf('"%s" must match "<namespace>/<name>" with optional trailing-* wildcard', is_scalar($pat) ? (string) $pat : gettype($pat)),
+                        );
+                    }
+                    $target[] = $pat;
+                }
+            }
+            unset($target);
+        }
+
         $external = [];
         if (array_key_exists('external_origins', $raw['runtime'])) {
             if (!is_array($raw['runtime']['external_origins'])) {
@@ -743,6 +842,10 @@ final readonly class Manifest {
             media_uploads_enabled: $media_uploads_enabled,
             commerce_providers: $commerce_providers,
             commerce_endpoints: $commerce_endpoints,
+            content_block_styles: $content_block_styles,
+            content_theme_styles: $content_theme_styles,
+            content_block_styles_allowlist: $content_block_styles_allowlist,
+            content_block_styles_denylist: $content_block_styles_denylist,
         );
     }
 
@@ -971,6 +1074,19 @@ final readonly class Manifest {
             commerce_endpoints: is_array($raw['commerce']['endpoints'] ?? null)
                 ? array_values(array_filter($raw['commerce']['endpoints'], 'is_string'))
                 : [],
+            content_block_styles: is_array($raw['content']['blockStyles'] ?? null)
+                ? array_values(array_filter($raw['content']['blockStyles'], 'is_string'))
+                : [],
+            content_theme_styles: is_string($raw['content']['themeStyles'] ?? null)
+                && in_array($raw['content']['themeStyles'], ['off', 'global'], true)
+                ? $raw['content']['themeStyles']
+                : 'off',
+            content_block_styles_allowlist: is_array($raw['content']['blockStyleAllowlist'] ?? null)
+                ? array_values(array_filter($raw['content']['blockStyleAllowlist'], 'is_string'))
+                : [],
+            content_block_styles_denylist: is_array($raw['content']['blockStyleDenylist'] ?? null)
+                ? array_values(array_filter($raw['content']['blockStyleDenylist'], 'is_string'))
+                : [],
         );
     }
 
@@ -1047,6 +1163,28 @@ final readonly class Manifest {
                 'providers' => $this->commerce_providers,
                 'endpoints' => $this->commerce_endpoints,
             ];
+        }
+        // Only emit `content` when the app has opted into something — keeps
+        // round-trip stable for the (default) all-off case.
+        if ($this->content_block_styles !== []
+            || $this->content_theme_styles !== 'off'
+            || $this->content_block_styles_allowlist !== []
+            || $this->content_block_styles_denylist !== []
+        ) {
+            $content = [];
+            if ($this->content_block_styles !== []) {
+                $content['blockStyles'] = $this->content_block_styles;
+            }
+            if ($this->content_theme_styles !== 'off') {
+                $content['themeStyles'] = $this->content_theme_styles;
+            }
+            if ($this->content_block_styles_allowlist !== []) {
+                $content['blockStyleAllowlist'] = $this->content_block_styles_allowlist;
+            }
+            if ($this->content_block_styles_denylist !== []) {
+                $content['blockStyleDenylist'] = $this->content_block_styles_denylist;
+            }
+            $out['content'] = $content;
         }
         return $out;
     }

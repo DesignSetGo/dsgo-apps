@@ -42,6 +42,7 @@ final class Plugin {
         require_once $base . 'class-rewrite.php';
         require_once $base . 'class-storage.php';
         require_once $base . 'class-bundle.php';
+        require_once $base . 'class-block-styles.php';
         require_once $base . 'class-data-sources.php';
         require_once $base . 'class-installer.php';
         require_once $base . 'class-artifact-normalizer.php';
@@ -70,6 +71,7 @@ final class Plugin {
         add_action('admin_notices', [self::class, 'maybe_render_activation_notice']);
         AdminPublisherLoader::register();
         add_action('rest_api_init', [RestApi::class, 'register']);
+        add_action('rest_api_init', [BlockStyles::class, 'register']);
         add_action(RestApi::USER_STORAGE_CLEANUP_HOOK, [RestApi::class, 'cleanup_user_storage_batch'], 10, 1);
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch'], 5);
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch_root'], 7);

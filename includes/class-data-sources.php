@@ -19,10 +19,15 @@ final class DataSources {
      * to bundle-file resolution). Returns [] when the scheme is recognized
      * but the host can't satisfy it (e.g. wc:products without WooCommerce).
      *
+     * The optional Manifest is used to attach a `content_styles` sibling to
+     * post rows when the manifest opts in via `content.blockStyles` /
+     * `content.themeStyles`. Pass null when the caller doesn't need styles
+     * (e.g. sitemap URL generation).
+     *
      * @return array<int, array<string, mixed>>|null
      */
-    public static function resolve(string $source): ?array {
-        $resolver = self::built_in_resolver($source);
+    public static function resolve(string $source, ?Manifest $manifest = null): ?array {
+        $resolver = self::built_in_resolver($source, $manifest);
 
         /**
          * Filter the resolver callable for a given source string. Return a
@@ -45,16 +50,16 @@ final class DataSources {
     /**
      * @return callable():array<int, array<string, mixed>>|null
      */
-    private static function built_in_resolver(string $source): ?callable {
+    private static function built_in_resolver(string $source, ?Manifest $manifest = null): ?callable {
         if ($source === 'wp:posts') {
-            return static fn (): array => self::resolve_posts('post');
+            return static fn (): array => self::resolve_posts('post', $manifest);
         }
         if ($source === 'wp:pages') {
-            return static fn (): array => self::resolve_posts('page');
+            return static fn (): array => self::resolve_posts('page', $manifest);
         }
         if (preg_match('/^wp:cpt:([a-z][a-z0-9_-]*)$/', $source, $m) === 1) {
             $type = $m[1];
-            return static fn (): array => self::resolve_posts($type);
+            return static fn (): array => self::resolve_posts($type, $manifest);
         }
         if ($source === 'wc:products') {
             return static fn (): array => self::resolve_wc_products();
@@ -65,7 +70,7 @@ final class DataSources {
     /**
      * @return array<int, array<string, mixed>>
      */
-    private static function resolve_posts(string $post_type): array {
+    private static function resolve_posts(string $post_type, ?Manifest $manifest = null): array {
         if (!post_type_exists($post_type)) {
             return [];
         }
@@ -82,7 +87,7 @@ final class DataSources {
         $rows = [];
         foreach ($q->posts as $p) {
             if (!$p instanceof \WP_Post) continue;
-            $rows[] = self::shape_post($p);
+            $rows[] = self::shape_post($p, $manifest);
         }
         return $rows;
     }
@@ -90,7 +95,7 @@ final class DataSources {
     /**
      * @return array<string, mixed>
      */
-    private static function shape_post(\WP_Post $p): array {
+    private static function shape_post(\WP_Post $p, ?Manifest $manifest = null): array {
         $thumb_id = (int) get_post_thumbnail_id($p);
         $thumb_url = '';
         if ($thumb_id > 0) {
@@ -99,7 +104,7 @@ final class DataSources {
                 $thumb_url = (string) $src[0];
             }
         }
-        return [
+        $row = [
             'id'                 => (int) $p->ID,
             'slug'               => (string) $p->post_name,
             'date'               => mysql2date('M j, Y', $p->post_date),
@@ -112,6 +117,13 @@ final class DataSources {
             'featured_media_url' => $thumb_url,
             'permalink'          => (string) get_permalink($p),
         ];
+        if ($manifest !== null) {
+            $styles = BlockStyles::collect_for_post($p, $manifest);
+            if ($styles !== null) {
+                $row['content_styles'] = $styles;
+            }
+        }
+        return $row;
     }
 
     /**

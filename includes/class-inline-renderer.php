@@ -338,7 +338,7 @@ final class InlineRenderer {
             return $cached;
         }
 
-        $dataset = self::load_dataset($bundle_dir, $manifest->id, $route);
+        $dataset = self::load_dataset($bundle_dir, $manifest->id, $route, $manifest);
         $entry   = self::find_entry($dataset, $route['dataset']['id_field'], $param_value);
         if ($entry === null) {
             return null; // 404
@@ -1137,7 +1137,7 @@ final class InlineRenderer {
      * @param array{path:string, file:string, dataset:array{source:string,id_field:string}} $route
      * @return array<int, array<string, mixed>>
      */
-    public static function load_dataset(string $bundle_dir, string $app_id, array $route): array {
+    public static function load_dataset(string $bundle_dir, string $app_id, array $route, ?Manifest $manifest = null): array {
         $version = self::cache_version($app_id);
         $route_hash = md5($route['path']);
         $source = (string) $route['dataset']['source'];
@@ -1157,9 +1157,14 @@ final class InlineRenderer {
             //     entirely by returning 0 from `dsgo_apps_dataset_cache_ttl`.
             $cache_extra = (string) apply_filters('dsgo_apps_dataset_cache_key_extra', '', $source, $app_id, $route);
             $cache_ttl   = (int) apply_filters('dsgo_apps_dataset_cache_ttl', HOUR_IN_SECONDS, $source, $app_id, $route);
+            // Manifest presence changes the row shape (DataSources adds
+            // `content_styles` when the manifest opts in), so split the cache
+            // so manifest-less callers (e.g. SitemapProvider) can't poison
+            // the renderer's cache with style-stripped rows.
+            $manifest_suffix = $manifest !== null ? ':m' : '';
             $live_key    = $cache_extra === ''
-                ? "dsgo_ds:{$app_id}:{$version}:{$route_hash}"
-                : "dsgo_ds:{$app_id}:{$version}:{$route_hash}:" . md5($cache_extra);
+                ? "dsgo_ds:{$app_id}:{$version}:{$route_hash}{$manifest_suffix}"
+                : "dsgo_ds:{$app_id}:{$version}:{$route_hash}:" . md5($cache_extra) . $manifest_suffix;
 
             if ($cache_ttl > 0) {
                 $cached = get_transient($live_key);
@@ -1167,7 +1172,7 @@ final class InlineRenderer {
                     return $cached;
                 }
             }
-            $live = DataSources::resolve($source);
+            $live = DataSources::resolve($source, $manifest);
             if ($live !== null) {
                 if ($cache_ttl > 0) {
                     set_transient($live_key, $live, $cache_ttl);
