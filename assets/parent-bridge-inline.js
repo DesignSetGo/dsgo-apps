@@ -180,8 +180,14 @@
                 return await af({ path: '/dsgo/v1/site-info', headers });
             }
             case 'posts.list': {
-                const q = (req.params ?? {});
-                const resp = await af({ path: '/wp/v2/posts?' + new URLSearchParams(q).toString(), headers, parse: false });
+                const q = { ...(req.params ?? {}) };
+                // Optional `type` routes to a CPT's REST endpoint (`/wp/v2/<type>`).
+                // Public, show_in_rest post types are readable; the server enforces
+                // visibility and capability the same way it does for the default
+                // `posts` route. Defaults to `posts` when omitted.
+                const type = typeof q.type === 'string' && q.type ? q.type : 'posts';
+                delete q.type;
+                const resp = await af({ path: `/wp/v2/${type}?` + new URLSearchParams(q).toString(), headers, parse: false });
                 const rawItems = await resp.json();
                 return {
                     items: Array.isArray(rawItems) ? rawItems.map(shapePost) : [],
@@ -190,8 +196,9 @@
                 };
             }
             case 'posts.get': {
-                const { id } = req.params;
-                return shapePost(await af({ path: `/wp/v2/posts/${id}`, headers }));
+                const { id, type } = req.params;
+                const route = typeof type === 'string' && type ? type : 'posts';
+                return shapePost(await af({ path: `/wp/v2/${route}/${id}`, headers }));
             }
             case 'pages.list': {
                 const q = (req.params ?? {});

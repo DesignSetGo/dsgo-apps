@@ -131,6 +131,10 @@ final class CommerceBridge {
         $query = self::filter_query_params($params, [
             'page', 'per_page', 'search', 'category', 'tag',
             'min_price', 'max_price', 'orderby', 'order', 'on_sale', 'featured',
+            // type=variation + parent=<id> lets apps fetch the full priced
+            // children of a variable product so the in-app variation picker
+            // can show per-combo prices/stock without an N+1 of products.get.
+            'type', 'parent', 'include', 'exclude', 'slug', 'sku', 'stock_status',
         ]);
         $resp = self::store_api_request('GET', '/wc/store/v1/products', $query, null, $manifest, $visitor_user_id);
         if (!$resp['ok']) return $resp;
@@ -351,8 +355,84 @@ final class CommerceBridge {
                 'alt'       => (string) ($img['alt'] ?? ''),
             ];
         }
+        // Attributes drive the variation picker on the parent product. Each
+        // entry includes its terms so apps can render selectors without
+        // pulling taxonomy data over a second channel.
+        $attributes = [];
+        foreach (($raw['attributes'] ?? []) as $attr) {
+            $attr = self::normalize_to_array($attr);
+            if (!is_array($attr)) continue;
+            $terms = [];
+            foreach (($attr['terms'] ?? []) as $term) {
+                $term = self::normalize_to_array($term);
+                if (!is_array($term)) continue;
+                $terms[] = [
+                    'id'   => (int) ($term['id'] ?? 0),
+                    'name' => (string) ($term['name'] ?? ''),
+                    'slug' => (string) ($term['slug'] ?? ''),
+                ];
+            }
+            $attributes[] = [
+                'id'             => (int) ($attr['id'] ?? 0),
+                'name'           => (string) ($attr['name'] ?? ''),
+                'taxonomy'       => (string) ($attr['taxonomy'] ?? ''),
+                'has_variations' => (bool) ($attr['has_variations'] ?? false),
+                'terms'          => $terms,
+            ];
+        }
+        // Variations is a lightweight ref list ({id, attributes:[{name,value}]}).
+        // To get per-variation prices/stock, apps call products.list with
+        // type=variation&parent=<id> — that's the canonical Store API path.
+        $variations = [];
+        foreach (($raw['variations'] ?? []) as $variation) {
+            $variation = self::normalize_to_array($variation);
+            if (!is_array($variation)) continue;
+            $combo = [];
+            foreach (($variation['attributes'] ?? []) as $pair) {
+                $pair = self::normalize_to_array($pair);
+                if (!is_array($pair)) continue;
+                $combo[] = [
+                    'name'  => (string) ($pair['name'] ?? ''),
+                    'value' => (string) ($pair['value'] ?? ''),
+                ];
+            }
+            $variations[] = [
+                'id'         => (int) ($variation['id'] ?? 0),
+                'attributes' => $combo,
+            ];
+        }
+        $categories = [];
+        foreach (($raw['categories'] ?? []) as $cat) {
+            $cat = self::normalize_to_array($cat);
+            if (!is_array($cat)) continue;
+            $categories[] = [
+                'id'   => (int) ($cat['id'] ?? 0),
+                'name' => (string) ($cat['name'] ?? ''),
+                'slug' => (string) ($cat['slug'] ?? ''),
+                'link' => (string) ($cat['link'] ?? ''),
+            ];
+        }
+        $tags = [];
+        foreach (($raw['tags'] ?? []) as $tag) {
+            $tag = self::normalize_to_array($tag);
+            if (!is_array($tag)) continue;
+            $tags[] = [
+                'id'   => (int) ($tag['id'] ?? 0),
+                'name' => (string) ($tag['name'] ?? ''),
+                'slug' => (string) ($tag['slug'] ?? ''),
+                'link' => (string) ($tag['link'] ?? ''),
+            ];
+        }
+        $quantity_limits = self::normalize_to_array($raw['quantity_limits'] ?? null);
+        $shaped_quantity_limits = is_array($quantity_limits) ? [
+            'minimum'      => isset($quantity_limits['minimum']) ? (int) $quantity_limits['minimum'] : 1,
+            'maximum'      => isset($quantity_limits['maximum']) ? (int) $quantity_limits['maximum'] : 999,
+            'multiple_of'  => isset($quantity_limits['multiple_of']) ? (int) $quantity_limits['multiple_of'] : 1,
+            'editable'     => isset($quantity_limits['editable']) ? (bool) $quantity_limits['editable'] : true,
+        ] : null;
         return [
             'id'              => (int) ($raw['id'] ?? 0),
+            'parent_id'       => (int) ($raw['parent'] ?? 0),
             'name'            => (string) ($raw['name'] ?? ''),
             'slug'            => (string) ($raw['slug'] ?? ''),
             'permalink'       => (string) ($raw['permalink'] ?? ''),
@@ -363,9 +443,18 @@ final class CommerceBridge {
             'on_sale'         => (bool) ($raw['on_sale'] ?? false),
             'is_in_stock'     => (bool) ($raw['is_in_stock'] ?? true),
             'is_purchasable'  => (bool) ($raw['is_purchasable'] ?? true),
+            'low_stock_remaining' => isset($raw['low_stock_remaining']) ? (int) $raw['low_stock_remaining'] : null,
+            'sold_individually' => (bool) ($raw['sold_individually'] ?? false),
             'images'          => $images,
             'type'            => (string) ($raw['type'] ?? 'simple'),
             'has_options'     => (bool) ($raw['has_options'] ?? false),
+            'attributes'      => $attributes,
+            'variations'      => $variations,
+            'categories'      => $categories,
+            'tags'            => $tags,
+            'average_rating'  => (string) ($raw['average_rating'] ?? ''),
+            'review_count'    => (int) ($raw['review_count'] ?? 0),
+            'quantity_limits' => $shaped_quantity_limits,
             'add_to_cart'     => is_array($raw['add_to_cart'] ?? null) ? $raw['add_to_cart'] : (is_object($raw['add_to_cart'] ?? null) ? (array) $raw['add_to_cart'] : null),
         ];
     }

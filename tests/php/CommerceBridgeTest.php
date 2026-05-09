@@ -180,6 +180,96 @@ class CommerceBridgeTest extends WP_UnitTestCase {
         $this->assertSame('2500', $shaped['max']);
     }
 
+    // --- variable-product surfaces --------------------------------------
+
+    public function test_shape_product_exposes_attributes_and_variations(): void {
+        // The Store API hands back attributes + variation refs on variable
+        // products; the example shop's in-app picker needs both surfaces or
+        // it can't render a selector without an N+1 round-trip.
+        $raw = [
+            'id'          => 11,
+            'name'        => 'Hoodie',
+            'type'        => 'variable',
+            'has_options' => true,
+            'attributes'  => [
+                (object) [
+                    'id'             => 1,
+                    'name'           => 'Color',
+                    'taxonomy'       => 'pa_color',
+                    'has_variations' => true,
+                    'terms'          => [
+                        (object) ['id' => 17, 'name' => 'Blue', 'slug' => 'blue'],
+                        (object) ['id' => 18, 'name' => 'Red',  'slug' => 'red'],
+                    ],
+                ],
+            ],
+            'variations'  => [
+                (object) ['id' => 12, 'attributes' => [(object) ['name' => 'Color', 'value' => 'Blue']]],
+                (object) ['id' => 13, 'attributes' => [(object) ['name' => 'Color', 'value' => 'Red']]],
+            ],
+        ];
+
+        $shaped = self::call_private('shape_product', [$raw]);
+
+        $this->assertCount(1, $shaped['attributes']);
+        $this->assertSame('Color', $shaped['attributes'][0]['name']);
+        $this->assertTrue($shaped['attributes'][0]['has_variations']);
+        $this->assertCount(2, $shaped['attributes'][0]['terms']);
+        $this->assertSame('Blue', $shaped['attributes'][0]['terms'][0]['name']);
+
+        $this->assertCount(2, $shaped['variations']);
+        $this->assertSame(12, $shaped['variations'][0]['id']);
+        $this->assertSame('Color', $shaped['variations'][0]['attributes'][0]['name']);
+        $this->assertSame('Blue',  $shaped['variations'][0]['attributes'][0]['value']);
+    }
+
+    public function test_shape_product_carries_parent_id_for_variation_children(): void {
+        // /wc/store/v1/products?type=variation&parent=11 returns variation
+        // children whose `parent` field links them back; apps need it to
+        // render the "X for the Blue Hoodie" context.
+        $raw = ['id' => 12, 'parent' => 11, 'name' => 'Hoodie - Blue', 'type' => 'variation'];
+        $shaped = self::call_private('shape_product', [$raw]);
+        $this->assertSame(11, $shaped['parent_id']);
+        $this->assertSame('variation', $shaped['type']);
+    }
+
+    public function test_shape_product_passes_through_storefront_metadata(): void {
+        $raw = [
+            'id' => 7,
+            'categories' => [(object) ['id' => 5, 'name' => 'Apparel', 'slug' => 'apparel', 'link' => 'https://e/x/apparel']],
+            'tags'       => [(object) ['id' => 9, 'name' => 'New', 'slug' => 'new', 'link' => 'https://e/x/tag/new']],
+            'average_rating'      => '4.50',
+            'review_count'        => 12,
+            'low_stock_remaining' => 3,
+            'sold_individually'   => true,
+            'quantity_limits'     => (object) ['minimum' => 1, 'maximum' => 5, 'multiple_of' => 1, 'editable' => true],
+        ];
+        $shaped = self::call_private('shape_product', [$raw]);
+        $this->assertSame('Apparel', $shaped['categories'][0]['name']);
+        $this->assertSame('New',     $shaped['tags'][0]['name']);
+        $this->assertSame('4.50', $shaped['average_rating']);
+        $this->assertSame(12,     $shaped['review_count']);
+        $this->assertSame(3,      $shaped['low_stock_remaining']);
+        $this->assertTrue($shaped['sold_individually']);
+        $this->assertSame(5, $shaped['quantity_limits']['maximum']);
+    }
+
+    public function test_products_list_forwards_type_and_parent_for_variation_lookup(): void {
+        // The bridge must let through type=variation&parent=<id> so the in-app
+        // picker can fetch fully-priced variation children in one call.
+        $captured = $this->capture_rest_dispatch_request(function (): void {
+            $m = $this->manifest_with_endpoints(['products']);
+            CommerceBridge::invoke('products.list', ['type' => 'variation', 'parent' => 42, 'per_page' => 100], $m, 0);
+        });
+        if (!CommerceBridge::provider_available('woocommerce')) {
+            $this->markTestSkipped('WooCommerce not active in this test env; provider gate short-circuits before the Store API call.');
+        }
+        $this->assertNotNull($captured);
+        $this->assertSame('variation', $captured->get_param('type'));
+        $this->assertSame(42,          $captured->get_param('parent'));
+        $this->assertSame(100,         $captured->get_param('per_page'));
+    }
+
     // --- Store API nonce on cart writes ---------------------------------
 
     public function test_store_api_request_attaches_nonce_to_cart_writes(): void {
