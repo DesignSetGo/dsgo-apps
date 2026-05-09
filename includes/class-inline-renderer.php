@@ -232,7 +232,9 @@ final class InlineRenderer {
 
         $html = self::finalize_html_common($template, $bundle_dir, $manifest, $nonce);
 
-        $client_url = plugins_url('assets/bridge-client.js', DSGO_APPS_FILE);
+        $client_path = DSGO_APPS_PATH . 'assets/bridge-client.js';
+        $client_ver  = file_exists($client_path) ? (string) filemtime($client_path) : DSGO_APPS_VERSION;
+        $client_url  = add_query_arg('ver', $client_ver, plugins_url('assets/bridge-client.js', DSGO_APPS_FILE));
         $client_tag = '<script src="' . esc_url($client_url) . '" nonce="' . esc_attr($nonce) . '"></script>';
 
         if (preg_match('#</head>#i', $html)) {
@@ -392,8 +394,12 @@ final class InlineRenderer {
             includes_url('js/dist/url.min.js'),
             includes_url('js/dist/api-fetch.min.js'),
         ];
-        $host_url   = plugins_url('assets/parent-bridge-inline.js', DSGO_APPS_FILE);
-        $client_url = plugins_url('assets/bridge-client-inline.js', DSGO_APPS_FILE);
+        $host_path   = DSGO_APPS_PATH . 'assets/parent-bridge-inline.js';
+        $client_path = DSGO_APPS_PATH . 'assets/bridge-client-inline.js';
+        $host_ver    = file_exists($host_path)   ? (string) filemtime($host_path)   : DSGO_APPS_VERSION;
+        $client_ver2 = file_exists($client_path) ? (string) filemtime($client_path) : DSGO_APPS_VERSION;
+        $host_url   = add_query_arg('ver', $host_ver,    plugins_url('assets/parent-bridge-inline.js', DSGO_APPS_FILE));
+        $client_url = add_query_arg('ver', $client_ver2, plugins_url('assets/bridge-client-inline.js', DSGO_APPS_FILE));
 
         // Preload the entire script chain so the browser starts fetching
         // every URL in parallel instead of discovering each one when the
@@ -454,22 +460,21 @@ final class InlineRenderer {
      *   - a declared route in `manifest.routes` (anchor navigation between
      *     pages of a multi-route inline app, e.g. `<a href="/about">`).
      *
-     * **Prefixed mount.** Both routes and assets get the
-     * `/{prefix}/{appId}` prefix and flow through the rewrite rule into
-     * PHP. `<script src="/_astro/foo.js">` becomes
-     * `<script src="/{prefix}/{appId}/_astro/foo.js">`.
+     * **Prefixed mount.** Routes and HTML files keep the
+     * `/{prefix}/{appId}` prefix so PHP can inject the per-request CSP
+     * nonce and bridge bootstrap. Non-HTML static assets (`.js`, `.css`,
+     * images, fonts, etc.) are rewritten to their actual upload URL
+     * (`/wp-content/uploads/dsgo-apps/<id>/asset.css`) so the host's web
+     * server can serve them directly without going through PHP. This avoids
+     * managed-host nginx fast-paths (GoDaddy MWP, WP Engine, etc.) that
+     * 404 any URL ending in a known static extension before WordPress can
+     * run. `<script src="/_astro/foo.js">` becomes
+     * `<script src="/wp-content/uploads/dsgo-apps/<id>/_astro/foo.js">`.
      *
      * **Root mount.** Routes are left as site-absolute paths (the
      * dispatcher catches them on `is_404()` at template_redirect). Assets
-     * are rewritten to the bundle's static upload URL
-     * (`/wp-content/uploads/dsgo-apps/<id>/_astro/foo.js`), so the host's
-     * web server can serve them directly without going through PHP.
-     *
-     * The asset rewrite for root mounts is the workaround for managed-host
-     * nginx fast-paths (GoDaddy MWP, WP Engine, etc.) that 404 any URL
-     * ending in a known static extension before WordPress can run — which
-     * would otherwise prevent the dispatcher from streaming `_astro/*`
-     * assets for root-mounted apps.
+     * are rewritten to the bundle's static upload URL using the same
+     * nginx-bypass logic as prefixed mounts.
      *
      * Paths that match nothing in the bundle are left alone, so links to
      * WP pages, fragments, and external destinations pass through
@@ -482,14 +487,15 @@ final class InlineRenderer {
     ): string {
         $prefix     = self::url_prefix_for($manifest);
         $is_root    = $prefix === '';
-        // For root mounts, asset_base is the path-only component of the
-        // upload URL (e.g. `/wp-content/uploads/dsgo-apps/<id>`). The
-        // sanitizer accepts site-absolute paths under that prefix; full
+        // Upload base path (e.g. `/wp-content/uploads/dsgo-apps/<id>`) used to
+        // rewrite static non-HTML assets for both root and prefixed mounts so
+        // the host web server can serve them directly without going through PHP.
+        // The sanitizer accepts site-absolute paths under this prefix; full
         // origin URLs would be rejected as `remote_link_stylesheet`.
-        $asset_base = $is_root
-            ? rtrim((string) (wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH) ?: ''), '/')
-            : $prefix;
-        $asset_path = $asset_base;
+        $upload_base = rtrim((string) (wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH) ?: ''), '/');
+        // For prefixed mounts, the route-prefix path is used for routes and HTML
+        // files (they need PHP for per-request CSP nonce + bridge injection).
+        $route_prefix = $is_root ? '' : $prefix;
 
         // Collect declared route paths (e.g. ['/', '/about', '/pricing']) so
         // anchors like `<a href="/about">` can be rewritten even though
@@ -509,7 +515,7 @@ final class InlineRenderer {
             : static fn(string $rel) => $rel !== '' && !str_contains($rel, '..') && is_file($bundle_dir . '/' . $rel);
 
         $tag_re = '#<(a|script|link|img|source|audio|video|iframe)\b([^>]*)>#i';
-        return preg_replace_callback($tag_re, function (array $m) use ($prefix, $is_root, $asset_base, $asset_path, $routes, $is_bundle_file): string {
+        return preg_replace_callback($tag_re, function (array $m) use ($prefix, $is_root, $upload_base, $route_prefix, $routes, $is_bundle_file): string {
             $tag   = strtolower($m[1]);
             $attrs = $m[2];
             // Anchors only rewrite `href`; everything else uses src/href as before.
@@ -517,13 +523,13 @@ final class InlineRenderer {
             foreach ($candidate_attrs as $attr) {
                 $val = self::extract_attr_local($attrs, $attr);
                 if ($val === null || $val === '') continue;
-                if (!str_starts_with($val, '/')) continue;                                  // already relative
+                if (!str_starts_with($val, '/')) continue;                                  // relative path — skip
                 if (str_starts_with($val, '//')) continue;                                  // protocol-relative
-                if ($prefix !== '' && (str_starts_with($val, $prefix . '/') || $val === $prefix)) continue; // already mapped (prefixed)
-                if ($is_root && $asset_path !== '' && str_starts_with($val, $asset_path . '/')) continue;   // already mapped (root → static)
+                if ($prefix !== '' && (str_starts_with($val, $prefix . '/') || $val === $prefix)) continue; // already mapped (prefixed route)
+                if ($upload_base !== '' && str_starts_with($val, $upload_base . '/')) continue;             // already mapped (upload static)
                 if (str_starts_with($val, '/wp-admin/')   ||
                     str_starts_with($val, '/wp-includes/')) continue;                       // explicit WP paths
-                if (!$is_root && str_starts_with($val, '/wp-content/')) continue;           // /wp-content/ untouched for prefixed mounts
+                if (str_starts_with($val, '/wp-content/')) continue;                        // /wp-content/ untouched
                 // Strip query/fragment for the on-disk lookup; use ~ delimiters
                 // because `#` would conflict with `[?#]` inside the class.
                 $path        = preg_replace('~[?#].*$~', '', $val) ?? $val;
@@ -532,16 +538,16 @@ final class InlineRenderer {
                 $is_bundle   = $rel !== '' && !str_contains($rel, '..') && $is_bundle_file($rel);
                 if (!$is_route && !$is_bundle) continue;
 
-                if ($is_root) {
-                    // Routes resolve via the dispatcher; only static bundle
-                    // files need redirection to the upload URL. Skip routes
-                    // and HTML files (HTML must run through PHP for the
-                    // per-request CSP nonce + bridge injection).
-                    if ($is_route) continue;
-                    if (preg_match('#\.html?$#i', $path)) continue;
-                    $new_val = $asset_base . $val;
+                // Routes and HTML files must go through PHP (per-request nonce +
+                // bridge injection). All other static bundle files are rewritten
+                // to their upload URL so the host web server can serve them
+                // directly, bypassing managed-host nginx fast-paths that would
+                // 404 known static extensions before WordPress can run.
+                if ($is_route || preg_match('#\.html?$#i', $path)) {
+                    if ($is_root) continue; // root routes stay as site-absolute paths
+                    $new_val = $route_prefix . $val;
                 } else {
-                    $new_val = $prefix . $val;
+                    $new_val = $upload_base . $val;
                 }
                 $attrs = preg_replace(
                     '#(\b' . preg_quote($attr, '#') . '\s*=\s*")' . preg_quote($val, '#') . '(")#',

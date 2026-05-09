@@ -128,6 +128,9 @@ class InlineRendererTest extends WP_UnitTestCase {
     }
 
     public function test_rewrite_bundle_asset_paths_rewrites_existing_files(): void {
+        // Prefixed-mount static assets must be rewritten to their upload URL so
+        // managed-host nginx fast-paths (GoDaddy MWP, WP Engine, etc.) can serve
+        // them directly without going through WordPress.
         $bundle = sys_get_temp_dir() . '/dsgo-rewrite-' . uniqid();
         mkdir($bundle . '/_astro', 0755, true);
         file_put_contents($bundle . '/_astro/foo.js', '/* x */');
@@ -139,12 +142,59 @@ class InlineRendererTest extends WP_UnitTestCase {
               . '<a href="/contact">x</a>'
               . '<img src="/wp-content/uploads/img.png">';
         $out = InlineRenderer::rewrite_bundle_asset_paths($html, $bundle, $manifest);
-        $prefix = InlineRenderer::url_prefix_for($manifest);
-        $this->assertStringContainsString('src="' . $prefix . '/_astro/foo.js"', $out);
-        $this->assertStringContainsString('href="' . $prefix . '/_astro/foo.js"', $out);
+        $upload_path = rtrim((string) wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH), '/');
+        // Static assets go to the upload URL (nginx-bypass).
+        $this->assertStringContainsString('src="' . $upload_path . '/_astro/foo.js"', $out);
+        $this->assertStringContainsString('href="' . $upload_path . '/_astro/foo.js"', $out);
         // Non-bundle paths must be left alone (route link + WP path).
         $this->assertStringContainsString('href="/contact"', $out);
         $this->assertStringContainsString('src="/wp-content/uploads/img.png"', $out);
+    }
+
+    public function test_prefixed_mount_routes_use_prefix_not_upload_url(): void {
+        // Routes must keep the prefix path (they need PHP for per-request nonce
+        // and bridge injection). Only non-HTML static assets go to the upload URL.
+        $bundle = sys_get_temp_dir() . '/dsgo-prefixed-route-' . uniqid();
+        mkdir($bundle, 0755, true);
+        file_put_contents($bundle . '/index.html', '<html></html>');
+        file_put_contents($bundle . '/about.html', '<html></html>');
+        $arr = $this->minimal_inline_manifest();
+        $arr['id']     = 'my-app';
+        $arr['routes'] = [
+            ['path' => '/',       'file' => 'index.html'],
+            ['path' => '/about',  'file' => 'about.html'],
+        ];
+        $manifest = Manifest::validate($arr);
+        $html = '<a href="/">Home</a><a href="/about">About</a><a href="/contact">Contact</a>';
+        $out  = InlineRenderer::rewrite_bundle_asset_paths($html, $bundle, $manifest);
+        $prefix      = InlineRenderer::url_prefix_for($manifest);
+        $upload_path = rtrim((string) wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH), '/');
+        // Route links get the PHP-dispatcher prefix.
+        $this->assertStringContainsString('href="' . $prefix . '/"', $out);
+        $this->assertStringContainsString('href="' . $prefix . '/about"', $out);
+        // Non-route, non-bundle link is untouched.
+        $this->assertStringContainsString('href="/contact"', $out);
+        // Upload URL must not appear for routes.
+        $this->assertStringNotContainsString($upload_path . '/"', $out);
+        $this->assertStringNotContainsString($upload_path . '/about"', $out);
+    }
+
+    public function test_prefixed_mount_html_files_use_prefix_not_upload_url(): void {
+        // HTML files in a prefixed-mount bundle must keep the PHP-dispatcher
+        // prefix, not be rewritten to the upload URL. The renderer needs to
+        // inject per-request nonce and bridge bootstrap.
+        $bundle = sys_get_temp_dir() . '/dsgo-pfxhtml-' . uniqid();
+        mkdir($bundle, 0755, true);
+        file_put_contents($bundle . '/other.html', '<html></html>');
+        $arr = $this->minimal_inline_manifest();
+        $arr['id'] = 'my-app';
+        $manifest  = Manifest::validate($arr);
+        $html = '<a href="/other.html">page</a>';
+        $out  = InlineRenderer::rewrite_bundle_asset_paths($html, $bundle, $manifest);
+        $prefix      = InlineRenderer::url_prefix_for($manifest);
+        $upload_path = rtrim((string) wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH), '/');
+        $this->assertStringContainsString('href="' . $prefix . '/other.html"', $out);
+        $this->assertStringNotContainsString($upload_path, $out);
     }
 
     public function test_rewrite_bundle_asset_paths_rewrites_anchors_to_declared_routes(): void {
@@ -349,6 +399,8 @@ class InlineRendererTest extends WP_UnitTestCase {
     }
 
     public function test_render_publisher_host_rewrites_bundle_asset_paths(): void {
+        // Static assets in the publisher host go to the upload URL so the host
+        // web server can serve them directly (same nginx-bypass as route rendering).
         $bundle_dir = sys_get_temp_dir() . '/dsgo-host-' . uniqid();
         mkdir($bundle_dir . '/_astro', 0755, true);
         file_put_contents($bundle_dir . '/_astro/foo.js', '/* x */');
@@ -363,8 +415,8 @@ class InlineRendererTest extends WP_UnitTestCase {
 
         $output = InlineRenderer::render_publisher_host($bundle_dir, $manifest, 'N');
 
-        $expected_prefix = '/' . \DSGo_Apps\Settings::get_url_prefix() . '/demo/_astro/foo.js';
-        $this->assertStringContainsString('src="' . $expected_prefix . '"', $output);
+        $upload_path = rtrim((string) wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH), '/');
+        $this->assertStringContainsString('src="' . $upload_path . '/_astro/foo.js"', $output);
     }
 
     public function test_render_publisher_host_stamps_nonce_on_user_scripts(): void {
