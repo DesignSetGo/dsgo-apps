@@ -343,6 +343,11 @@ final class Installer {
         $content_origins = CSPBuilder::content_image_origins($manifest);
         $img_src_extra   = $content_origins !== [] ? ' ' . implode(' ', $content_origins) : '';
 
+        // Note: `frame-ancestors` is intentionally omitted. This CSP is
+        // delivered via a `<meta http-equiv>` element (DOMDocument-injected
+        // into the bundle's index.html), and browsers ignore frame-ancestors
+        // when delivered via meta. The outer iframe-loader response handles
+        // cross-origin framing protection at the HTTP-header level.
         return implode('; ', [
             "default-src 'none'",
             "script-src $assets_url $bundle_url 'unsafe-inline'",
@@ -350,7 +355,6 @@ final class Installer {
             "img-src $bundle_url data: blob:" . $img_src_extra,
             "font-src $bundle_url",
             "connect-src $connect_src",
-            "frame-ancestors 'self'",
         ]);
     }
 }

@@ -27,7 +27,7 @@ defined('ABSPATH') || exit;
 <link rel="preload" as="script" href="<?php echo esc_url($wp_url_url); ?>">
 <link rel="preload" as="script" href="<?php echo esc_url($api_fetch_url); ?>">
 <link rel="preload" as="script" href="<?php echo esc_url($parent_bridge_url); ?>">
-<link rel="preload" as="document" href="<?php echo esc_url($iframe_src); ?>">
+<link rel="prefetch" as="document" href="<?php echo esc_url($iframe_src); ?>">
 <style>
 :root { color-scheme: light dark; }
 html, body { margin: 0; padding: 0; height: 100%; background: #fafaf7; color: #1a1a1a; }
