@@ -301,8 +301,11 @@ final class Installer {
         $meta->setAttribute('http-equiv', 'Content-Security-Policy');
         $meta->setAttribute('content', $csp);
 
+        $bridge_client_path = DSGO_APPS_PATH . 'assets/bridge-client.js';
+        $bridge_client_ver  = file_exists($bridge_client_path) ? (string) filemtime($bridge_client_path) : DSGO_APPS_VERSION;
+        $bridge_client_url  = add_query_arg('ver', $bridge_client_ver, plugins_url('assets/bridge-client.js', DSGO_APPS_FILE));
         $script = $doc->createElement('script');
-        $script->setAttribute('src', plugins_url('assets/bridge-client.js', DSGO_APPS_FILE));
+        $script->setAttribute('src', $bridge_client_url);
         $script->setAttribute('defer', '');
 
         $first = $head->firstChild;

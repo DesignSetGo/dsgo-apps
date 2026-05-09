@@ -123,7 +123,9 @@ final class IframeLoader {
         $wp_url_url        = includes_url('js/dist/url.min.js');
         $api_fetch_url     = includes_url('js/dist/api-fetch.min.js');
         $rest_root         = esc_url_raw(rest_url());
-        $parent_bridge_url = plugins_url('assets/parent-bridge.js', DSGO_APPS_FILE);
+        $parent_bridge_path = DSGO_APPS_PATH . 'assets/parent-bridge.js';
+        $parent_bridge_ver  = file_exists($parent_bridge_path) ? (string) filemtime($parent_bridge_path) : DSGO_APPS_VERSION;
+        $parent_bridge_url  = add_query_arg('ver', $parent_bridge_ver, plugins_url('assets/parent-bridge.js', DSGO_APPS_FILE));
 
         if (!headers_sent()) {
             nocache_headers();
@@ -239,7 +241,7 @@ final class IframeLoader {
         );
 
         $iframe_html = sprintf(
-            '<iframe src="%1$s" sandbox="allow-scripts" loading="lazy" '
+            '<iframe src="%1$s" sandbox="allow-scripts allow-forms" loading="lazy" '
                 . 'style="width:100%%; height:%2$dpx; border:0; display:block;" '
                 . 'title="%3$s" aria-label="%4$s" '
                 . 'data-dsgo-embed-id="%5$d" data-dsgo-app-id="%6$s"></iframe>',
@@ -283,7 +285,9 @@ final class IframeLoader {
             includes_url('js/dist/url.min.js'),
             includes_url('js/dist/api-fetch.min.js'),
         ];
-        $bridge_url = plugins_url('assets/parent-bridge.js', DSGO_APPS_FILE);
+        $bridge_path = DSGO_APPS_PATH . 'assets/parent-bridge.js';
+        $bridge_ver  = file_exists($bridge_path) ? (string) filemtime($bridge_path) : DSGO_APPS_VERSION;
+        $bridge_url  = add_query_arg('ver', $bridge_ver, plugins_url('assets/parent-bridge.js', DSGO_APPS_FILE));
 
         // The parent-bridge runtime is intentionally inline-emitted into the post body so a
         // single instance is shared by every embed on the page. wp_enqueue_script() can't
