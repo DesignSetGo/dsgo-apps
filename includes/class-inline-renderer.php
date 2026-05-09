@@ -515,7 +515,7 @@ final class InlineRenderer {
             : static fn(string $rel) => $rel !== '' && !str_contains($rel, '..') && is_file($bundle_dir . '/' . $rel);
 
         $tag_re = '#<(a|script|link|img|source|audio|video|iframe)\b([^>]*)>#i';
-        return preg_replace_callback($tag_re, function (array $m) use ($prefix, $is_root, $upload_base, $route_prefix, $routes, $is_bundle_file): string {
+        return preg_replace_callback($tag_re, function (array $m) use ($prefix, $is_root, $upload_base, $route_prefix, $routes, $is_bundle_file, $bundle_dir): string {
             $tag   = strtolower($m[1]);
             $attrs = $m[2];
             // Anchors only rewrite `href`; everything else uses src/href as before.
@@ -547,7 +547,18 @@ final class InlineRenderer {
                     if ($is_root) continue; // root routes stay as site-absolute paths
                     $new_val = $route_prefix . $val;
                 } else {
+                    // Cache-bust static asset URLs by per-file mtime. Without
+                    // this, browsers cache `styles.css` for the full 31-day
+                    // `Cache-Control: max-age=2678400` window the host serves,
+                    // and visitors keep seeing stale CSS/JS even after a redeploy
+                    // because the URL is byte-identical. mtime advances on every
+                    // bundle replace, so the URL changes and caches invalidate.
                     $new_val = $upload_base . $val;
+                    $mtime   = @filemtime($bundle_dir . '/' . $rel);
+                    if ($mtime !== false) {
+                        $sep      = (strpos($new_val, '?') === false) ? '?' : '&';
+                        $new_val .= $sep . 'v=' . $mtime;
+                    }
                 }
                 $attrs = preg_replace(
                     '#(\b' . preg_quote($attr, '#') . '\s*=\s*")' . preg_quote($val, '#') . '(")#',
