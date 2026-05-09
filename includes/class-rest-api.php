@@ -130,10 +130,13 @@ final class RestApi {
             'callback'            => [self::class, 'abilities_invoke'],
             'permission_callback' => '__return_true',
         ]);
-        // ai.prompt and email.send are mutating operations that consume
-        // billable resources (LLM tokens; outbound mail). Require an
-        // authenticated WP session as a coarse gate; per-manifest permission
-        // checks then run inside the callback against the app's permissions.
+        // ai.prompt requires an authenticated WP session as a coarse gate since
+        // it consumes billable LLM tokens. email.send does not share this
+        // requirement: sending to 'admin' is a legitimate anonymous operation
+        // (contact forms). The per-manifest email.recipients allow-list and the
+        // per-app rate limit (100/hour) are the correct abuse gates; login is
+        // not. Anonymous visitors sending to 'current_user' already reject with
+        // not_authenticated inside EmailBridge::send (get_current_user_id() === 0).
         register_rest_route(self::NAMESPACE, "/apps/$app_id_re/ai/prompt", [
             'methods'             => 'POST',
             'callback'            => [self::class, 'ai_prompt'],
@@ -142,7 +145,7 @@ final class RestApi {
         register_rest_route(self::NAMESPACE, "/apps/$app_id_re/email/send", [
             'methods'             => 'POST',
             'callback'            => [self::class, 'email_send'],
-            'permission_callback' => static fn () => is_user_logged_in(),
+            'permission_callback' => '__return_true',
         ]);
         // media.upload — core, opt-out: every app gets it unless the manifest
         // sets `media.uploads: false`. The visitor must hold the WP
