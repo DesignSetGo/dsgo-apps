@@ -45,7 +45,7 @@ class BlockRenderTest extends WP_UnitTestCase {
         // multi-iframe parent-bridge reads. No `?dsgo_embed=` query — the
         // outer WP-bootstrapped iframe-loader is gone.
         $this->assertStringContainsString('<iframe', $output);
-        $this->assertStringContainsString('sandbox="allow-scripts allow-forms"', $output);
+        $this->assertStringContainsString('sandbox="allow-scripts allow-forms allow-top-navigation-by-user-activation"', $output);
         $this->assertStringContainsString('/wp-content/uploads/dsgo-apps/e2e-block/', $output);
         $this->assertStringContainsString('data-dsgo-embed-id="', $output);
         $this->assertStringContainsString('data-dsgo-app-id="e2e-block"', $output);

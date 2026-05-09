@@ -89,7 +89,7 @@ window.wpApiSettings = { root: <?php echo wp_json_encode($rest_root); ?>, nonce:
     </div>
     <iframe
         src="<?php echo esc_url($iframe_src); ?>"
-        sandbox="allow-scripts allow-forms"
+        sandbox="allow-scripts allow-forms allow-top-navigation-by-user-activation"
         title="<?php echo esc_attr(sprintf(
             /* translators: %s: app display name */
             __('%s — embedded application', 'dsgo-apps'),

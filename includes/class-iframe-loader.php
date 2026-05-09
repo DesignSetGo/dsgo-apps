@@ -241,7 +241,7 @@ final class IframeLoader {
         );
 
         $iframe_html = sprintf(
-            '<iframe src="%1$s" sandbox="allow-scripts allow-forms" loading="lazy" '
+            '<iframe src="%1$s" sandbox="allow-scripts allow-forms allow-top-navigation-by-user-activation" loading="lazy" '
                 . 'style="width:100%%; height:%2$dpx; border:0; display:block;" '
                 . 'title="%3$s" aria-label="%4$s" '
                 . 'data-dsgo-embed-id="%5$d" data-dsgo-app-id="%6$s"></iframe>',

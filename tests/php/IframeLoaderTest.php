@@ -36,7 +36,7 @@ class IframeLoaderTest extends WP_UnitTestCase {
         $this->assertStringContainsString('data-dsgo-embed-id="1"', $html);
         $this->assertStringContainsString('"appId":"sample"', str_replace(' ', '', $html));
         $this->assertStringContainsString('parent-bridge.js', $html);
-        $this->assertStringContainsString('sandbox="allow-scripts allow-forms"', $html);
+        $this->assertStringContainsString('sandbox="allow-scripts allow-forms allow-top-navigation-by-user-activation"', $html);
         $this->assertStringContainsString('api-fetch', $html);
         $this->assertStringContainsString('wpApiSettings', $html);
     }
