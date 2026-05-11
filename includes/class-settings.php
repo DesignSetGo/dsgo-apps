@@ -417,10 +417,20 @@ final class Settings {
                     </div>
                 </section>
                 <?php
+                    // Only show the white-label card to the configured brand
+                    // owner. White_Label::is_current_user_owner() will silently
+                    // claim ownership for the first agency-tier admin who views
+                    // this page, then refuse subsequent admins. Save-time
+                    // pre_update_option gates in Pro block any non-owner POST
+                    // even if they reach this code through other paths.
                     $white_label_visible = class_exists('\\DSGo_Apps_Pro\\License')
-                        && \DSGo_Apps_Pro\License::is_agency();
+                        && \DSGo_Apps_Pro\License::is_agency()
+                        && class_exists('\\DSGo_Apps_Pro\\White_Label')
+                        && \DSGo_Apps_Pro\White_Label::is_current_user_owner();
                     if ($white_label_visible) :
-                        $brand_name = (string) get_option('dsgo_pro_brand_name', '');
+                        $brand_name      = (string) get_option('dsgo_pro_brand_name', '');
+                        $brand_owner_id  = (int) get_option('dsgo_pro_brand_owner', 0);
+                        $brand_admin_map = \DSGo_Apps_Pro\White_Label::list_admin_users();
                 ?>
                 <section class="dsgo-card" aria-labelledby="dsgo-settings-whitelabel-heading">
                     <header class="dsgo-card__header">
@@ -446,6 +456,26 @@ final class Settings {
                         />
                         <p class="dsgo-field__hint">
                             <?php esc_html_e('Applied to the apps-list eyebrow and to the Plugins-page Name/Author/Description for both Apps and Apps Pro. Plugin and Author URIs are cleared so client-facing surfaces never link back to designsetgo.dev.', 'designsetgo-apps'); ?>
+                        </p>
+                    </div>
+
+                    <div class="dsgo-field">
+                        <label class="dsgo-field__label" for="dsgo_pro_brand_owner">
+                            <?php esc_html_e('Brand-management owner', 'designsetgo-apps'); ?>
+                        </label>
+                        <select
+                            id="dsgo_pro_brand_owner"
+                            name="dsgo_pro_brand_owner"
+                            class="dsgo-input"
+                        >
+                            <?php foreach ($brand_admin_map as $admin_id => $admin_label) : ?>
+                                <option value="<?php echo (int) $admin_id; ?>" <?php selected($admin_id, $brand_owner_id); ?>>
+                                    <?php echo esc_html($admin_label); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="dsgo-field__hint">
+                            <?php esc_html_e('Only this user sees the white-label card. Transfer ownership to hand brand control to another admin; once transferred, you will no longer see these fields. To reclaim, the new owner has to transfer it back.', 'designsetgo-apps'); ?>
                         </p>
                     </div>
                 </section>
