@@ -57,7 +57,7 @@ class PrivacyTest extends WP_UnitTestCase {
 
         $storage_rows = array_filter(
             $result['data'],
-            static fn (array $row): bool => $row['group_id'] === 'dsgo-apps-user-storage',
+            static fn (array $row): bool => $row['group_id'] === 'designsetgo-apps-user-storage',
         );
         $this->assertCount(1, $storage_rows);
 
@@ -93,7 +93,7 @@ class PrivacyTest extends WP_UnitTestCase {
 
         $email_rows = array_values(array_filter(
             $result['data'],
-            static fn (array $row): bool => $row['group_id'] === 'dsgo-apps-email-log',
+            static fn (array $row): bool => $row['group_id'] === 'designsetgo-apps-email-log',
         ));
         $this->assertCount(1, $email_rows);
         $values = array_column($email_rows[0]['data'], 'value', 'name');

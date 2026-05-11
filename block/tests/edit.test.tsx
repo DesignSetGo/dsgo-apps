@@ -15,7 +15,7 @@ import apiFetch from '@wordpress/api-fetch';
 jest.mock('@wordpress/block-editor', () => ({
   InspectorControls: ({ children }: { children: React.ReactNode }) =>
     <div data-testid="inspector">{children}</div>,
-  useBlockProps: () => ({ className: 'wp-block-dsgo-apps-embed-edit' }),
+  useBlockProps: () => ({ className: 'wp-block-designsetgo-apps-embed-edit' }),
 }));
 
 jest.mock('@wordpress/components', () => ({

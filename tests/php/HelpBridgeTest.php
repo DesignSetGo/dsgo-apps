@@ -10,7 +10,7 @@ use WP_UnitTestCase;
 /**
  * Tests for the bridge method registry + Help_Bridge.
  *
- * The registry loads `dsgo-apps/data/bridge-methods.json` once at boot and
+ * The registry loads `designsetgo-apps/data/bridge-methods.json` once at boot and
  * exposes lookups by method name. Help_Bridge is the always-available
  * `dsgo.help.method(name)` bridge surface that the model uses at runtime
  * to learn full method signatures without the harness having to enumerate

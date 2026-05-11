@@ -46,7 +46,7 @@ class BlockRenderTest extends WP_UnitTestCase {
         // outer WP-bootstrapped iframe-loader is gone.
         $this->assertStringContainsString('<iframe', $output);
         $this->assertStringContainsString('sandbox="allow-scripts allow-forms allow-top-navigation-by-user-activation"', $output);
-        $this->assertStringContainsString('/wp-content/uploads/dsgo-apps/e2e-block/', $output);
+        $this->assertStringContainsString('/wp-content/uploads/designsetgo-apps/e2e-block/', $output);
         $this->assertStringContainsString('data-dsgo-embed-id="', $output);
         $this->assertStringContainsString('data-dsgo-app-id="e2e-block"', $output);
         $this->assertStringContainsString('data-dsgo-embed-config="', $output);

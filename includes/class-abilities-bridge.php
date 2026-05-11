@@ -15,6 +15,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class AbilitiesBridge {
 
     public static function pattern_matches(string $pattern, string $name): bool {

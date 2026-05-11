@@ -1,6 +1,6 @@
 <?php
 /**
- * Server-side render callback for the dsgo-apps/embed block.
+ * Server-side render callback for the designsetgo-apps/embed block.
  *
  * Block-mode embeds render directly into the parent post's DOM. The iframe
  * loads the bundle URL with `sandbox="allow-scripts"` (opaque origin), and

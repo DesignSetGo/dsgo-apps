@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class RestApi {
 
     public const NAMESPACE = 'dsgo/v1';
@@ -207,8 +209,10 @@ final class RestApi {
      * gated on `manage_options` + a per-app nonce; the bridge layer never
      * sees these calls (they only flow between the admin UI and the vault).
      *
-     * Wired separately from REST so the admin-ajax callbacks can land on
-     * the `admin_init` action without depending on rest_api_init firing.
+     * Wired separately from REST so the admin-ajax callbacks resolve even
+     * on requests where rest_api_init doesn't fire. Plugin::register_hooks
+     * binds this on `init` (not `admin_init`) because admin-ajax requests
+     * fire init but not necessarily admin_init.
      */
     public static function register_admin_ajax(): void {
         add_action('wp_ajax_dsgo_apps_secret_set',   [self::class, 'ajax_secret_set']);
@@ -242,6 +246,11 @@ final class RestApi {
             $mount_mode = is_array($manifest) ? ($manifest['mount']['mode'] ?? 'prefixed') : 'prefixed';
             $base_path  = $mount_mode === 'root' ? '/' : Settings::app_base_path($p->post_name);
             $modes      = is_array($manifest) ? ($manifest['display']['modes'] ?? []) : [];
+            // has_secrets drives the per-row "Secrets" link in the apps list;
+            // no Manifest::validate round-trip in the hot path. The Secrets
+            // tab itself reads the manifest directly to render the form.
+            $secrets_count = is_array($manifest) && is_array($manifest['secrets'] ?? null)
+                ? count($manifest['secrets']) : 0;
             $out[] = [
                 'id'            => $p->post_name,
                 'name'          => $p->post_title,
@@ -253,6 +262,7 @@ final class RestApi {
                 'routes'        => is_array($manifest) && $isolation === 'inline' ? ($manifest['routes'] ?? []) : [],
                 'is_site_home'  => $mount_mode === 'root',
                 'home_eligible' => is_array($modes) && in_array('page', $modes, true),
+                'has_secrets'   => $secrets_count > 0,
             ];
         }
 
@@ -305,15 +315,68 @@ final class RestApi {
         $zip_path = $files['bundle']['tmp_name'];
         try {
             $result = Installer::install($zip_path, get_current_user_id());
-            return new \WP_REST_Response([
-                'id'      => $result->app_id,
-                'url'     => $result->url,
-                'post_id' => $result->post_id,
-            ], 201);
+            return new \WP_REST_Response(self::shape_install_response($result), 201);
         } catch (InstallerError $e) {
             $status = self::installer_error_status($e->error_code);
             return new \WP_REST_Response(['code' => $e->error_code, 'message' => $e->bare_message], $status);
         }
+    }
+
+    /**
+     * Build the JSON shape returned from any install path. Centralized so
+     * the html-import and starter-install paths return the same fields as
+     * the bundle upload — particularly the `needs_secrets` + `secrets_url`
+     * signals the admin JS uses to redirect to the Secrets tab after
+     * installing an app that declares required_secrets.
+     *
+     * @return array<string, mixed>
+     */
+    private static function shape_install_response(InstallResult $result): array {
+        $needs_secrets = false;
+        $secrets_url   = null;
+
+        // Read the just-installed manifest to compute the redirect signal.
+        // Reading post meta is cheaper than re-validating the manifest, and
+        // the values were trusted at install time.
+        $post = get_post($result->post_id);
+        if ($post instanceof \WP_Post) {
+            $raw = get_post_meta($post->ID, 'dsgo_apps_manifest', true);
+            $required = is_array($raw) && is_array($raw['required_secrets'] ?? null)
+                ? array_values(array_filter($raw['required_secrets'], 'is_string'))
+                : [];
+            if ($required !== []) {
+                // Compute "set" only when sodium is available — without it
+                // the vault can't decrypt, so the missing-set is effectively
+                // the full required set. We still surface needs_secrets=true
+                // so the admin lands on the Secrets tab, where the
+                // sodium-unavailable notice makes the degraded state visible.
+                // Swallowing the redirect would leave a non-functional app
+                // looking like a successful install.
+                $set = Secret_Vault::is_available()
+                    ? Secret_Vault::list_set_aliases($result->app_id)
+                    : [];
+                if (array_diff($required, $set) !== []) {
+                    $needs_secrets = true;
+                    $secrets_url = add_query_arg(
+                        [
+                            'page'           => 'designsetgo-apps',
+                            'app_id'         => $result->app_id,
+                            'tab'            => 'secrets',
+                            'just_installed' => '1',
+                        ],
+                        admin_url('admin.php'),
+                    );
+                }
+            }
+        }
+
+        return [
+            'id'            => $result->app_id,
+            'url'           => $result->url,
+            'post_id'       => $result->post_id,
+            'needs_secrets' => $needs_secrets,
+            'secrets_url'   => $secrets_url,
+        ];
     }
 
     /**
@@ -384,11 +447,7 @@ final class RestApi {
                 $zip_path = ArtifactNormalizer::pack_html($body, $id, $name, $version);
             }
             $result = Installer::install($zip_path, get_current_user_id());
-            return new \WP_REST_Response([
-                'id'      => $result->app_id,
-                'url'     => $result->url,
-                'post_id' => $result->post_id,
-            ], 201);
+            return new \WP_REST_Response(self::shape_install_response($result), 201);
         } catch (ArtifactNormalizerError $e) {
             $status = match ($e->error_code) {
                 'invalid_id', 'invalid_version',
@@ -501,11 +560,7 @@ final class RestApi {
             $zip->close();
 
             $result = Installer::install($zip_path, get_current_user_id());
-            return new \WP_REST_Response([
-                'id'      => $result->app_id,
-                'url'     => $result->url,
-                'post_id' => $result->post_id,
-            ], 201);
+            return new \WP_REST_Response(self::shape_install_response($result), 201);
         } catch (InstallerError $e) {
             $status = match ($e->error_code) {
                 'forbidden',
@@ -552,6 +607,12 @@ final class RestApi {
         self::cleanup_user_storage_batch((int) $post->ID);
 
         AbilitiesPublisher::unregister_for_app($id);
+        // Purge the per-app sodium-encrypted secret vault. The plugin-wide
+        // uninstall.php sweep catches stragglers via wp_options LIKE, but
+        // a per-app delete should drop the encrypted blob immediately
+        // rather than leaving it sitting in wp_options. delete_all is a
+        // delete_option call — no decryption, no sodium dependency.
+        Secret_Vault::delete_all($id);
         wp_delete_post($post->ID, true);
         Settings::refresh_root_app_id();
         SitemapProvider::invalidate_cache();

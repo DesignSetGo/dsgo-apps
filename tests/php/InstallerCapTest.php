@@ -21,7 +21,7 @@ class InstallerCapTest extends WP_UnitTestCase {
     public function set_up(): void {
         parent::set_up();
         $this->admin_id = $this->factory->user->create(['role' => 'administrator']);
-        $uploads_base = wp_upload_dir()['basedir'] . '/dsgo-apps/';
+        $uploads_base = wp_upload_dir()['basedir'] . '/designsetgo-apps/';
         foreach (['cap-one', 'cap-two', 'cap-three', 'cap-update', 'cap-trashed', 'cap-lifted-a', 'cap-lifted-b'] as $id) {
             \DSGo_Apps\Bundle::recursive_delete($uploads_base . $id);
             foreach (glob($uploads_base . $id . '.previous-*') ?: [] as $stash) {

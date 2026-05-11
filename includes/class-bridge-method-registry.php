@@ -1,7 +1,7 @@
 <?php
 /**
  * Single source of truth for bridge method documentation. Loads
- * `dsgo-apps/data/bridge-methods.json` once at plugin boot and exposes
+ * `designsetgo-apps/data/bridge-methods.json` once at plugin boot and exposes
  * lookups by method name. Drives:
  *   - Help_Bridge / dsgo.help.method() — runtime discovery
  *   - Harness section assembler — full method docs for capability sections
@@ -17,6 +17,8 @@
 declare(strict_types=1);
 
 namespace DSGo_Apps;
+
+defined('ABSPATH') || exit;
 
 final class Bridge_Method_Registry {
 

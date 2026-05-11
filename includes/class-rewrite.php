@@ -13,6 +13,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class Rewrite {
 
     public const QUERY_VAR       = 'dsgo_app_id';

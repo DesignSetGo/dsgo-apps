@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 // Exception messages constructed below are never echoed to clients; manifest
 // validation errors are caught by the REST layer and translated into safe
 // error responses, and at install time admins see a curated message.
@@ -1565,6 +1567,24 @@ final readonly class Manifest {
                 'providers' => $this->commerce_providers,
                 'endpoints' => $this->commerce_endpoints,
             ];
+        }
+        // Outbound HTTP proxy fields — emitted only when populated so the
+        // round-trip stays stable for apps that don't use the proxy. Each
+        // closes a documented round-trip gap so `Bucket::active_for` works
+        // against post-meta-hydrated manifests AND `shape_install_response`
+        // can read required_secrets from stored manifests to drive the
+        // post-install Secrets-tab redirect.
+        if ($this->permissions_http !== []) {
+            $out['permissions']['http'] = $this->permissions_http;
+        }
+        if ($this->secrets !== []) {
+            $out['secrets'] = $this->secrets;
+        }
+        if ($this->required_secrets !== []) {
+            $out['required_secrets'] = $this->required_secrets;
+        }
+        if ($this->http_test_endpoint !== null) {
+            $out['http'] = ['test_endpoint' => $this->http_test_endpoint];
         }
         // Only emit `content` when the app has opted into something — keeps
         // round-trip stable for the (default) all-off case.

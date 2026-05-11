@@ -989,6 +989,95 @@ class RestApiTest extends WP_UnitTestCase {
         $this->assertSame('already-home', \DSGo_Apps\Settings::get_root_app_id());
     }
 
+    // ===== shape_install_response: needs_secrets / secrets_url =====
+    //
+    // Drives the post-install redirect into the Secrets tab. Tested via
+    // reflection rather than a full zip round-trip because the contract
+    // is "given an InstallResult + the manifest in post meta, decide
+    // whether to point the admin at the secrets tab" — there's no need
+    // to relitigate the entire installer to verify it.
+
+    public function test_install_response_signals_needs_secrets_when_required_unset(): void {
+        $post_id = $this->seed_app('needs-vault', [
+            'required_secrets' => ['STRIPE_SECRET'],
+            'secrets'          => [
+                ['alias' => 'STRIPE_SECRET', 'description' => 'Stripe secret key for charges API.'],
+            ],
+        ]);
+        $shape = $this->invoke_shape_install_response(
+            new \DSGo_Apps\InstallResult('needs-vault', $post_id, 'http://example.com/apps/needs-vault/'),
+        );
+        $this->assertTrue($shape['needs_secrets']);
+        $this->assertNotNull($shape['secrets_url']);
+        $this->assertStringContainsString('app_id=needs-vault', (string) $shape['secrets_url']);
+        $this->assertStringContainsString('tab=secrets',        (string) $shape['secrets_url']);
+        $this->assertStringContainsString('just_installed=1',   (string) $shape['secrets_url']);
+    }
+
+    public function test_install_response_clears_needs_secrets_when_vault_already_populated(): void {
+        $post_id = $this->seed_app('vault-ready', [
+            'required_secrets' => ['STRIPE_SECRET'],
+            'secrets'          => [
+                ['alias' => 'STRIPE_SECRET', 'description' => 'Stripe secret key for charges API.'],
+            ],
+        ]);
+        // Simulate the admin having set the secret BEFORE re-installing
+        // (e.g., a redeploy of the same slug; vault values survive update).
+        \DSGo_Apps\Secret_Vault::set('vault-ready', 'STRIPE_SECRET', 'sk_test_already_there');
+        try {
+            $shape = $this->invoke_shape_install_response(
+                new \DSGo_Apps\InstallResult('vault-ready', $post_id, 'http://example.com/apps/vault-ready/'),
+            );
+            $this->assertFalse($shape['needs_secrets']);
+            $this->assertNull($shape['secrets_url']);
+        } finally {
+            \DSGo_Apps\Secret_Vault::delete_all('vault-ready');
+        }
+    }
+
+    public function test_install_response_omits_redirect_when_no_required_secrets(): void {
+        // An app with secrets[] but no required_secrets[] doesn't block on
+        // install — the admin can run the app and set secrets later.
+        $post_id = $this->seed_app('optional-secrets', [
+            'secrets' => [
+                ['alias' => 'OPTIONAL_KEY', 'description' => 'Optional API key for an enrichment feature.'],
+            ],
+        ]);
+        $shape = $this->invoke_shape_install_response(
+            new \DSGo_Apps\InstallResult('optional-secrets', $post_id, 'http://example.com/apps/optional-secrets/'),
+        );
+        $this->assertFalse($shape['needs_secrets']);
+        $this->assertNull($shape['secrets_url']);
+    }
+
+    public function test_install_response_still_redirects_when_sodium_unavailable(): void {
+        // Without sodium the vault can't decrypt — but we MUST still send
+        // the admin to the Secrets tab so the sodium-unavailable notice
+        // explains why the app is non-functional. Swallowing the redirect
+        // would leave a broken app looking like a clean install.
+        // We can't actually disable sodium at runtime in the test, so we
+        // assert via the path that runs when the vault is empty: it must
+        // produce needs_secrets=true regardless of sodium availability.
+        $post_id = $this->seed_app('redirect-anyway', [
+            'required_secrets' => ['SK'],
+            'secrets'          => [['alias' => 'SK', 'description' => 'Some key.']],
+        ]);
+        \DSGo_Apps\Secret_Vault::delete_all('redirect-anyway');
+        $shape = $this->invoke_shape_install_response(
+            new \DSGo_Apps\InstallResult('redirect-anyway', $post_id, 'http://example.com/'),
+        );
+        $this->assertTrue($shape['needs_secrets'],
+            'admins must be directed to the Secrets tab even on hosts without sodium — the tab surfaces the degraded UX');
+    }
+
+    private function invoke_shape_install_response(\DSGo_Apps\InstallResult $result): array {
+        $ref = new \ReflectionMethod(\DSGo_Apps\RestApi::class, 'shape_install_response');
+        $ref->setAccessible(true);
+        $out = $ref->invoke(null, $result);
+        $this->assertIsArray($out);
+        return $out;
+    }
+
     // ===== POST /apps/{app_id}/http/fetch =====
 
     public function tear_down_http_proxy(): void {

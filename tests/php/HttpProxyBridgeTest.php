@@ -432,6 +432,217 @@ final class HttpProxyBridgeTest extends WP_UnitTestCase {
         $this->assertFalse($leaked, 'CURLOPT_RESOLVE pin callback must be removed after fetch returns');
     }
 
+    // ----- Phase 9: full SSRF resolution matrix -----
+
+    /**
+     * @dataProvider ssrf_blocked_address_provider
+     */
+    public function test_ssrf_guard_rejects_each_blocked_address(string $label, string $ip): void {
+        // Every entry here represents a class of internal-network address an
+        // attacker-controlled DNS could return for an allowlisted hostname.
+        // The guard MUST reject each one with http_ssrf_blocked, regardless
+        // of v4 vs v6 family or the specific reserved range. AWS metadata
+        // (169.254.169.254) is the canonical SSRF target — pin it explicitly.
+        $m = $this->manifest(['internal.example']);
+        Http_Proxy_Bridge::set_dns_resolver_for_tests(fn () => [$ip]);
+        $result = Http_Proxy_Bridge::fetch($m, 'https://internal.example/', []);
+        $this->assertSame('http_ssrf_blocked', $result->error_code,
+            "SSRF guard must reject $label ($ip)");
+    }
+
+    /**
+     * @return array<string, array{0:string, 1:string}>
+     */
+    public static function ssrf_blocked_address_provider(): array {
+        return [
+            'loopback v4'        => ['loopback v4',            '127.0.0.1'],
+            'loopback v6'        => ['loopback v6',            '::1'],
+            'aws metadata'       => ['aws metadata (link-local)', '169.254.169.254'],
+            'rfc1918 10/8'       => ['rfc1918 10/8',           '10.0.0.1'],
+            'rfc1918 172.16/12'  => ['rfc1918 172.16/12',      '172.16.0.1'],
+            'rfc1918 192.168/16' => ['rfc1918 192.168/16',     '192.168.1.1'],
+            'cgnat 100.64/10'    => ['cgnat 100.64/10',        '100.64.5.5'],
+            'multicast v4'       => ['multicast v4',           '224.0.0.1'],
+            'reserved 240/4'     => ['reserved 240/4',         '240.0.0.1'],
+            'unique-local v6'    => ['unique-local v6',        'fc00::1'],
+            'link-local v6'      => ['link-local v6',          'fe80::1'],
+            'multicast v6'       => ['multicast v6',           'ff02::1'],
+        ];
+    }
+
+    public function test_ssrf_guard_rejects_dns_resolving_to_aws_metadata(): void {
+        // Mirror the matrix entry as a named test so a regression here is
+        // easy to spot in the report — AWS metadata is the canonical SSRF
+        // target and the test name surfaces it.
+        $m = $this->manifest(['internal.example']);
+        Http_Proxy_Bridge::set_dns_resolver_for_tests(fn () => ['169.254.169.254']);
+        $result = Http_Proxy_Bridge::fetch($m, 'https://internal.example/latest/meta-data/', []);
+        $this->assertSame('http_ssrf_blocked', $result->error_code);
+    }
+
+    // ----- Phase 9: outbound header strip matrix -----
+
+    /**
+     * @dataProvider blocked_outbound_header_provider
+     */
+    public function test_blocked_outbound_header_is_stripped(string $header_name): void {
+        $m = $this->manifest(['api.stripe.com']);
+        $captured = ['headers' => null];
+        Http_Proxy_Bridge::set_transport_factory_for_tests(function ($url, $args) use (&$captured) {
+            $captured['headers'] = $args['headers'] ?? [];
+            return $this->stub_response(200, '{}', ['content-type' => 'application/json']);
+        });
+        Http_Proxy_Bridge::fetch($m, 'https://api.stripe.com/v1/charges', [
+            'headers' => [$header_name => 'value', 'X-Allowed' => 'ok'],
+        ]);
+        // Match case-insensitively — the bridge preserves the caller's case
+        // for headers it forwards, but blocked names use case-insensitive
+        // matching by design.
+        $sent_lc = array_change_key_case($captured['headers'], CASE_LOWER);
+        $this->assertArrayNotHasKey(strtolower($header_name), $sent_lc,
+            "blocked header \"$header_name\" must not be forwarded outbound");
+        $this->assertArrayHasKey('X-Allowed', $captured['headers'],
+            'unblocked headers must still pass through alongside the strip');
+    }
+
+    /**
+     * @return array<string, array{0:string}>
+     */
+    public static function blocked_outbound_header_provider(): array {
+        return [
+            'Cookie'             => ['Cookie'],
+            'Set-Cookie'         => ['Set-Cookie'],
+            'Set-Cookie2'        => ['Set-Cookie2'],
+            'Host'               => ['Host'],
+            'Connection'         => ['Connection'],
+            'Keep-Alive'         => ['Keep-Alive'],
+            'Upgrade'            => ['Upgrade'],
+            'Transfer-Encoding'  => ['Transfer-Encoding'],
+            'Content-Length'     => ['Content-Length'],
+            'X-Forwarded-For'    => ['X-Forwarded-For'],
+            'X-Forwarded-Proto'  => ['X-Forwarded-Proto'],
+            'Proxy-Authorization'=> ['Proxy-Authorization'],
+        ];
+    }
+
+    // ----- Phase 9: filter overrides for the four budget knobs -----
+
+    public function test_request_max_bytes_filter_relaxes_the_default(): void {
+        // Default cap is 1 MB; bump it via filter to confirm callers can
+        // raise the ceiling for legitimate large-payload upstreams.
+        $m = $this->manifest(['api.stripe.com']);
+        $this->bypass_ssrf();
+        add_filter('dsgo_apps_http_request_max_bytes', fn () => 5_000_000);
+        Http_Proxy_Bridge::set_transport_factory_for_tests(
+            fn () => $this->stub_response(200, '{}', ['content-type' => 'application/json']),
+        );
+        // 2 MB body — would reject under the default, must pass with the filter.
+        $result = Http_Proxy_Bridge::fetch($m, 'https://api.stripe.com/', [
+            'method' => 'POST',
+            'body'   => str_repeat('x', 2_000_000),
+        ]);
+        $this->assertSame(200, $result->status);
+    }
+
+    public function test_response_max_bytes_filter_tightens_the_default(): void {
+        $m = $this->manifest(['api.example.com']);
+        $this->bypass_ssrf();
+        add_filter('dsgo_apps_http_response_max_bytes', fn () => 50);
+        Http_Proxy_Bridge::set_transport_factory_for_tests(
+            fn () => $this->stub_response(200, str_repeat('x', 200), []),
+        );
+        $result = Http_Proxy_Bridge::fetch($m, 'https://api.example.com/', []);
+        $this->assertSame('http_response_too_large', $result->error_code);
+    }
+
+    public function test_rate_per_minute_filter_zero_disables_limit(): void {
+        // Documented behavior in rate_limit_check(): a filter value <= 0
+        // disables the rate limiter entirely. Tested separately from the
+        // "blocks after threshold" test (which uses a positive cap).
+        $m = $this->manifest(['api.stripe.com']);
+        $this->bypass_ssrf();
+        add_filter('dsgo_apps_http_rate_per_minute', fn () => 0);
+        Http_Proxy_Bridge::set_transport_factory_for_tests(
+            fn () => $this->stub_response(200, '{}', ['content-type' => 'application/json']),
+        );
+        // 100 calls in a tight loop — none should rate-limit with cap=0.
+        for ($i = 0; $i < 100; $i++) {
+            $result = Http_Proxy_Bridge::fetch($m, 'https://api.stripe.com/', []);
+            $this->assertSame(200, $result->status, "call #$i unexpectedly rejected");
+        }
+    }
+
+    public function test_log_retention_filter_drives_purge_cutoff(): void {
+        // The retention-days filter lives on Http_Proxy_Log::purge_expired,
+        // not the bridge itself, but the bridge surface is what causes rows
+        // to land in the table. Drive a fetch, fake an old created_at, set
+        // a 1-day retention, run purge — row should be gone.
+        $m = $this->manifest(['api.stripe.com']);
+        Http_Proxy_Bridge::set_transport_factory_for_tests(
+            fn () => $this->stub_response(200, '{}', ['content-type' => 'application/json']),
+        );
+        Http_Proxy_Bridge::fetch($m, 'https://api.stripe.com/v1/charges', []);
+        global $wpdb;
+        $table = $wpdb->prefix . 'dsgo_apps_http_log';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL
+        $wpdb->query($wpdb->prepare(
+            "UPDATE $table SET created_at = %s WHERE app_id = %s",
+            gmdate('Y-m-d H:i:s', time() - (5 * DAY_IN_SECONDS)),
+            'proxy-test',
+        ));
+
+        add_filter('dsgo_apps_http_log_retention_days', fn () => 1);
+        Http_Proxy_Log::purge_expired();
+        remove_all_filters('dsgo_apps_http_log_retention_days');
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $count = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE app_id = 'proxy-test'");
+        $this->assertSame(0, $count, 'retention filter should drive the cutoff Http_Proxy_Log purges against');
+    }
+
+    // ----- Phase 9: audit-log row-count invariants -----
+
+    public function test_each_fetch_writes_exactly_one_log_row(): void {
+        // A long-running app firing through the proxy must produce one
+        // audit row per attempt — neither swallowed (which would hide
+        // abuse) nor doubled (which would skew rate-limit visibility).
+        $m = $this->manifest(['api.stripe.com']);
+        Http_Proxy_Bridge::set_transport_factory_for_tests(
+            fn () => $this->stub_response(200, '{}', ['content-type' => 'application/json']),
+        );
+        for ($i = 0; $i < 5; $i++) {
+            Http_Proxy_Bridge::fetch($m, 'https://api.stripe.com/v1/charges', []);
+        }
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}dsgo_apps_http_log");
+        $this->assertSame(5, $count);
+    }
+
+    public function test_mixed_success_and_failure_each_logs_one_row(): void {
+        // A success, a SSRF-block, and a rate-limit hit should each produce
+        // exactly one row — the rate-limit path is the easiest to double-log
+        // because it runs late in the pipeline.
+        $m = $this->manifest(['api.stripe.com']);
+        add_filter('dsgo_apps_http_rate_per_minute', fn () => 1);
+        Http_Proxy_Bridge::set_transport_factory_for_tests(
+            fn () => $this->stub_response(200, '{}', ['content-type' => 'application/json']),
+        );
+        Http_Proxy_Bridge::fetch($m, 'https://api.stripe.com/v1/charges', []);   // success
+        Http_Proxy_Bridge::fetch($m, 'https://api.stripe.com/v1/charges', []);   // rate-limited
+
+        // Disallowed host — different host, not consumed by rate-limit yet.
+        Http_Proxy_Bridge::fetch($m, 'https://api.notion.com/v1/pages', []);     // host_not_allowed
+
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $rows = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}dsgo_apps_http_log");
+        $this->assertSame(3, $rows);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $statuses = $wpdb->get_col("SELECT status FROM {$wpdb->prefix}dsgo_apps_http_log ORDER BY id ASC");
+        $this->assertSame(['200', '0', '0'], $statuses);
+    }
+
     // ===== helpers =====
 
     /**

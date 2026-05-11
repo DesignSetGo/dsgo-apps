@@ -16,11 +16,12 @@ class InstallerTest extends WP_UnitTestCase {
         parent::set_up();
         $this->admin_id = $this->factory->user->create(['role' => 'administrator']);
         // Remove any bundle dirs (including stash remnants) left from previous runs.
-        $uploads_base = wp_upload_dir()['basedir'] . '/dsgo-apps/';
+        $uploads_base = wp_upload_dir()['basedir'] . '/designsetgo-apps/';
         foreach ([
             'my-app', 'inject-test', 'csp-test', 'pi-test', 'rollback-test',
             'marketing-site', 'first-root', 'second-root', 'updatable-root',
             'concurrent-test', 'stale-lock-test', 'lock-release-test',
+            'vault-recon', 'vault-stable', 'vault-first', 'vault-deleted',
         ] as $id) {
             \DSGo_Apps\Bundle::recursive_delete($uploads_base . $id);
             // Also remove any stash dirs (e.g. rollback-test.previous-XXXXXX).
@@ -173,7 +174,7 @@ class InstallerTest extends WP_UnitTestCase {
             'rollback must restore the v0.1.0 entry HTML byte-for-byte');
 
         // No leftover stash dirs in the uploads root.
-        $uploads_base = wp_upload_dir()['basedir'] . '/dsgo-apps/';
+        $uploads_base = wp_upload_dir()['basedir'] . '/designsetgo-apps/';
         $stashes = glob($uploads_base . 'rollback-test.previous-*') ?: [];
         $this->assertSame([], $stashes, 'rollback must clean up its stash dir');
     }
@@ -326,6 +327,148 @@ class InstallerTest extends WP_UnitTestCase {
         return $tmp;
     }
 
+    // --- Bucket preview + approved-buckets meta (added 2026-05-09) ---
+
+    public function test_preview_returns_dto_for_minimal_app(): void {
+        $zip = $this->build_minimal_zip('my-app');
+        $result = \DSGo_Apps\Installer::preview($zip, $this->admin_id);
+        $this->assertSame('my-app',  $result->app_id);
+        $this->assertSame('My App',  $result->name);
+        $this->assertSame('0.1.0',   $result->version);
+        $this->assertFalse($result->is_update);
+        $this->assertNull($result->previously_approved);
+        // No permissions declared → no buckets activate.
+        $this->assertSame([], $result->buckets);
+        $this->assertSame([], $result->new_buckets);
+        $this->assertSame([], $result->removed_buckets);
+        $this->assertIsString($result->rendered_html);
+    }
+
+    public function test_preview_detects_is_update_when_app_already_installed(): void {
+        // First install — write meta as install would.
+        $zip1 = $this->build_minimal_zip('my-app');
+        \DSGo_Apps\Installer::install($zip1, $this->admin_id);
+        // Preview a re-install zip.
+        $zip2   = $this->build_minimal_zip('my-app');
+        $result = \DSGo_Apps\Installer::preview($zip2, $this->admin_id);
+        $this->assertTrue($result->is_update);
+        $this->assertIsArray($result->previously_approved);
+    }
+
+    public function test_install_writes_active_buckets_post_meta_for_minimal_app(): void {
+        $zip    = $this->build_minimal_zip('my-app');
+        $result = \DSGo_Apps\Installer::install($zip, $this->admin_id);
+        $meta   = get_post_meta($result->post_id, 'dsgo_apps_active_buckets', true);
+        // Minimal app activates no buckets — meta is an empty array, not absent.
+        $this->assertIsArray($meta);
+        $this->assertSame([], $meta);
+    }
+
+    public function test_install_writes_active_buckets_for_app_with_active_buckets(): void {
+        // Build a zip with permissions.read = ['posts', 'ai']  →  ReadContent + Ai
+        $tmp = tempnam(sys_get_temp_dir(), 'dsgo-zip-');
+        $zip = new ZipArchive();
+        $zip->open($tmp, ZipArchive::OVERWRITE);
+        $zip->addFromString('dsgo-app.json', json_encode([
+            'manifest_version' => 1,
+            'id'               => 'my-app',
+            'name'             => 'My App',
+            'version'          => '0.1.0',
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'permissions'      => ['read' => ['posts', 'ai'], 'write' => []],
+            'runtime'          => ['sandbox' => 'strict', 'external_origins' => []],
+        ]));
+        $zip->addFromString('index.html', '<!doctype html><html><head><title>x</title></head><body>x</body></html>');
+        $zip->close();
+
+        $result = \DSGo_Apps\Installer::install($tmp, $this->admin_id);
+        $meta   = get_post_meta($result->post_id, 'dsgo_apps_active_buckets', true);
+        $this->assertSame(['read_content', 'ai'], $meta);
+    }
+
+    public function test_preview_computes_new_buckets_against_previously_approved(): void {
+        // First install with just posts (read_content only).
+        $tmp1 = tempnam(sys_get_temp_dir(), 'dsgo-zip-');
+        $z1 = new ZipArchive();
+        $z1->open($tmp1, ZipArchive::OVERWRITE);
+        $z1->addFromString('dsgo-app.json', json_encode([
+            'manifest_version' => 1,
+            'id'               => 'my-app',
+            'name'             => 'My App',
+            'version'          => '0.1.0',
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'permissions'      => ['read' => ['posts'], 'write' => []],
+            'runtime'          => ['sandbox' => 'strict', 'external_origins' => []],
+        ]));
+        $z1->addFromString('index.html', '<!doctype html><html><head/><body/></html>');
+        $z1->close();
+        \DSGo_Apps\Installer::install($tmp1, $this->admin_id);
+
+        // Preview an update with posts + ai (adds AI bucket).
+        $tmp2 = tempnam(sys_get_temp_dir(), 'dsgo-zip-');
+        $z2 = new ZipArchive();
+        $z2->open($tmp2, ZipArchive::OVERWRITE);
+        $z2->addFromString('dsgo-app.json', json_encode([
+            'manifest_version' => 1,
+            'id'               => 'my-app',
+            'name'             => 'My App',
+            'version'          => '0.2.0',
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'permissions'      => ['read' => ['posts', 'ai'], 'write' => []],
+            'runtime'          => ['sandbox' => 'strict', 'external_origins' => []],
+        ]));
+        $z2->addFromString('index.html', '<!doctype html><html><head/><body/></html>');
+        $z2->close();
+
+        $result = \DSGo_Apps\Installer::preview($tmp2, $this->admin_id);
+        $this->assertTrue($result->is_update);
+        $this->assertSame(['read_content'],         $result->previously_approved);
+        $this->assertSame(['read_content', 'ai'],   $result->buckets);
+        $this->assertSame(['ai'],                   $result->new_buckets);
+        $this->assertSame([],                       $result->removed_buckets);
+    }
+
+    public function test_preview_computes_removed_buckets_when_app_drops_permission(): void {
+        // First install with posts + ai. Update drops ai.
+        $tmp1 = tempnam(sys_get_temp_dir(), 'dsgo-zip-');
+        $z1 = new ZipArchive();
+        $z1->open($tmp1, ZipArchive::OVERWRITE);
+        $z1->addFromString('dsgo-app.json', json_encode([
+            'manifest_version' => 1, 'id' => 'my-app', 'name' => 'My App', 'version' => '0.1.0',
+            'entry' => 'index.html', 'isolation' => 'iframe',
+            'display' => ['modes' => ['page'], 'default' => 'page'],
+            'permissions' => ['read' => ['posts', 'ai'], 'write' => []],
+            'runtime' => ['sandbox' => 'strict', 'external_origins' => []],
+        ]));
+        $z1->addFromString('index.html', '<!doctype html><html><head/><body/></html>');
+        $z1->close();
+        \DSGo_Apps\Installer::install($tmp1, $this->admin_id);
+
+        $tmp2 = tempnam(sys_get_temp_dir(), 'dsgo-zip-');
+        $z2 = new ZipArchive();
+        $z2->open($tmp2, ZipArchive::OVERWRITE);
+        $z2->addFromString('dsgo-app.json', json_encode([
+            'manifest_version' => 1, 'id' => 'my-app', 'name' => 'My App', 'version' => '0.2.0',
+            'entry' => 'index.html', 'isolation' => 'iframe',
+            'display' => ['modes' => ['page'], 'default' => 'page'],
+            'permissions' => ['read' => ['posts'], 'write' => []],
+            'runtime' => ['sandbox' => 'strict', 'external_origins' => []],
+        ]));
+        $z2->addFromString('index.html', '<!doctype html><html><head/><body/></html>');
+        $z2->close();
+
+        $result = \DSGo_Apps\Installer::preview($tmp2, $this->admin_id);
+        $this->assertSame(['read_content'], $result->buckets);
+        $this->assertSame([],               $result->new_buckets);
+        $this->assertSame(['ai'],           $result->removed_buckets);
+    }
+
     public function test_install_registers_published_abilities(): void {
         $zip = $this->build_zip_with_publishes('publish-test', [
             ['name' => 'publish-test/foo', 'label' => 'Foo', 'description' => 'd', 'category' => 'content'],
@@ -363,6 +506,110 @@ class InstallerTest extends WP_UnitTestCase {
             'permissions' => ['read' => [], 'write' => []],
             'runtime' => ['sandbox' => 'strict', 'external_origins' => []],
             'abilities' => ['publishes' => $publishes],
+        ]));
+        $zip->addFromString('index.html', '<!doctype html><html><head><title>x</title></head><body>x</body></html>');
+        $zip->close();
+        return $tmp;
+    }
+
+    // --- Vault reconciliation on update / uninstall (Phase 8) ---
+
+    public function test_install_drops_vault_aliases_no_longer_in_manifest(): void {
+        // Install v1 with two secrets and admin sets values for both.
+        $zip1 = $this->build_zip_with_secrets('vault-recon', [
+            ['alias' => 'OLD_KEY', 'description' => 'Removed at v2 — should be purged.'],
+            ['alias' => 'KEPT_KEY', 'description' => 'Kept across update — value preserved.'],
+        ]);
+        \DSGo_Apps\Installer::install($zip1, $this->admin_id);
+        \DSGo_Apps\Secret_Vault::set('vault-recon', 'OLD_KEY',  'sk_old');
+        \DSGo_Apps\Secret_Vault::set('vault-recon', 'KEPT_KEY', 'sk_kept');
+
+        // Re-install v2 with OLD_KEY removed from the manifest.
+        $zip2 = $this->build_zip_with_secrets('vault-recon', [
+            ['alias' => 'KEPT_KEY', 'description' => 'Kept across update — value preserved.'],
+        ]);
+        \DSGo_Apps\Installer::install($zip2, $this->admin_id);
+
+        $this->assertNull(\DSGo_Apps\Secret_Vault::get('vault-recon', 'OLD_KEY'),
+            'orphaned alias must be purged on update');
+        $this->assertSame('sk_kept', \DSGo_Apps\Secret_Vault::get('vault-recon', 'KEPT_KEY'),
+            'declared aliases must keep their admin-entered values across updates');
+
+        \DSGo_Apps\Secret_Vault::delete_all('vault-recon');
+    }
+
+    public function test_install_preserves_set_values_when_manifest_unchanged(): void {
+        $zip = $this->build_zip_with_secrets('vault-stable', [
+            ['alias' => 'STABLE_KEY', 'description' => 'Value should survive a redeploy.'],
+        ]);
+        \DSGo_Apps\Installer::install($zip, $this->admin_id);
+        \DSGo_Apps\Secret_Vault::set('vault-stable', 'STABLE_KEY', 'sk_persisted');
+
+        // Same manifest, redeployed (atomic update path).
+        $zip2 = $this->build_zip_with_secrets('vault-stable', [
+            ['alias' => 'STABLE_KEY', 'description' => 'Value should survive a redeploy.'],
+        ]);
+        \DSGo_Apps\Installer::install($zip2, $this->admin_id);
+
+        $this->assertSame('sk_persisted', \DSGo_Apps\Secret_Vault::get('vault-stable', 'STABLE_KEY'));
+        \DSGo_Apps\Secret_Vault::delete_all('vault-stable');
+    }
+
+    public function test_install_first_time_with_secrets_does_not_error(): void {
+        // First install with a populated secrets[] block — reconciliation
+        // helper must no-op (vault starts empty; nothing to delete).
+        $zip = $this->build_zip_with_secrets('vault-first', [
+            ['alias' => 'NEW_KEY', 'description' => 'First-install alias; admin has not entered a value yet.'],
+        ]);
+        $result = \DSGo_Apps\Installer::install($zip, $this->admin_id);
+        $this->assertSame('vault-first', $result->app_id);
+        $this->assertNull(\DSGo_Apps\Secret_Vault::get('vault-first', 'NEW_KEY'));
+        \DSGo_Apps\Secret_Vault::delete_all('vault-first');
+    }
+
+    public function test_delete_app_endpoint_purges_vault(): void {
+        // Install + populate vault.
+        $zip = $this->build_zip_with_secrets('vault-deleted', [
+            ['alias' => 'SK', 'description' => 'Should not survive uninstall.'],
+        ]);
+        \DSGo_Apps\Installer::install($zip, $this->admin_id);
+        \DSGo_Apps\Secret_Vault::set('vault-deleted', 'SK', 'sk_should_be_gone');
+        $this->assertSame('sk_should_be_gone', \DSGo_Apps\Secret_Vault::get('vault-deleted', 'SK'));
+
+        // Drive the REST delete endpoint that admins use for uninstall.
+        wp_set_current_user($this->admin_id);
+        global $wp_rest_server;
+        $wp_rest_server = new \WP_REST_Server();
+        do_action('rest_api_init');
+        $req = new \WP_REST_Request('DELETE', '/dsgo/v1/apps/vault-deleted');
+        $resp = $wp_rest_server->dispatch($req);
+        $this->assertSame(200, $resp->get_status());
+
+        $this->assertNull(\DSGo_Apps\Secret_Vault::get('vault-deleted', 'SK'),
+            'vault must be purged when the app is uninstalled via REST');
+        // Belt-and-suspenders: the wp_options row should be gone too.
+        $this->assertFalse(get_option('dsgo_apps_secrets_vault-deleted'));
+    }
+
+    private function build_zip_with_secrets(string $id, array $secrets): string {
+        $tmp = tempnam(sys_get_temp_dir(), 'dsgo-zip-vault-');
+        $zip = new ZipArchive();
+        $zip->open($tmp, ZipArchive::OVERWRITE);
+        $zip->addFromString('dsgo-app.json', json_encode([
+            'manifest_version' => 1,
+            'id'               => $id,
+            'name'             => 'Vault App ' . $id,
+            'version'          => '0.1.0',
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            // permissions.http must be present (and non-empty) for the
+            // manifest validator to accept the secrets[] block — the
+            // "secrets without a consumer" rule guards against orphaned
+            // declarations.
+            'permissions'      => ['read' => [], 'write' => [], 'http' => ['api.example.com']],
+            'secrets'          => $secrets,
+            'runtime'          => ['sandbox' => 'strict', 'external_origins' => []],
         ]));
         $zip->addFromString('index.html', '<!doctype html><html><head><title>x</title></head><body>x</body></html>');
         $zip->close();

@@ -1,6 +1,6 @@
 <?php
 /**
- * Filesystem operations for app bundles under uploads/dsgo-apps/{id}/.
+ * Filesystem operations for app bundles under uploads/designsetgo-apps/{id}/.
  *
  * @package DSGo_Apps
  */
@@ -8,6 +8,8 @@
 declare(strict_types=1);
 
 namespace DSGo_Apps;
+
+defined('ABSPATH') || exit;
 
 // Exception messages constructed below are never echoed to clients; the REST
 // layer catches them and returns sanitized error_code + filtered messages.
@@ -43,12 +45,12 @@ final class Bundle {
 
     public static function dir_for(string $app_id): string {
         $upload = wp_upload_dir();
-        return trailingslashit($upload['basedir']) . 'dsgo-apps/' . $app_id . '/';
+        return trailingslashit($upload['basedir']) . 'designsetgo-apps/' . $app_id . '/';
     }
 
     public static function url_for(string $app_id): string {
         $upload = wp_upload_dir();
-        return trailingslashit($upload['baseurl']) . 'dsgo-apps/' . $app_id . '/';
+        return trailingslashit($upload['baseurl']) . 'designsetgo-apps/' . $app_id . '/';
     }
 
     public static function is_safe_zip_entry(string $path): bool {
@@ -123,7 +125,10 @@ final class Bundle {
         if (array_key_exists($path, $cache)) {
             return $cache[$path];
         }
-        $raw = @file_get_contents($path);
+        if (!is_readable($path)) {
+            return $cache[$path] = null;
+        }
+        $raw = file_get_contents($path);
         if (!is_string($raw) || $raw === '') {
             return $cache[$path] = null;
         }

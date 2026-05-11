@@ -21,6 +21,6 @@
   },
   "scripts": {
     "test": "phpunit -c tests/php/phpunit.xml.dist",
-    "lint": "phpcs --standard=WordPress-Extra --extensions=php includes/ dsgo-apps.php uninstall.php"
+    "lint": "phpcs --standard=WordPress-Extra --extensions=php includes/ designsetgo-apps.php uninstall.php"
   }
 }

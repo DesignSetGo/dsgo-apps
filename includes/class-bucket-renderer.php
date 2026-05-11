@@ -28,6 +28,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class Bucket_Renderer {
 
     /**
@@ -60,7 +62,7 @@ final class Bucket_Renderer {
         $out .= '<summary class="dsgo-bucket__summary">';
         $out .= '<span class="dsgo-bucket__label">' . esc_html($label) . '</span>';
         if ($is_new) {
-            $out .= '<span class="dsgo-bucket__new-badge">' . esc_html__('New permission', 'dsgo-apps') . '</span>';
+            $out .= '<span class="dsgo-bucket__new-badge">' . esc_html__('New permission', 'designsetgo-apps') . '</span>';
         }
         $out .= '<span class="dsgo-bucket__justification">' . $justification . '</span>';
         $out .= '</summary>';
@@ -82,13 +84,13 @@ final class Bucket_Renderer {
      */
     private static function label_for(Bucket $bucket): string {
         return match ($bucket) {
-            Bucket::ReadContent      => __('Read content',      'dsgo-apps'),
-            Bucket::WriteContent     => __('Write content',     'dsgo-apps'),
-            Bucket::ExternalServices => __('External services', 'dsgo-apps'),
-            Bucket::SendMessages     => __('Send messages',     'dsgo-apps'),
-            Bucket::Ai               => __('AI',                'dsgo-apps'),
-            Bucket::RunAutomatically => __('Run automatically', 'dsgo-apps'),
-            Bucket::Commerce         => __('Commerce',          'dsgo-apps'),
+            Bucket::ReadContent      => __('Read content',      'designsetgo-apps'),
+            Bucket::WriteContent     => __('Write content',     'designsetgo-apps'),
+            Bucket::ExternalServices => __('External services', 'designsetgo-apps'),
+            Bucket::SendMessages     => __('Send messages',     'designsetgo-apps'),
+            Bucket::Ai               => __('AI',                'designsetgo-apps'),
+            Bucket::RunAutomatically => __('Run automatically', 'designsetgo-apps'),
+            Bucket::Commerce         => __('Commerce',          'designsetgo-apps'),
         };
     }
 
@@ -113,13 +115,13 @@ final class Bucket_Renderer {
 
     private static function default_copy_for(Bucket $bucket): string {
         return match ($bucket) {
-            Bucket::ReadContent      => __('Reads posts, pages, and user data from your site.', 'dsgo-apps'),
-            Bucket::WriteContent     => __('Creates or modifies content on your site.', 'dsgo-apps'),
-            Bucket::ExternalServices => __('Sends requests to external services on your behalf.', 'dsgo-apps'),
-            Bucket::SendMessages     => __('Sends email through your site\'s mail system.', 'dsgo-apps'),
-            Bucket::Ai               => __('Uses AI through your configured provider.', 'dsgo-apps'),
-            Bucket::RunAutomatically => __('Schedules tasks or receives webhooks that run without a logged-in user.', 'dsgo-apps'),
-            Bucket::Commerce         => __('Reads and modifies your WooCommerce store data.', 'dsgo-apps'),
+            Bucket::ReadContent      => __('Reads posts, pages, and user data from your site.', 'designsetgo-apps'),
+            Bucket::WriteContent     => __('Creates or modifies content on your site.', 'designsetgo-apps'),
+            Bucket::ExternalServices => __('Sends requests to external services on your behalf.', 'designsetgo-apps'),
+            Bucket::SendMessages     => __('Sends email through your site\'s mail system.', 'designsetgo-apps'),
+            Bucket::Ai               => __('Uses AI through your configured provider.', 'designsetgo-apps'),
+            Bucket::RunAutomatically => __('Schedules tasks or receives webhooks that run without a logged-in user.', 'designsetgo-apps'),
+            Bucket::Commerce         => __('Reads and modifies your WooCommerce store data.', 'designsetgo-apps'),
         };
     }
 
@@ -165,7 +167,7 @@ final class Bucket_Renderer {
             return in_array($p, ['site_info', 'posts', 'pages', 'user', 'abilities'], true);
         }));
         if ($perms === []) {
-            return '<p>' . esc_html__('Read access is enabled but no specific data types declared.', 'dsgo-apps') . '</p>';
+            return '<p>' . esc_html__('Read access is enabled but no specific data types declared.', 'designsetgo-apps') . '</p>';
         }
         return self::render_string_list($perms);
     }
@@ -173,7 +175,7 @@ final class Bucket_Renderer {
     private static function render_write_content_details(Manifest $m): string {
         $write = $m->raw_field('permissions.write');
         if (!is_array($write) || $write === []) {
-            return '<p>' . esc_html__('Write access enabled (no specific post types declared).', 'dsgo-apps') . '</p>';
+            return '<p>' . esc_html__('Write access enabled (no specific post types declared).', 'designsetgo-apps') . '</p>';
         }
         $write = array_values(array_filter($write, 'is_string'));
         return self::render_string_list($write);
@@ -185,11 +187,11 @@ final class Bucket_Renderer {
 
         $out = '';
         if (is_array($hosts) && $hosts !== []) {
-            $out .= '<p class="dsgo-bucket__detail-heading">' . esc_html__('Hosts:', 'dsgo-apps') . '</p>';
+            $out .= '<p class="dsgo-bucket__detail-heading">' . esc_html__('Hosts:', 'designsetgo-apps') . '</p>';
             $out .= self::render_string_list(array_values(array_filter($hosts, 'is_string')));
         }
         if (is_array($secrets) && $secrets !== []) {
-            $out .= '<p class="dsgo-bucket__detail-heading">' . esc_html__('Required credentials:', 'dsgo-apps') . '</p>';
+            $out .= '<p class="dsgo-bucket__detail-heading">' . esc_html__('Required credentials:', 'designsetgo-apps') . '</p>';
             $out .= '<ul>';
             foreach ($secrets as $entry) {
                 if (!is_array($entry) || !isset($entry['alias'])) continue;
@@ -204,7 +206,7 @@ final class Bucket_Renderer {
             $out .= '</ul>';
         }
         if ($out === '') {
-            return '<p>' . esc_html__('External services declared but no specific hosts listed.', 'dsgo-apps') . '</p>';
+            return '<p>' . esc_html__('External services declared but no specific hosts listed.', 'designsetgo-apps') . '</p>';
         }
         return $out;
     }
@@ -218,7 +220,7 @@ final class Bucket_Renderer {
 
         if ($allow_anon && $recipient_strings !== []) {
             return '<p class="dsgo-bucket__detail-heading">'
-                 . esc_html__('Anonymous email enabled — recipients restricted to:', 'dsgo-apps')
+                 . esc_html__('Anonymous email enabled — recipients restricted to:', 'designsetgo-apps')
                  . '</p>'
                  . self::render_string_list($recipient_strings);
         }
@@ -227,17 +229,17 @@ final class Bucket_Renderer {
             // rejects this combination at install, but we render a clear
             // warning rather than a heading-with-no-list if a future caller
             // ever bypasses validation.
-            return '<p>' . esc_html__('Anonymous email enabled (no specific recipients listed).', 'dsgo-apps') . '</p>';
+            return '<p>' . esc_html__('Anonymous email enabled (no specific recipients listed).', 'designsetgo-apps') . '</p>';
         }
-        return '<p>' . esc_html__('Sends transactional email triggered by logged-in users.', 'dsgo-apps') . '</p>';
+        return '<p>' . esc_html__('Sends transactional email triggered by logged-in users.', 'designsetgo-apps') . '</p>';
     }
 
     private static function render_ai_details(Manifest $m): string {
-        $out = '<p>' . esc_html__('Calls AI through your configured provider.', 'dsgo-apps') . '</p>';
+        $out = '<p>' . esc_html__('Calls AI through your configured provider.', 'designsetgo-apps') . '</p>';
         $consumes = $m->raw_field('abilities.consumes');
         if (is_array($consumes) && $consumes !== []) {
             $out .= '<p class="dsgo-bucket__detail-heading">'
-                  . esc_html__('Abilities this app may invoke:', 'dsgo-apps') . '</p>';
+                  . esc_html__('Abilities this app may invoke:', 'designsetgo-apps') . '</p>';
             $out .= self::render_string_list(array_values(array_filter($consumes, 'is_string')));
         }
         return $out;
@@ -249,7 +251,7 @@ final class Bucket_Renderer {
 
         $out = '';
         if (is_array($jobs) && $jobs !== []) {
-            $out .= '<p class="dsgo-bucket__detail-heading">' . esc_html__('Scheduled jobs:', 'dsgo-apps') . '</p>';
+            $out .= '<p class="dsgo-bucket__detail-heading">' . esc_html__('Scheduled jobs:', 'designsetgo-apps') . '</p>';
             $out .= '<ul>';
             foreach ($jobs as $job) {
                 if (!is_array($job) || !isset($job['id'])) continue;
@@ -264,7 +266,7 @@ final class Bucket_Renderer {
             $out .= '</ul>';
         }
         if (is_array($endpoints) && $endpoints !== []) {
-            $out .= '<p class="dsgo-bucket__detail-heading">' . esc_html__('Webhook endpoints:', 'dsgo-apps') . '</p>';
+            $out .= '<p class="dsgo-bucket__detail-heading">' . esc_html__('Webhook endpoints:', 'designsetgo-apps') . '</p>';
             $out .= '<ul>';
             foreach ($endpoints as $endpoint) {
                 if (!is_array($endpoint) || !isset($endpoint['id'])) continue;
@@ -273,7 +275,7 @@ final class Bucket_Renderer {
             $out .= '</ul>';
         }
         if ($out === '') {
-            return '<p>' . esc_html__('Background tasks declared but no schedules or webhooks listed.', 'dsgo-apps') . '</p>';
+            return '<p>' . esc_html__('Background tasks declared but no schedules or webhooks listed.', 'designsetgo-apps') . '</p>';
         }
         return $out;
     }
@@ -281,7 +283,7 @@ final class Bucket_Renderer {
     private static function render_commerce_details(Manifest $m): string {
         $endpoints = $m->raw_field('commerce.endpoints');
         if (!is_array($endpoints) || $endpoints === []) {
-            return '<p>' . esc_html__('Reads and modifies your store data.', 'dsgo-apps') . '</p>';
+            return '<p>' . esc_html__('Reads and modifies your store data.', 'designsetgo-apps') . '</p>';
         }
         return self::render_string_list(array_values(array_filter($endpoints, 'is_string')));
     }

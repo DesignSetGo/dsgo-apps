@@ -13,7 +13,7 @@ class BundleTest extends WP_UnitTestCase {
     public function test_dir_for_returns_path_under_uploads(): void {
         $dir = Bundle::dir_for('sample-app');
         $upload = wp_upload_dir();
-        $this->assertStringStartsWith(trailingslashit($upload['basedir']) . 'dsgo-apps/', $dir);
+        $this->assertStringStartsWith(trailingslashit($upload['basedir']) . 'designsetgo-apps/', $dir);
         $this->assertStringEndsWith('/sample-app/', $dir);
     }
 

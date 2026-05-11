@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class PostType {
 
     public const SLUG = 'dsgo_app';
@@ -16,8 +18,8 @@ final class PostType {
     public static function register(): void {
         register_post_type(self::SLUG, [
             'labels' => [
-                'name'          => __('Apps', 'dsgo-apps'),
-                'singular_name' => __('App', 'dsgo-apps'),
+                'name'          => __('Apps', 'designsetgo-apps'),
+                'singular_name' => __('App', 'designsetgo-apps'),
             ],
             'public'             => false,
             'publicly_queryable' => false,

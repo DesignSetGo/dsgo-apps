@@ -51,6 +51,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class Http_Proxy_Bridge {
 
     /** Default per-app per-minute call cap; filter `dsgo_apps_http_rate_per_minute`. */

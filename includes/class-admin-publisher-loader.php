@@ -55,12 +55,12 @@ final class AdminPublisherLoader {
         $asset_path = DSGO_APPS_PATH . 'assets/parent-bridge-publish.js';
         $version = file_exists($asset_path) ? (string) filemtime($asset_path) : '0';
         wp_register_script_module(
-            'dsgo-apps/publisher',
+            'designsetgo-apps/publisher',
             plugins_url('assets/parent-bridge-publish.js', DSGO_APPS_FILE),
             [['id' => '@wordpress/abilities', 'import' => 'static']],
             $version,
         );
-        wp_enqueue_script_module('dsgo-apps/publisher');
+        wp_enqueue_script_module('designsetgo-apps/publisher');
     }
 
     /**

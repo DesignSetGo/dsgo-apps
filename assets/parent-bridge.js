@@ -350,13 +350,15 @@
             case 'http.fetch': {
                 // The client wrapper passes { url, init } in params; flatten to a
                 // single payload so the REST args declaration matches (url at top
-                // level, with method/headers/body/timeout_ms siblings).
+                // level, with method/headers/body/timeout_ms siblings). URL goes
+                // LAST so a caller-supplied `init.url` cannot override params.url —
+                // belt-and-suspenders against a wrapper that hasn't been TS-checked.
                 const params = (req.params ?? {});
                 const init = (params.init ?? {});
                 return await af({
                     path: `/dsgo/v1/apps/${manifest.id}/http/fetch`,
                     method: 'POST',
-                    data: { url: params.url, ...init },
+                    data: { ...init, url: params.url },
                     headers,
                 });
             }

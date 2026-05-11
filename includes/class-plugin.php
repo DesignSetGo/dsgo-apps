@@ -195,7 +195,7 @@ final class Plugin {
         flush_rewrite_rules(false);
 
         $upload_dir = wp_upload_dir();
-        $apps_dir   = trailingslashit($upload_dir['basedir']) . 'dsgo-apps';
+        $apps_dir   = trailingslashit($upload_dir['basedir']) . 'designsetgo-apps';
         if (!is_dir($apps_dir)) {
             wp_mkdir_p($apps_dir);
             file_put_contents($apps_dir . '/index.html', '<!-- silence is golden -->');
@@ -222,12 +222,12 @@ final class Plugin {
         ?>
         <div class="notice notice-success is-dismissible">
             <p>
-                <strong><?php esc_html_e('DesignSetGo Apps is ready.', 'dsgo-apps'); ?></strong>
+                <strong><?php esc_html_e('DesignSetGo Apps is ready.', 'designsetgo-apps'); ?></strong>
                 <?php
                 echo wp_kses(
                     sprintf(
                         /* translators: 1: URL to install page */
-                        __('Install your first app at <a href="%1$s">DSGo Apps</a>, or run <code>npx designsetgo apps deploy</code> from a project directory.', 'dsgo-apps'),
+                        __('Install your first app at <a href="%1$s">DSGo Apps</a>, or run <code>npx designsetgo apps deploy</code> from a project directory.', 'designsetgo-apps'),
                         esc_url($url),
                     ),
                     ['a' => ['href' => true], 'code' => []],

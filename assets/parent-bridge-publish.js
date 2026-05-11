@@ -349,13 +349,15 @@ async function routeToWp(req, ctx) {
         case 'http.fetch': {
             // The client wrapper passes { url, init } in params; flatten to a
             // single payload so the REST args declaration matches (url at top
-            // level, with method/headers/body/timeout_ms siblings).
+            // level, with method/headers/body/timeout_ms siblings). URL goes
+            // LAST so a caller-supplied `init.url` cannot override params.url —
+            // belt-and-suspenders against a wrapper that hasn't been TS-checked.
             const params = (req.params ?? {});
             const init = (params.init ?? {});
             return await af({
                 path: `/dsgo/v1/apps/${manifest.id}/http/fetch`,
                 method: 'POST',
-                data: { url: params.url, ...init },
+                data: { ...init, url: params.url },
                 headers,
             });
         }
@@ -613,6 +615,21 @@ async function handleIframeRequest(owner, req) {
         return;
     }
     const cfg = owner.appConfig;
+    // The publish-side permMap is intentionally a subset of the main bridge's
+    // surface. Methods deliberately NOT exposed to embedded apps via the
+    // parent-bridge-publish channel:
+    //   - `email.send` / `media.upload` — would let an embedded app act on the
+    //     host site's behalf (send mail / write to media library) outside the
+    //     visibility of the host's own permission gates.
+    //   - `commerce.*` — host-site WooCommerce surface; embedded apps shouldn't
+    //     touch the host's cart or product catalog.
+    //   - `http.fetch` — by design in v1: an embedded app calling the proxy
+    //     would resolve secrets against the host site's vault. That's the wrong
+    //     blast radius — the credential belongs to the host operator, not the
+    //     publisher. Embedded apps that need outbound HTTP should make the call
+    //     from their own bundle context (where they own the vault).
+    // Any method omitted here returns `unknown_method` to the embedded app,
+    // which is the right signal for "this surface is intentionally not here."
     const permMap = {
         'site.info': 'site_info',
         'posts.list': 'posts',

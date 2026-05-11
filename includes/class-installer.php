@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 // Exception messages constructed below are never echoed to clients; the REST
 // layer catches them and returns sanitized error_code + filtered messages.
 // phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped
@@ -160,14 +162,14 @@ final class Installer {
             $unchanged = array_values(array_intersect($previously_approved, $active_values));
             if ($unchanged !== []) {
                 $out .= '<p class="dsgo-install-dialog__unchanged">'
-                      . esc_html__('Previously approved (unchanged):', 'dsgo-apps') . ' '
+                      . esc_html__('Previously approved (unchanged):', 'designsetgo-apps') . ' '
                       . esc_html(implode(', ', $unchanged))
                       . '</p>';
             }
             $removed = array_values(array_diff($previously_approved, $active_values));
             if ($removed !== []) {
                 $out .= '<section class="dsgo-install-dialog__removed">';
-                $out .= '<h4>' . esc_html__('Removed (no action required)', 'dsgo-apps') . '</h4>';
+                $out .= '<h4>' . esc_html__('Removed (no action required)', 'designsetgo-apps') . '</h4>';
                 $out .= '<ul>';
                 foreach ($removed as $r) {
                     $out .= '<li><code>' . esc_html($r) . '</code></li>';
@@ -178,7 +180,7 @@ final class Installer {
 
         // Passive storage footer (always shown — storage has no bucket).
         $out .= '<p class="dsgo-install-dialog__storage-note">'
-              . esc_html__('This app uses per-app and per-user storage to persist state.', 'dsgo-apps')
+              . esc_html__('This app uses per-app and per-user storage to persist state.', 'designsetgo-apps')
               . '</p>';
 
         $out .= '</div>';
@@ -352,6 +354,22 @@ final class Installer {
                 Bucket::active_for($manifest),
             );
             update_post_meta($post_id, 'dsgo_apps_active_buckets', $active_buckets);
+
+            // Vault reconciliation on update: drop encrypted values whose
+            // alias was REMOVED from the manifest's secrets[] block since
+            // the previous install. Storage values would otherwise linger
+            // indefinitely — bad on its own (defense in depth: don't keep
+            // an encrypted credential we no longer have a use for) and
+            // worse if the alias is later re-introduced and reused for a
+            // different upstream. We don't touch values for aliases that
+            // are still declared; admins keep whatever they entered.
+            //
+            // Runs on both first install (no-op — vault is empty) and on
+            // update; cheap on both because list_set_aliases doesn't
+            // decrypt and the diff is over short string arrays.
+            if (Secret_Vault::is_available()) {
+                self::reconcile_vault_against_manifest($manifest);
+            }
 
             if ($rollback !== null) {
                 Bundle::recursive_delete($rollback);
@@ -567,5 +585,22 @@ final class Installer {
             "font-src $bundle_url",
             "connect-src $connect_src",
         ]);
+    }
+
+    /**
+     * Delete vault entries whose alias is no longer declared in the manifest.
+     * Called from the install path on every successful update. The set of
+     * "declared" aliases is the manifest's `secrets[]` array; the set of
+     * "stored" aliases comes from Secret_Vault::list_set_aliases() (which
+     * doesn't decrypt anything, so it's cheap).
+     *
+     * No-op on first install (vault is empty). Idempotent on re-runs.
+     */
+    private static function reconcile_vault_against_manifest(Manifest $manifest): void {
+        $declared = array_column($manifest->secrets, 'alias');
+        $stored   = Secret_Vault::list_set_aliases($manifest->id);
+        foreach (array_diff($stored, $declared) as $orphan) {
+            Secret_Vault::delete($manifest->id, $orphan);
+        }
     }
 }

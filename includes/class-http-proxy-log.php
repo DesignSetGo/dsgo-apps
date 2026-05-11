@@ -23,6 +23,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class Http_Proxy_Log {
 
     public const CRON_HOOK    = 'dsgo_apps_http_log_purge';

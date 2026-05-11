@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class IframeLoader {
 
     public static function maybe_render(): void {
@@ -68,10 +70,10 @@ final class IframeLoader {
         if (!$post || $post->post_status !== 'publish') {
             self::render_error_page(
                 404,
-                __('App not found', 'dsgo-apps'),
+                __('App not found', 'designsetgo-apps'),
                 sprintf(
                     /* translators: %s: app slug from the URL */
-                    __('No app named "%s" is installed on this site.', 'dsgo-apps'),
+                    __('No app named "%s" is installed on this site.', 'designsetgo-apps'),
                     $app_id,
                 ),
             );
@@ -81,16 +83,16 @@ final class IframeLoader {
         if (!is_array($manifest)) {
             self::render_error_page(
                 500,
-                __('App misconfigured', 'dsgo-apps'),
-                __('This app is missing its manifest. Reinstall the bundle to repair it.', 'dsgo-apps'),
+                __('App misconfigured', 'designsetgo-apps'),
+                __('This app is missing its manifest. Reinstall the bundle to repair it.', 'designsetgo-apps'),
             );
             return;
         }
         if (!in_array('page', $manifest['display']['modes'] ?? [], true)) {
             self::render_error_page(
                 404,
-                __('App not available here', 'dsgo-apps'),
-                __('This app is installed but does not support page-mode display.', 'dsgo-apps'),
+                __('App not available here', 'designsetgo-apps'),
+                __('This app is installed but does not support page-mode display.', 'designsetgo-apps'),
             );
             return;
         }
@@ -159,7 +161,7 @@ final class IframeLoader {
     public static function render_block_placeholder(string $reason, int $height, string $align_class): string {
         $h = max(100, min(2000, $height));
         return sprintf(
-            '<div class="wp-block-dsgo-apps-embed dsgo-error %1$s" style="min-height:%2$dpx;">%3$s</div>',
+            '<div class="wp-block-designsetgo-apps-embed dsgo-error %1$s" style="min-height:%2$dpx;">%3$s</div>',
             esc_attr($align_class),
             $h,
             esc_html($reason),
@@ -236,7 +238,7 @@ final class IframeLoader {
         $iframe_src = Bundle::url_for($app_id) . ($manifest['entry'] ?? 'index.html');
         $title      = sprintf(
             /* translators: %s: app display name */
-            __('%s — embedded application', 'dsgo-apps'),
+            __('%s — embedded application', 'designsetgo-apps'),
             $post->post_title,
         );
 
@@ -260,7 +262,7 @@ final class IframeLoader {
         );
 
         return sprintf(
-            '<div class="wp-block-dsgo-apps-embed %1$s">%2$s%3$s%4$s</div>',
+            '<div class="wp-block-designsetgo-apps-embed %1$s">%2$s%3$s%4$s</div>',
             esc_attr($align_class),
             self::block_runtime_scripts_once(),
             $iframe_html,
@@ -365,7 +367,7 @@ final class IframeLoader {
         $title_html = '<h1 class="dsgo-error__title">' . esc_html($title) . '</h1>';
         $body_html  = '<p class="dsgo-error__body">' . esc_html($body) . '</p>';
         $home_link  = '<p class="dsgo-error__home"><a href="' . esc_url(home_url('/')) . '">'
-            . esc_html__('← Return to site', 'dsgo-apps') . '</a></p>';
+            . esc_html__('← Return to site', 'designsetgo-apps') . '</a></p>';
 
         $style = '<style>
             .dsgo-error{max-width:48rem;margin:6rem auto 4rem;padding:0 1.5rem;text-align:center}

@@ -14,7 +14,7 @@ defined('ABSPATH') || exit;
 
 final class Privacy {
 
-    public const EXPORTER_KEY = 'dsgo-apps';
+    public const EXPORTER_KEY = 'designsetgo-apps';
 
     public static function register(): void {
         add_filter('wp_privacy_personal_data_exporters', [self::class, 'register_exporter']);
@@ -28,7 +28,7 @@ final class Privacy {
      */
     public static function register_exporter(array $exporters): array {
         $exporters[self::EXPORTER_KEY] = [
-            'exporter_friendly_name' => __('DesignSetGo Apps', 'dsgo-apps'),
+            'exporter_friendly_name' => __('DesignSetGo Apps', 'designsetgo-apps'),
             'callback'               => [self::class, 'export_personal_data'],
         ];
         return $exporters;
@@ -40,7 +40,7 @@ final class Privacy {
      */
     public static function register_eraser(array $erasers): array {
         $erasers[self::EXPORTER_KEY] = [
-            'eraser_friendly_name' => __('DesignSetGo Apps', 'dsgo-apps'),
+            'eraser_friendly_name' => __('DesignSetGo Apps', 'designsetgo-apps'),
             'callback'             => [self::class, 'erase_personal_data'],
         ];
         return $erasers;
@@ -121,13 +121,13 @@ final class Privacy {
             $value       = is_array($values) && isset($values[0]) ? (string) $values[0] : '';
 
             $rows[] = [
-                'group_id'    => 'dsgo-apps-user-storage',
-                'group_label' => __('DesignSetGo Apps — App-specific storage', 'dsgo-apps'),
-                'item_id'     => sprintf('dsgo-apps-storage-%d-%s', $app_post_id, $key),
+                'group_id'    => 'designsetgo-apps-user-storage',
+                'group_label' => __('DesignSetGo Apps — App-specific storage', 'designsetgo-apps'),
+                'item_id'     => sprintf('designsetgo-apps-storage-%d-%s', $app_post_id, $key),
                 'data'        => [
-                    ['name' => __('App', 'dsgo-apps'),   'value' => $app_label],
-                    ['name' => __('Key', 'dsgo-apps'),   'value' => $key],
-                    ['name' => __('Value', 'dsgo-apps'), 'value' => $value],
+                    ['name' => __('App', 'designsetgo-apps'),   'value' => $app_label],
+                    ['name' => __('Key', 'designsetgo-apps'),   'value' => $key],
+                    ['name' => __('Value', 'designsetgo-apps'), 'value' => $value],
                 ],
             ];
         }
@@ -148,15 +148,15 @@ final class Privacy {
                 if (($entry['recipient_hash'] ?? '') !== $hash) continue;
 
                 $rows[] = [
-                    'group_id'    => 'dsgo-apps-email-log',
-                    'group_label' => __('DesignSetGo Apps — Email audit log', 'dsgo-apps'),
+                    'group_id'    => 'designsetgo-apps-email-log',
+                    'group_label' => __('DesignSetGo Apps — Email audit log', 'designsetgo-apps'),
                     'item_id'     => sprintf('%s-%d', $option_name, $i),
                     'data'        => [
-                        ['name' => __('App',            'dsgo-apps'), 'value' => (string) ($entry['app_id'] ?? '')],
-                        ['name' => __('Recipient type', 'dsgo-apps'), 'value' => (string) ($entry['recipient_type'] ?? '')],
-                        ['name' => __('Subject',        'dsgo-apps'), 'value' => (string) ($entry['subject'] ?? '')],
-                        ['name' => __('Sent',           'dsgo-apps'), 'value' => !empty($entry['sent']) ? 'yes' : 'no'],
-                        ['name' => __('Timestamp',      'dsgo-apps'), 'value' => isset($entry['timestamp']) ? gmdate('c', (int) $entry['timestamp']) : ''],
+                        ['name' => __('App',            'designsetgo-apps'), 'value' => (string) ($entry['app_id'] ?? '')],
+                        ['name' => __('Recipient type', 'designsetgo-apps'), 'value' => (string) ($entry['recipient_type'] ?? '')],
+                        ['name' => __('Subject',        'designsetgo-apps'), 'value' => (string) ($entry['subject'] ?? '')],
+                        ['name' => __('Sent',           'designsetgo-apps'), 'value' => !empty($entry['sent']) ? 'yes' : 'no'],
+                        ['name' => __('Timestamp',      'designsetgo-apps'), 'value' => isset($entry['timestamp']) ? gmdate('c', (int) $entry['timestamp']) : ''],
                     ],
                 ];
             }
@@ -226,7 +226,7 @@ final class Privacy {
 If an app uses the email bridge to send mail, the plugin retains a per-app audit log that records the recipient type, the subject line, and a one-way SHA-256 hash of the recipient address (never the address itself). The audit log is capped at 200 entries per app.
 
 Site administrators choose which apps to install and which permissions to grant. The plugin does not transmit personal data to DesignSetGo or any external service.',
-            'dsgo-apps'
+            'designsetgo-apps'
         );
         wp_add_privacy_policy_content('DesignSetGo Apps', wp_kses_post(wpautop($content, false)));
     }

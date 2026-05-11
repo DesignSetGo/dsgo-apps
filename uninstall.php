@@ -81,7 +81,7 @@ wp_cache_delete('alloptions', 'options');
 wp_cache_delete('notoptions', 'options');
 
 $dsgo_upload   = wp_upload_dir();
-$dsgo_apps_dir = trailingslashit($dsgo_upload['basedir']) . 'dsgo-apps';
+$dsgo_apps_dir = trailingslashit($dsgo_upload['basedir']) . 'designsetgo-apps';
 if (is_dir($dsgo_apps_dir)) {
     require_once __DIR__ . '/includes/class-bundle.php';
     \DSGo_Apps\Bundle::recursive_delete($dsgo_apps_dir);

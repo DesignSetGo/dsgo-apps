@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class AbilitiesPublisher {
 
     private const OWNED_OPTION_PREFIX = 'dsgo_apps_owned_abilities_';
@@ -106,7 +108,7 @@ final class AbilitiesPublisher {
             'execute_callback' => static function ($input = null) use ($entry) {
                 $message = sprintf(
                     /* translators: %s: ability name */
-                    __('Ability "%s" is published by a DesignSetGo app and can only be invoked from a browser context. Use @wordpress/abilities executeAbility() in JS, not server-side wp_ai_client_prompt().', 'dsgo-apps'),
+                    __('Ability "%s" is published by a DesignSetGo app and can only be invoked from a browser context. Use @wordpress/abilities executeAbility() in JS, not server-side wp_ai_client_prompt().', 'designsetgo-apps'),
                     $entry['name'],
                 );
                 // Signal incorrect usage: server-side PHP execution of a client-only ability is

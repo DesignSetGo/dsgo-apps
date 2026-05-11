@@ -31,7 +31,7 @@ class UninstallTest extends WP_UnitTestCase {
         set_transient('dsgo_ai_rate_doomed_2026050816', 7, HOUR_IN_SECONDS);
 
         // Bundle dir on disk must also be cleaned up.
-        $bundle_dir = wp_upload_dir()['basedir'] . '/dsgo-apps/doomed';
+        $bundle_dir = wp_upload_dir()['basedir'] . '/designsetgo-apps/doomed';
         wp_mkdir_p($bundle_dir);
         file_put_contents($bundle_dir . '/index.html', '<!doctype html>');
         $this->assertTrue(is_dir($bundle_dir));

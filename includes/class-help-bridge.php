@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class Help_Bridge {
 
     /**

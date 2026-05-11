@@ -22,6 +22,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class Secret_Vault {
 
     /** Cap per (app, alias) value. 64KB is plenty for any sane API token. */

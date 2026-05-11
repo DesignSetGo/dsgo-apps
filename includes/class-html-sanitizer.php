@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 // Exception messages constructed below are never echoed to clients; the REST
 // layer catches them and returns sanitized error_code + filtered messages.
 // phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped
@@ -451,7 +453,7 @@ final class HtmlSanitizer {
         // Legacy default prefix — accept regardless of current `dsgo_apps_url_prefix`,
         // so a bundle authored under the default ships unchanged.
         if (str_starts_with($url, '/apps/')) return true;
-        if (str_starts_with($url, '/wp-content/uploads/dsgo-apps/')) return true;
+        if (str_starts_with($url, '/wp-content/uploads/designsetgo-apps/')) return true;
         if ($ctx['allow_url_prefix'] !== null && $ctx['allow_url_prefix'] !== ''
             && str_starts_with($url, rtrim($ctx['allow_url_prefix'], '/') . '/')
         ) {

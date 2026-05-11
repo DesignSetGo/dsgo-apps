@@ -556,12 +556,12 @@ final class InlineRenderer {
      * `/{prefix}/{appId}` prefix so PHP can inject the per-request CSP
      * nonce and bridge bootstrap. Non-HTML static assets (`.js`, `.css`,
      * images, fonts, etc.) are rewritten to their actual upload URL
-     * (`/wp-content/uploads/dsgo-apps/<id>/asset.css`) so the host's web
+     * (`/wp-content/uploads/designsetgo-apps/<id>/asset.css`) so the host's web
      * server can serve them directly without going through PHP. This avoids
      * managed-host nginx fast-paths (GoDaddy MWP, WP Engine, etc.) that
      * 404 any URL ending in a known static extension before WordPress can
      * run. `<script src="/_astro/foo.js">` becomes
-     * `<script src="/wp-content/uploads/dsgo-apps/<id>/_astro/foo.js">`.
+     * `<script src="/wp-content/uploads/designsetgo-apps/<id>/_astro/foo.js">`.
      *
      * **Root mount.** Routes are left as site-absolute paths (the
      * dispatcher catches them on `is_404()` at template_redirect). Assets
@@ -579,7 +579,7 @@ final class InlineRenderer {
     ): string {
         $prefix     = self::url_prefix_for($manifest);
         $is_root    = $prefix === '';
-        // Upload base path (e.g. `/wp-content/uploads/dsgo-apps/<id>`) used to
+        // Upload base path (e.g. `/wp-content/uploads/designsetgo-apps/<id>`) used to
         // rewrite static non-HTML assets for both root and prefixed mounts so
         // the host web server can serve them directly without going through PHP.
         // The sanitizer accepts site-absolute paths under this prefix; full
@@ -788,10 +788,10 @@ final class InlineRenderer {
     }
 
     private static function render_route_not_found(Manifest $manifest): void {
-        $title = __('Page not found', 'dsgo-apps');
+        $title = __('Page not found', 'designsetgo-apps');
         $body  = sprintf(
             /* translators: %s: app name */
-            __('That route is not part of "%s".', 'dsgo-apps'),
+            __('That route is not part of "%s".', 'designsetgo-apps'),
             $manifest->name,
         );
         if (!headers_sent()) {
@@ -801,7 +801,7 @@ final class InlineRenderer {
             header('X-Content-Type-Options: nosniff');
         }
         $home = '<a href="' . esc_url(home_url('/')) . '">'
-            . esc_html__('← Return to site', 'dsgo-apps') . '</a>';
+            . esc_html__('← Return to site', 'designsetgo-apps') . '</a>';
         $style = '<style>'
             . '.dsgo-error{max-width:48rem;margin:6rem auto 4rem;padding:0 1.5rem;text-align:center}'
             . '.dsgo-error__status{font-size:.75rem;letter-spacing:.18em;text-transform:uppercase;opacity:.55;margin:0 0 .75rem}'
@@ -1370,6 +1370,6 @@ final class InlineRenderer {
 
     private static function bundle_dir_for(string $app_id): string {
         $upload = wp_upload_dir();
-        return rtrim($upload['basedir'], '/') . '/dsgo-apps/' . $app_id;
+        return rtrim($upload['basedir'], '/') . '/designsetgo-apps/' . $app_id;
     }
 }

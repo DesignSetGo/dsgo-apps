@@ -15,6 +15,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class EmailBridge {
 
     public const RATE_LIMIT_PER_HOUR = 100;

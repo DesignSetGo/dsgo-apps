@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace DSGo_Apps;
 
+defined('ABSPATH') || exit;
+
 final class SitemapProvider extends \WP_Sitemaps_Provider {
 
     /**
@@ -111,7 +113,7 @@ final class SitemapProvider extends \WP_Sitemaps_Provider {
         } else {
             $base = Settings::app_base_path($slug);
         }
-        $bundle_dir ??= rtrim((string) (wp_upload_dir()['basedir'] ?? ''), '/') . '/dsgo-apps/' . $slug;
+        $bundle_dir ??= rtrim((string) (wp_upload_dir()['basedir'] ?? ''), '/') . '/designsetgo-apps/' . $slug;
 
         $urls = [];
         foreach ($manifest['routes'] ?? [] as $route) {

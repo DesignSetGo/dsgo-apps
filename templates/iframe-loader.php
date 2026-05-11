@@ -92,7 +92,7 @@ window.wpApiSettings = { root: <?php echo wp_json_encode($rest_root); ?>, nonce:
         sandbox="allow-scripts allow-forms allow-top-navigation-by-user-activation"
         title="<?php echo esc_attr(sprintf(
             /* translators: %s: app display name */
-            __('%s — embedded application', 'dsgo-apps'),
+            __('%s — embedded application', 'designsetgo-apps'),
             $post->post_title,
         )); ?>"
         aria-label="<?php echo esc_attr($post->post_title); ?>"

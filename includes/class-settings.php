@@ -41,7 +41,7 @@ final class Settings {
             self::OPTION_URL_PREFIX,
             [
                 'type'              => 'string',
-                'description'       => __('URL segment under which DSGo apps are served (e.g. "apps").', 'dsgo-apps'),
+                'description'       => __('URL segment under which DSGo apps are served (e.g. "apps").', 'designsetgo-apps'),
                 'sanitize_callback' => [self::class, 'sanitize_url_prefix'],
                 'default'           => self::DEFAULT_URL_PREFIX,
                 'show_in_rest'      => false,
@@ -53,7 +53,7 @@ final class Settings {
             self::OPTION_HARNESS_SHARE_CONTENT,
             [
                 'type'              => 'boolean',
-                'description'       => __('Allow the AI app builder to read recent published content for context.', 'dsgo-apps'),
+                'description'       => __('Allow the AI app builder to read recent published content for context.', 'designsetgo-apps'),
                 'sanitize_callback' => static fn($v) => (bool) $v,
                 'default'           => false,
                 'show_in_rest'      => false,
@@ -99,7 +99,7 @@ final class Settings {
             add_settings_error(
                 self::OPTION_URL_PREFIX,
                 'invalid_type',
-                __('URL prefix must be a string.', 'dsgo-apps'),
+                __('URL prefix must be a string.', 'designsetgo-apps'),
             );
             return self::get_url_prefix();
         }
@@ -110,7 +110,7 @@ final class Settings {
                 'invalid_prefix',
                 sprintf(
                     /* translators: %s: prefix the user submitted */
-                    __('"%s" is not a valid URL prefix. Use up to 31 lowercase letters, digits, or hyphens, starting with a letter, or leave blank to mount apps at the site root. Reserved WordPress paths are rejected.', 'dsgo-apps'),
+                    __('"%s" is not a valid URL prefix. Use up to 31 lowercase letters, digits, or hyphens, starting with a letter, or leave blank to mount apps at the site root. Reserved WordPress paths are rejected.', 'designsetgo-apps'),
                     $candidate === '' ? '(empty)' : $candidate,
                 ),
             );
@@ -179,7 +179,7 @@ final class Settings {
         SitemapProvider::invalidate_cache();
     }
 
-    public const SETTINGS_PAGE_SLUG = 'dsgo-apps-settings';
+    public const SETTINGS_PAGE_SLUG = 'designsetgo-apps-settings';
 
     public static function register_settings_page(): void {
         // Mount under the top-level "DSGo Apps" menu rather than the global
@@ -187,8 +187,8 @@ final class Settings {
         // how other multi-page plugins organize their admin.
         add_submenu_page(
             AdminPage::MENU_SLUG,
-            __('Settings', 'dsgo-apps'),
-            __('Settings', 'dsgo-apps'),
+            __('Settings', 'designsetgo-apps'),
+            __('Settings', 'designsetgo-apps'),
             'manage_options',
             self::SETTINGS_PAGE_SLUG,
             [self::class, 'render_settings_page'],
@@ -197,7 +197,7 @@ final class Settings {
     }
 
     public static function enqueue_assets(string $hook): void {
-        if ($hook !== 'dsgo-apps_page_' . self::SETTINGS_PAGE_SLUG) {
+        if ($hook !== 'designsetgo-apps_page_' . self::SETTINGS_PAGE_SLUG) {
             return;
         }
         $css      = plugins_url('assets/admin/admin-page.css', DSGO_APPS_FILE);
@@ -229,18 +229,18 @@ final class Settings {
                      * same `dsgo_apps_brand_name` filter as the apps-list eyebrow
                      * so Pro's white-label feature can override both consistently.
                      */
-                    $dsgo_brand = (string) apply_filters('dsgo_apps_brand_name', __('DesignSetGo', 'dsgo-apps'));
+                    $dsgo_brand = (string) apply_filters('dsgo_apps_brand_name', __('DesignSetGo', 'designsetgo-apps'));
                     echo esc_html(sprintf(
                         /* translators: %s: brand name (defaults to "DesignSetGo"; overridden by Pro white-label) */
-                        __('%s · Settings', 'dsgo-apps'),
+                        __('%s · Settings', 'designsetgo-apps'),
                         $dsgo_brand
                     ));
                 ?></p>
                 <h1 class="dsgo-admin__title">
-                    <?php esc_html_e('Routing & site home.', 'dsgo-apps'); ?>
+                    <?php esc_html_e('Routing & site home.', 'designsetgo-apps'); ?>
                 </h1>
                 <p class="dsgo-admin__lede">
-                    <?php esc_html_e('Configure the URL segment your apps live under, and review which app currently owns the site root.', 'dsgo-apps'); ?>
+                    <?php esc_html_e('Configure the URL segment your apps live under, and review which app currently owns the site root.', 'designsetgo-apps'); ?>
                 </p>
             </header>
 
@@ -254,9 +254,9 @@ final class Settings {
 
                 <section class="dsgo-card" aria-labelledby="dsgo-settings-prefix-heading">
                     <header class="dsgo-card__header">
-                        <h2 id="dsgo-settings-prefix-heading" class="dsgo-card__title"><?php esc_html_e('URL prefix', 'dsgo-apps'); ?></h2>
+                        <h2 id="dsgo-settings-prefix-heading" class="dsgo-card__title"><?php esc_html_e('URL prefix', 'designsetgo-apps'); ?></h2>
                         <p class="dsgo-card__subtitle">
-                            <?php esc_html_e('The path segment under which prefixed-mount apps are served. Each app gets its own slug below this — or remove the prefix to mount apps directly at the site root.', 'dsgo-apps'); ?>
+                            <?php esc_html_e('The path segment under which prefixed-mount apps are served. Each app gets its own slug below this — or remove the prefix to mount apps directly at the site root.', 'designsetgo-apps'); ?>
                         </p>
                     </header>
 
@@ -269,9 +269,9 @@ final class Settings {
                                 data-dsgo-prefix-toggle
                             />
                             <span class="dsgo-toggle__label">
-                                <strong><?php esc_html_e('Use a URL prefix', 'dsgo-apps'); ?></strong>
+                                <strong><?php esc_html_e('Use a URL prefix', 'designsetgo-apps'); ?></strong>
                                 <span class="dsgo-field__hint">
-                                    <?php esc_html_e('Recommended. Keeps app URLs grouped under one path (e.g. /apps/my-app) and avoids slug collisions with anything else on your site — pages, posts, custom post types, archives, or other plugin URLs.', 'dsgo-apps'); ?>
+                                    <?php esc_html_e('Recommended. Keeps app URLs grouped under one path (e.g. /apps/my-app) and avoids slug collisions with anything else on your site — pages, posts, custom post types, archives, or other plugin URLs.', 'designsetgo-apps'); ?>
                                 </span>
                             </span>
                         </label>
@@ -279,7 +279,7 @@ final class Settings {
 
                     <div class="dsgo-field<?php echo $no_prefix ? ' dsgo-field--disabled' : ''; ?>" data-dsgo-prefix-field>
                         <label class="dsgo-field__label" for="dsgo_apps_url_prefix">
-                            <?php esc_html_e('Path segment', 'dsgo-apps'); ?>
+                            <?php esc_html_e('Path segment', 'designsetgo-apps'); ?>
                         </label>
                         <div class="dsgo-prefix-row">
                             <code class="dsgo-prefix-row__token">/</code>
@@ -298,12 +298,12 @@ final class Settings {
                             <code class="dsgo-prefix-row__token">/{app}/{path}</code>
                         </div>
                         <p class="dsgo-field__hint">
-                            <?php esc_html_e('Lowercase letters, digits, hyphens. 1–31 chars. Must start with a letter. Default: "apps". Reserved WordPress paths are rejected. Leave blank to mount apps at the site root.', 'dsgo-apps'); ?>
+                            <?php esc_html_e('Lowercase letters, digits, hyphens. 1–31 chars. Must start with a letter. Default: "apps". Reserved WordPress paths are rejected. Leave blank to mount apps at the site root.', 'designsetgo-apps'); ?>
                         </p>
                     </div>
 
                     <div class="dsgo-prefix-preview" aria-live="polite">
-                        <p class="dsgo-prefix-preview__label"><?php esc_html_e('Apps will be served at:', 'dsgo-apps'); ?></p>
+                        <p class="dsgo-prefix-preview__label"><?php esc_html_e('Apps will be served at:', 'designsetgo-apps'); ?></p>
                         <p class="dsgo-prefix-preview__url">
                             <code data-dsgo-prefix-preview
                                   data-home="<?php echo esc_attr($home); ?>"
@@ -318,16 +318,16 @@ final class Settings {
                             </code>
                         </p>
                         <p class="dsgo-prefix-preview__warn" data-dsgo-prefix-warn<?php echo $no_prefix ? '' : ' hidden'; ?>>
-                            <?php esc_html_e('Heads up: with no prefix, an app slug that matches any other path on this site (a page, post, custom-post-type permalink, archive base, or a URL registered by another plugin) will not load — the other content wins. Pick app slugs that don\'t collide.', 'dsgo-apps'); ?>
+                            <?php esc_html_e('Heads up: with no prefix, an app slug that matches any other path on this site (a page, post, custom-post-type permalink, archive base, or a URL registered by another plugin) will not load — the other content wins. Pick app slugs that don\'t collide.', 'designsetgo-apps'); ?>
                         </p>
                     </div>
                 </section>
 
                 <section class="dsgo-card" aria-labelledby="dsgo-settings-home-heading">
                     <header class="dsgo-card__header">
-                        <h2 id="dsgo-settings-home-heading" class="dsgo-card__title"><?php esc_html_e('Site home', 'dsgo-apps'); ?></h2>
+                        <h2 id="dsgo-settings-home-heading" class="dsgo-card__title"><?php esc_html_e('Site home', 'designsetgo-apps'); ?></h2>
                         <p class="dsgo-card__subtitle">
-                            <?php esc_html_e('At most one app can own the site root URL at a time. Set or change this from the Apps page.', 'dsgo-apps'); ?>
+                            <?php esc_html_e('At most one app can own the site root URL at a time. Set or change this from the Apps page.', 'designsetgo-apps'); ?>
                         </p>
                     </header>
 
@@ -335,23 +335,23 @@ final class Settings {
                         <div class="dsgo-settings__home dsgo-settings__home--active" aria-current="true">
                             <span class="dsgo-settings__home-badge" aria-hidden="true">⌂</span>
                             <div class="dsgo-settings__home-body">
-                                <p class="dsgo-settings__home-eyebrow"><?php esc_html_e('Currently serving', 'dsgo-apps'); ?></p>
+                                <p class="dsgo-settings__home-eyebrow"><?php esc_html_e('Currently serving', 'designsetgo-apps'); ?></p>
                                 <p class="dsgo-settings__home-slug"><code><?php echo esc_html($root_slug); ?></code></p>
                                 <p class="dsgo-settings__home-explainer">
-                                    <?php esc_html_e('This app is mounted at the site root. Inline-mode root apps fill in any path WordPress would 404 on; iframe-mode root apps render at "/" only. Real WP pages, posts, and feeds always win.', 'dsgo-apps'); ?>
+                                    <?php esc_html_e('This app is mounted at the site root. Inline-mode root apps fill in any path WordPress would 404 on; iframe-mode root apps render at "/" only. Real WP pages, posts, and feeds always win.', 'designsetgo-apps'); ?>
                                 </p>
                                 <p class="dsgo-settings__home-link">
-                                    <a href="<?php echo esc_url($apps_url); ?>"><?php esc_html_e('Manage on the Apps page →', 'dsgo-apps'); ?></a>
+                                    <a href="<?php echo esc_url($apps_url); ?>"><?php esc_html_e('Manage on the Apps page →', 'designsetgo-apps'); ?></a>
                                 </p>
                             </div>
                         </div>
                     <?php else: ?>
                         <div class="dsgo-settings__home dsgo-settings__home--empty">
                             <p class="dsgo-settings__home-empty">
-                                <?php esc_html_e('No app is set as site home. All installed apps live under the URL prefix above.', 'dsgo-apps'); ?>
+                                <?php esc_html_e('No app is set as site home. All installed apps live under the URL prefix above.', 'designsetgo-apps'); ?>
                             </p>
                             <p class="dsgo-settings__home-link">
-                                <a href="<?php echo esc_url($apps_url); ?>"><?php esc_html_e('Pick one on the Apps page →', 'dsgo-apps'); ?></a>
+                                <a href="<?php echo esc_url($apps_url); ?>"><?php esc_html_e('Pick one on the Apps page →', 'designsetgo-apps'); ?></a>
                             </p>
                         </div>
                     <?php endif; ?>
@@ -366,9 +366,9 @@ final class Settings {
                 ?>
                 <section class="dsgo-card" aria-labelledby="dsgo-settings-ai-context-heading">
                     <header class="dsgo-card__header">
-                        <h2 id="dsgo-settings-ai-context-heading" class="dsgo-card__title"><?php esc_html_e('AI authoring context', 'dsgo-apps'); ?></h2>
+                        <h2 id="dsgo-settings-ai-context-heading" class="dsgo-card__title"><?php esc_html_e('AI authoring context', 'designsetgo-apps'); ?></h2>
                         <p class="dsgo-card__subtitle">
-                            <?php esc_html_e('Controls what context the in-admin app builder may read from this site when generating apps.', 'dsgo-apps'); ?>
+                            <?php esc_html_e('Controls what context the in-admin app builder may read from this site when generating apps.', 'designsetgo-apps'); ?>
                         </p>
                     </header>
 
@@ -381,9 +381,9 @@ final class Settings {
                                 <?php checked($share_content, true); ?>
                             />
                             <span class="dsgo-toggle__label">
-                                <strong><?php esc_html_e('Share recent content with the AI app builder', 'dsgo-apps'); ?></strong>
+                                <strong><?php esc_html_e('Share recent content with the AI app builder', 'designsetgo-apps'); ?></strong>
                                 <span class="dsgo-field__hint">
-                                    <?php esc_html_e('When enabled, the in-admin AI app builder can read up to 5 recent published post titles and excerpts to match your site\'s tone and content shape. Posts the visitor cannot read are never included. Off by default — site content stays out of the model\'s context until you opt in.', 'dsgo-apps'); ?>
+                                    <?php esc_html_e('When enabled, the in-admin AI app builder can read up to 5 recent published post titles and excerpts to match your site\'s tone and content shape. Posts the visitor cannot read are never included. Off by default — site content stays out of the model\'s context until you opt in.', 'designsetgo-apps'); ?>
                                 </span>
                             </span>
                         </label>
@@ -393,7 +393,7 @@ final class Settings {
 
                 <div class="dsgo-actions dsgo-actions--settings">
                     <button type="submit" class="button button-primary button-hero" name="submit">
-                        <?php esc_html_e('Save changes', 'dsgo-apps'); ?>
+                        <?php esc_html_e('Save changes', 'designsetgo-apps'); ?>
                     </button>
                 </div>
             </form>
