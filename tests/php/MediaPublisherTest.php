@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace DSGo_Apps\Tests;
 
+use DSGo_Apps\Manifest;
 use DSGo_Apps\MediaPublisher;
 use WP_UnitTestCase;
 
@@ -67,5 +68,58 @@ class MediaPublisherTest extends WP_UnitTestCase {
         $this->write_file('a/b/c/deep.png', 'x');
         $matches = MediaPublisher::collect($this->bundle_dir, ['a/*']);
         $this->assertSame(['a/b/c/deep.png'], $matches);
+    }
+
+    private static function tiny_png_bytes(): string {
+        return base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEX/AAAZ4gk3AAAAAXRSTlPM0jRW/QAAAApJREFUeJxjYAAAAAIAAUivpHEAAAAASUVORK5CYII='
+        );
+    }
+
+    private function manifest(array $globs): Manifest {
+        return Manifest::validate([
+            'manifest_version' => 1, 'id' => 'sample', 'name' => 'Sample',
+            'version' => '0.1.0', 'entry' => 'index.html',
+            'isolation' => 'inline',
+            'routes' => [['path' => '/', 'file' => 'index.html']],
+            'display' => ['modes' => ['page'], 'default' => 'page'],
+            'permissions' => ['read' => [], 'write' => []],
+            'runtime' => ['sandbox' => 'strict', 'csp' => [
+                'script_src' => ['self'], 'style_src' => ['self'],
+                'img_src' => ['self', 'data:'], 'connect_src' => ['self'],
+            ]],
+            'media' => ['publish' => $globs],
+        ]);
+    }
+
+    public function test_publish_creates_attachment_for_matched_file(): void {
+        $this->write_file('og/hero.png', self::tiny_png_bytes());
+        $manifest = $this->manifest(['og/*.png']);
+
+        $result = MediaPublisher::publish_for_app($manifest, $this->bundle_dir);
+
+        $this->assertSame(1, $result->published);
+        $this->assertSame(0, $result->updated);
+        $this->assertSame(0, $result->skipped);
+        $this->assertSame(0, $result->failed);
+
+        $attachments = get_posts([
+            'post_type'   => 'attachment',
+            'post_status' => 'inherit',
+            'meta_key'    => MediaPublisher::SOURCE_META_KEY,
+            'meta_value'  => 'sample',
+            'numberposts' => -1,
+        ]);
+        $this->assertCount(1, $attachments);
+        $this->assertSame('og/hero.png', get_post_meta($attachments[0]->ID, MediaPublisher::PATH_META_KEY, true));
+        $this->assertNotSame('', (string) get_post_meta($attachments[0]->ID, MediaPublisher::HASH_META_KEY, true));
+        $this->assertSame('image/png', $attachments[0]->post_mime_type);
+    }
+
+    public function test_publish_returns_empty_result_when_no_globs(): void {
+        $this->write_file('og/hero.png', self::tiny_png_bytes());
+        $manifest = $this->manifest([]);
+        $result = MediaPublisher::publish_for_app($manifest, $this->bundle_dir);
+        $this->assertSame(0, $result->published + $result->updated + $result->skipped + $result->failed);
     }
 }
