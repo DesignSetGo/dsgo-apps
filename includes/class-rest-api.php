@@ -386,8 +386,7 @@ final class RestApi {
      */
     private static function installer_error_status(string $error_code): int {
         return match ($error_code) {
-            'forbidden',
-            'lite_cap_reached'      => 403,
+            'forbidden'             => 403,
             'not_found'             => 404,
             'root_mount_conflict'   => 409,
             'invalid_zip',
@@ -459,8 +458,7 @@ final class RestApi {
             return new \WP_REST_Response(['code' => $e->error_code, 'message' => $e->bare_message], $status);
         } catch (InstallerError $e) {
             $status = match ($e->error_code) {
-                'forbidden',
-                'lite_cap_reached'      => 403,
+                'forbidden'             => 403,
                 'not_found'             => 404,
                 'root_mount_conflict'   => 409,
                 'invalid_zip',
@@ -563,8 +561,7 @@ final class RestApi {
             return new \WP_REST_Response(self::shape_install_response($result), 201);
         } catch (InstallerError $e) {
             $status = match ($e->error_code) {
-                'forbidden',
-                'lite_cap_reached'      => 403,
+                'forbidden'             => 403,
                 'not_found'             => 404,
                 'root_mount_conflict'   => 409,
                 'install_in_progress'   => 409,

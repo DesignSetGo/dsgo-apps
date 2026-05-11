@@ -4,15 +4,15 @@ declare(strict_types=1);
 namespace DSGo_Apps\Tests;
 
 use DSGo_Apps\Installer;
-use DSGo_Apps\InstallerError;
 use DSGo_Apps\PostType;
 use WP_UnitTestCase;
 use ZipArchive;
 
 /**
- * Lite 1-active-app cap. Pro lifts the cap via the
- * `dsgo_apps_lite_app_cap` filter; tests assert both Lite enforcement
- * and the filter-based lift.
+ * App install behavior: multiple installs succeed (no cap), update semantics
+ * for the same slug, and count_published_apps helper accuracy. The
+ * `dsgo_apps_lite_app_cap` filter is kept for back-compat; these tests
+ * verify cap-related helpers still return the right shapes.
  */
 class InstallerCapTest extends WP_UnitTestCase {
 
@@ -28,8 +28,6 @@ class InstallerCapTest extends WP_UnitTestCase {
                 \DSGo_Apps\Bundle::recursive_delete($stash);
             }
         }
-        // Strip every dsgo_app post and any leftover filter listeners between
-        // tests so the cap state is deterministic.
         $this->purge_apps();
         remove_all_filters('dsgo_apps_lite_app_cap');
     }
@@ -46,27 +44,15 @@ class InstallerCapTest extends WP_UnitTestCase {
         $this->assertSame(1, Installer::count_published_apps());
     }
 
-    public function test_second_install_throws_lite_cap_reached(): void {
+    public function test_second_install_also_succeeds(): void {
         Installer::install($this->build_minimal_zip('cap-one'), $this->admin_id);
-
-        try {
-            Installer::install($this->build_minimal_zip('cap-two'), $this->admin_id);
-            $this->fail('Expected InstallerError lite_cap_reached');
-        } catch (InstallerError $e) {
-            $this->assertSame('lite_cap_reached', $e->error_code);
-            $this->assertStringContainsString('1 active app', $e->bare_message);
-            $this->assertStringContainsString('Riff', $e->bare_message);
-        }
-
-        // The rejected install must not leave a post or bundle behind.
-        $this->assertNull(get_page_by_path('cap-two', OBJECT, PostType::SLUG));
-        $this->assertSame(1, Installer::count_published_apps());
+        $result = Installer::install($this->build_minimal_zip('cap-two'), $this->admin_id);
+        $this->assertSame('cap-two', $result->app_id);
+        $this->assertSame(2, Installer::count_published_apps());
     }
 
     public function test_reinstall_of_same_slug_is_an_update_not_a_new_app(): void {
         Installer::install($this->build_minimal_zip('cap-update'), $this->admin_id);
-        // Re-install the same slug. Cap is at 1, but this is an update of
-        // the existing post, so it must succeed.
         $result = Installer::install($this->build_minimal_zip('cap-update'), $this->admin_id);
         $this->assertSame('cap-update', $result->app_id);
         $this->assertSame(1, Installer::count_published_apps());
@@ -80,42 +66,12 @@ class InstallerCapTest extends WP_UnitTestCase {
 
         $this->assertSame(0, Installer::count_published_apps());
 
-        // Installing a different slug now succeeds — the trashed app
-        // doesn't count, so we're back under the cap.
         $result = Installer::install($this->build_minimal_zip('cap-two'), $this->admin_id);
         $this->assertSame('cap-two', $result->app_id);
     }
 
-    public function test_filter_returning_null_lifts_the_cap(): void {
-        // Mirrors what Pro does when a license is active.
-        add_filter('dsgo_apps_lite_app_cap', '__return_null');
-
-        Installer::install($this->build_minimal_zip('cap-lifted-a'), $this->admin_id);
-        Installer::install($this->build_minimal_zip('cap-lifted-b'), $this->admin_id);
-
-        $this->assertSame(2, Installer::count_published_apps());
-    }
-
-    public function test_filter_returning_higher_cap_allows_more_installs(): void {
-        // Operator override: bump the cap to 3 without claiming Pro.
-        add_filter('dsgo_apps_lite_app_cap', static fn () => 3);
-
-        Installer::install($this->build_minimal_zip('cap-one'), $this->admin_id);
-        Installer::install($this->build_minimal_zip('cap-two'), $this->admin_id);
-        Installer::install($this->build_minimal_zip('cap-three'), $this->admin_id);
-        $this->assertSame(3, Installer::count_published_apps());
-
-        // Fourth install must still be rejected — the cap moved, not vanished.
-        try {
-            Installer::install($this->build_minimal_zip('cap-update'), $this->admin_id);
-            $this->fail('Expected InstallerError lite_cap_reached at cap=3');
-        } catch (InstallerError $e) {
-            $this->assertSame('lite_cap_reached', $e->error_code);
-        }
-    }
-
-    public function test_lite_app_cap_helper_returns_default(): void {
-        $this->assertSame(1, Installer::lite_app_cap());
+    public function test_lite_app_cap_helper_returns_null_by_default(): void {
+        $this->assertNull(Installer::lite_app_cap());
     }
 
     public function test_lite_app_cap_helper_returns_null_when_filter_disables(): void {

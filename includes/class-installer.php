@@ -235,29 +235,9 @@ final class Installer {
             }
         }
 
-        // Lite app cap. Default is 1 published app per site; Pro filters
-        // this off when a license is active. Re-installing the same slug
-        // is an update (replaces the existing post), so it doesn't count
-        // against the cap — only net-new slugs do.
-        $cap = self::lite_app_cap();
-        if ($cap !== null) {
-            $existing_post = get_page_by_path($manifest->id, OBJECT, PostType::SLUG);
-            if (!$existing_post instanceof \WP_Post) {
-                $current = self::count_published_apps();
-                if ($current >= $cap) {
-                    $zip->close();
-                    throw new InstallerError(
-                        'lite_cap_reached',
-                        sprintf(
-                            'The free version of DesignSetGo Apps allows %d active app%s per site. Remove the existing app to install another. A separate add-on can lift the cap and add advanced authoring tools.',
-                            $cap,
-                            $cap === 1 ? '' : 's',
-                        ),
-                    );
-                }
-            }
-        }
-
+        // No app-count cap. Pro-gated runtime features (cron, webhooks,
+        // abilities.publishes, dynamic routes) are skipped at registration
+        // time on free sites; install itself always succeeds.
         self::validate_zip_contents($zip);
 
         // Acquire a per-app install lock. Two CLI deploys (or a CI retry that
