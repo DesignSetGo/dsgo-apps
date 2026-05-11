@@ -93,7 +93,7 @@ final readonly class Manifest {
         public array $abilities_consumes = [],
         public int $ai_max_tool_calls = 5,
         public int $ai_timeout_seconds = 60,
-        /** @var array<int, array{name:string,label:string,description:string,category:string,input_schema?:array,output_schema?:array,annotations:array<string,bool>,timeout_seconds:int}> */
+        /** @var array<int, array{name:string,label:string,description:string,category:string,input_schema?:array,output_schema?:array,annotations:array<string,bool>,timeout_seconds:int,execute_php?:array{class:string,method:string}}> */
         public array $abilities_publishes = [],
         /** @var EmailRecipient[] */
         public array $email_recipients = [],
@@ -1036,6 +1036,38 @@ final readonly class Manifest {
                 throw new ManifestError("$path.timeout_seconds", 'must be an integer between 5 and 120');
             }
             $out['timeout_seconds'] = $val;
+        }
+        // execute_php — optional companion-plugin callable that satisfies
+        // this published ability AND any cron / webhook handlers that
+        // reference the ability by name. Class resolution is deliberately
+        // lazy: class_exists() runs at ability registration time, not
+        // here, so a manifest validates even if the companion plugin
+        // isn't installed yet. Manifest-level validation is shape-only.
+        if (array_key_exists('execute_php', $entry)) {
+            $ep = $entry['execute_php'];
+            if (!is_array($ep) || !array_key_exists('class', $ep) || !array_key_exists('method', $ep)) {
+                throw new ManifestError("$path.execute_php", 'execute_php_invalid: must be an object with class and method');
+            }
+            $class = $ep['class'];
+            // PHP identifiers: start with letter or underscore, then letters/
+            // digits/underscores. Namespace separator `\` may join multiple
+            // identifier segments; trailing `\` is rejected (typo guard).
+            if (!is_string($class) || $class === ''
+                || !preg_match('#^[A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*$#', $class)
+            ) {
+                throw new ManifestError(
+                    "$path.execute_php.class",
+                    'execute_php_class_invalid: must be a valid PHP class name (optionally namespaced)',
+                );
+            }
+            $method = $ep['method'];
+            if (!is_string($method) || !preg_match('#^[a-zA-Z_][a-zA-Z0-9_]*$#', $method)) {
+                throw new ManifestError(
+                    "$path.execute_php.method",
+                    'execute_php_method_invalid: must be a valid PHP method name',
+                );
+            }
+            $out['execute_php'] = ['class' => $class, 'method' => $method];
         }
         return $out;
     }
