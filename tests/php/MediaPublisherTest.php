@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace DSGo_Apps\Tests;
 
-use DSGo_Apps\Manifest;
 use DSGo_Apps\MediaPublisher;
 use WP_UnitTestCase;
 

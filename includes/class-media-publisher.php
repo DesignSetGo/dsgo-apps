@@ -48,7 +48,9 @@ final class MediaPublisher {
         if ($globs === [] || !is_dir($bundle_dir)) {
             return [];
         }
-        $bundle_dir = rtrim($bundle_dir, '/');
+        // Normalize separators up-front so the substr() offset below is deterministic
+        // regardless of whether the caller uses '/', '\\', or trailing slashes.
+        $bundle_dir = rtrim(str_replace('\\', '/', $bundle_dir), '/');
         $matches    = [];
         $iter = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($bundle_dir, \FilesystemIterator::SKIP_DOTS),
