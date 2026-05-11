@@ -114,7 +114,12 @@ final class MediaPublisher {
         $abs = rtrim($bundle_dir, '/') . '/' . $relative;
         $real_bundle = realpath($bundle_dir);
         $real_abs    = realpath($abs);
-        if ($real_bundle === false || $real_abs === false || !str_starts_with($real_abs, $real_bundle)) {
+        if ($real_bundle === false || $real_abs === false) {
+            self::log_skip($manifest->id, $relative, 'path escape');
+            return 'failed';
+        }
+        $bundle_prefix = rtrim($real_bundle, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        if (!str_starts_with($real_abs, $bundle_prefix)) {
             self::log_skip($manifest->id, $relative, 'path escape');
             return 'failed';
         }
@@ -180,6 +185,7 @@ final class MediaPublisher {
     private static function sideload_to_uploads(string $abs, string $relative): ?array {
         $tmp = wp_tempnam(basename($relative));
         if (!@copy($abs, $tmp)) {
+            if (is_file($tmp)) @unlink($tmp);
             return null;
         }
         $file_array = [
