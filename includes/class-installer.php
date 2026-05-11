@@ -425,7 +425,10 @@ final class Installer {
      * enforcement; return a positive integer to set a different cap.
      */
     public static function lite_app_cap(): ?int {
-        $cap = apply_filters('dsgo_apps_lite_app_cap', 1);
+        // Default null (no cap). The filter stays available for one
+        // back-compat minor so any external code that hooked it doesn't
+        // explode silently; it can now only LOWER, not establish, a cap.
+        $cap = apply_filters('dsgo_apps_lite_app_cap', null);
         if ($cap === null || $cap === false) return null;
         $cap = (int) $cap;
         return $cap > 0 ? $cap : null;

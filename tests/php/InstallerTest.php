@@ -652,6 +652,22 @@ class InstallerTest extends WP_UnitTestCase {
         $this->assertFalse(get_option('dsgo_apps_secrets_vault-deleted'));
     }
 
+    // --- Lite app cap defaults (Task 1 of free/Pro split) ---
+
+    public function test_lite_app_cap_defaults_to_null_for_back_compat(): void {
+        remove_all_filters('dsgo_apps_lite_app_cap');
+        $this->assertNull(Installer::lite_app_cap());
+    }
+
+    public function test_installer_does_not_reject_when_cap_filter_unset(): void {
+        remove_all_filters('dsgo_apps_lite_app_cap');
+        // Install two apps with distinct slugs; both must succeed when cap is null.
+        Installer::install($this->build_minimal_zip('my-app'), $this->admin_id);
+        $this->assertNotNull(get_page_by_path('my-app', OBJECT, PostType::SLUG));
+        Installer::install($this->build_minimal_zip('csp-test'), $this->admin_id);
+        $this->assertNotNull(get_page_by_path('csp-test', OBJECT, PostType::SLUG));
+    }
+
     private function build_zip_with_secrets(string $id, array $secrets): string {
         $tmp = tempnam(sys_get_temp_dir(), 'dsgo-zip-vault-');
         $zip = new ZipArchive();
