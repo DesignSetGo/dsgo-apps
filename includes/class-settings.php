@@ -185,7 +185,14 @@ final class Settings {
         // Mount under the top-level "DSGo Apps" menu rather than the global
         // Settings menu — keeps the plugin's surfaces grouped and matches
         // how other multi-page plugins organize their admin.
-        add_submenu_page(
+        //
+        // Capture the returned hook suffix and gate enqueue on it. WP builds
+        // submenu hooks as `sanitize_title($parent_menu_title) . '_page_' . $slug`,
+        // so the parent's *display* title ("DSGo Apps") — not the parent's
+        // slug ("designsetgo-apps") — is what shows up in the hook. Deriving
+        // the string ourselves is brittle; the hook returned here is
+        // authoritative.
+        $hook = add_submenu_page(
             AdminPage::MENU_SLUG,
             __('Settings', 'designsetgo-apps'),
             __('Settings', 'designsetgo-apps'),
@@ -193,13 +200,15 @@ final class Settings {
             self::SETTINGS_PAGE_SLUG,
             [self::class, 'render_settings_page'],
         );
-        add_action('admin_enqueue_scripts', [self::class, 'enqueue_assets']);
+        if (is_string($hook) && $hook !== '') {
+            add_action("admin_enqueue_scripts", static function (string $current) use ($hook): void {
+                if ($current !== $hook) return;
+                self::enqueue_assets();
+            });
+        }
     }
 
-    public static function enqueue_assets(string $hook): void {
-        if ($hook !== 'designsetgo-apps_page_' . self::SETTINGS_PAGE_SLUG) {
-            return;
-        }
+    public static function enqueue_assets(): void {
         $css      = plugins_url('assets/admin/admin-page.css', DSGO_APPS_FILE);
         $css_path = DSGO_APPS_PATH . 'assets/admin/admin-page.css';
         $css_ver  = file_exists($css_path) ? (string) (int) filemtime($css_path) : '0';
@@ -289,7 +298,7 @@ final class Settings {
                                 type="text"
                                 value="<?php echo esc_attr($prefix); ?>"
                                 class="dsgo-input dsgo-prefix-row__input"
-                                pattern="[a-z][a-z0-9-]{0,30}"
+                                pattern="[a-z][-a-z0-9]{0,30}"
                                 maxlength="31"
                                 spellcheck="false"
                                 autocapitalize="off"
@@ -358,11 +367,95 @@ final class Settings {
                 </section>
 
                 <?php
+                // Pro-only sections below. Same pattern as the existing
+                // `DSGO_APPS_PRO_VERSION` gate on the AI-authoring-context
+                // toggle — free renders the field directly when Pro is
+                // active, Pro owns the option and registers it under the
+                // `dsgo_apps_settings` group from its own bootstrap.
+                if (defined('DSGO_APPS_PRO_VERSION')) :
+                    $telemetry_url = admin_url('admin.php?page=dsgo-pro-settings');
+                    $telemetry_enabled = (string) get_option('dsgo_pro_telemetry_enabled', '1') === '1';
+                ?>
+                <section class="dsgo-card" aria-labelledby="dsgo-settings-telemetry-heading">
+                    <header class="dsgo-card__header">
+                        <h2 id="dsgo-settings-telemetry-heading" class="dsgo-card__title"><?php esc_html_e('Usage data', 'designsetgo-apps'); ?></h2>
+                        <p class="dsgo-card__subtitle">
+                            <?php esc_html_e('Anonymized event data we use to improve generation quality. Stays on your site for 90 days, then auto-purges. Nothing leaves your server.', 'designsetgo-apps'); ?>
+                        </p>
+                    </header>
+
+                    <div class="dsgo-field dsgo-field--toggle">
+                        <label class="dsgo-toggle">
+                            <input
+                                type="hidden"
+                                name="dsgo_pro_telemetry_enabled"
+                                value="0"
+                            />
+                            <input
+                                type="checkbox"
+                                name="dsgo_pro_telemetry_enabled"
+                                value="1"
+                                <?php checked($telemetry_enabled, true); ?>
+                            />
+                            <span class="dsgo-toggle__label">
+                                <strong><?php esc_html_e('Collect anonymized usage data on this site', 'designsetgo-apps'); ?></strong>
+                                <span class="dsgo-field__hint">
+                                    <?php
+                                    echo wp_kses(
+                                        sprintf(
+                                            /* translators: 1: URL to "What's collected" tab, 2: URL to "View events" tab */
+                                            __('Enabled by default. See <a href="%1$s">what\'s collected</a> or <a href="%2$s">view recorded events</a>.', 'designsetgo-apps'),
+                                            esc_url($telemetry_url . '&tab=collected'),
+                                            esc_url($telemetry_url . '&tab=events'),
+                                        ),
+                                        ['a' => ['href' => true]],
+                                    );
+                                    ?>
+                                </span>
+                            </span>
+                        </label>
+                    </div>
+                </section>
+                <?php
+                    $white_label_visible = class_exists('\\DSGo_Apps_Pro\\License')
+                        && \DSGo_Apps_Pro\License::is_agency();
+                    if ($white_label_visible) :
+                        $brand_name = (string) get_option('dsgo_pro_brand_name', '');
+                ?>
+                <section class="dsgo-card" aria-labelledby="dsgo-settings-whitelabel-heading">
+                    <header class="dsgo-card__header">
+                        <h2 id="dsgo-settings-whitelabel-heading" class="dsgo-card__title"><?php esc_html_e('White label', 'designsetgo-apps'); ?></h2>
+                        <p class="dsgo-card__subtitle">
+                            <?php esc_html_e('Replace the "DesignSetGo" brand string in places end-clients see — the apps-list eyebrow and the wp-admin Plugins listing. Leave blank to use the default brand.', 'designsetgo-apps'); ?>
+                        </p>
+                    </header>
+
+                    <div class="dsgo-field">
+                        <label class="dsgo-field__label" for="dsgo_pro_brand_name">
+                            <?php esc_html_e('Brand name', 'designsetgo-apps'); ?>
+                        </label>
+                        <input
+                            type="text"
+                            id="dsgo_pro_brand_name"
+                            name="dsgo_pro_brand_name"
+                            value="<?php echo esc_attr($brand_name); ?>"
+                            class="dsgo-input"
+                            maxlength="80"
+                            spellcheck="false"
+                            placeholder="<?php esc_attr_e('e.g. Acme', 'designsetgo-apps'); ?>"
+                        />
+                        <p class="dsgo-field__hint">
+                            <?php esc_html_e('Applied to the apps-list eyebrow and to the Plugins-page Name/Author/Description for both Apps and Apps Pro. Plugin and Author URIs are cleared so client-facing surfaces never link back to designsetgo.dev.', 'designsetgo-apps'); ?>
+                        </p>
+                    </div>
+                </section>
+                <?php endif; ?>
+
+                <?php
                 // The "share recent content" toggle is only consumed by the Pro
                 // harness's get_recent_posts tool. Hide the UI when Pro isn't
                 // active — the option is still registered above so any saved
                 // value persists across Pro disable/enable.
-                if (defined('DSGO_APPS_PRO_VERSION')) :
                 ?>
                 <section class="dsgo-card" aria-labelledby="dsgo-settings-ai-context-heading">
                     <header class="dsgo-card__header">
