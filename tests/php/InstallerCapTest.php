@@ -9,10 +9,14 @@ use WP_UnitTestCase;
 use ZipArchive;
 
 /**
- * App install behavior: multiple installs succeed (no cap), update semantics
- * for the same slug, and count_published_apps helper accuracy. The
- * `dsgo_apps_lite_app_cap` filter is kept for back-compat; these tests
- * verify cap-related helpers still return the right shapes.
+ * Installer cap-related behavior: unlimited installs succeed under the
+ * default (cap-off) configuration, same-slug re-installs are updates,
+ * and count_published_apps tracks only published posts.
+ *
+ * The dsgo_apps_lite_app_cap filter is preserved as a back-compat no-op
+ * (Task 1 of the free/Pro split kept the filter callable but flipped the
+ * default to null). Tests here exercise the cap-off path; the prior
+ * cap-enforcement tests were removed in Task 2 of that plan.
  */
 class InstallerCapTest extends WP_UnitTestCase {
 
@@ -33,6 +37,7 @@ class InstallerCapTest extends WP_UnitTestCase {
     }
 
     public function tear_down(): void {
+        // Strip every dsgo_app post and any leftover filter listeners between tests so the cap state is deterministic.
         remove_all_filters('dsgo_apps_lite_app_cap');
         $this->purge_apps();
         parent::tear_down();
@@ -70,7 +75,7 @@ class InstallerCapTest extends WP_UnitTestCase {
         $this->assertSame('cap-two', $result->app_id);
     }
 
-    public function test_lite_app_cap_helper_returns_null_by_default(): void {
+    public function test_lite_cap_is_disabled_by_default(): void {
         $this->assertNull(Installer::lite_app_cap());
     }
 
