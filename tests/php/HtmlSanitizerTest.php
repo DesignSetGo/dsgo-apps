@@ -205,11 +205,27 @@ class HtmlSanitizerTest extends WP_UnitTestCase {
         $this->assertStringNotContainsString('<iframe', $out);
     }
 
-    public function test_iframe_dropped_when_sandbox_attribute_missing(): void {
-        // Even when the origin is on the allowlist, refuse iframes that lack
-        // a sandbox attribute — running unsandboxed third-party content in
-        // the host page is not something we want to make easy.
-        $html = '<iframe src="https://www.youtube.com/embed/x"></iframe>';
+    public function test_iframe_keeps_origin_and_injects_default_sandbox_when_missing(): void {
+        // WordPress oEmbed (YouTube, Vimeo, etc.) emits unsandboxed iframes that
+        // authors cannot easily edit. When the origin is on the manifest's
+        // embeds allowlist, inject a safe default sandbox instead of dropping
+        // the iframe — the manifest already vouches for the origin.
+        $html = '<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" allowfullscreen></iframe>';
+        $out = HtmlSanitizer::sanitize($html, [
+            'nonce'         => 'NONCE',
+            'embed_origins' => ['https://www.youtube.com'],
+        ]);
+        $this->assertStringContainsString('<iframe', $out);
+        $this->assertStringContainsString('youtube.com/embed/dQw4w9WgXcQ', $out);
+        $this->assertStringContainsString('sandbox="allow-scripts allow-same-origin', $out);
+        // Top-frame navigation must NOT be granted by the default.
+        $this->assertStringNotContainsString('allow-top-navigation', $out);
+    }
+
+    public function test_iframe_dropped_when_origin_missing_even_if_sandbox_absent(): void {
+        // Origin check runs before the sandbox-default injection — an
+        // un-allowlisted iframe is still dropped regardless of sandbox state.
+        $html = '<iframe src="https://evil.example/x"></iframe>';
         $out = HtmlSanitizer::sanitize($html, [
             'nonce'         => 'NONCE',
             'embed_origins' => ['https://www.youtube.com'],

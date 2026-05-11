@@ -238,8 +238,10 @@ final class HtmlSanitizer {
 
     /**
      * Drop any `<iframe>` whose `src` origin isn't in the manifest's embeds
-     * allowlist, or that doesn't carry a `sandbox` attribute. Iframes that
-     * pass both checks are left intact for wp_kses to handle.
+     * allowlist. Iframes whose origin is allowed but that lack a `sandbox`
+     * attribute have a safe default injected, since the dominant authoring
+     * path (WordPress oEmbed: YouTube, Vimeo, etc.) emits unsandboxed
+     * iframes that the author cannot easily edit.
      *
      * The strip is silent — the rule of thumb is "if the author declared
      * the embed, it works; if not, drop it and let the deploy preflight
@@ -259,17 +261,24 @@ final class HtmlSanitizer {
                 if ($src === null) {
                     return ''; // No src — useless and not on any allowlist.
                 }
-                if (!preg_match('~\bsandbox\s*=~i', $attrs)) {
-                    return ''; // Sandbox is required for any embed we accept.
-                }
                 if (!self::href_origin_allowed($src, $allowed_origins)) {
                     return '';
+                }
+                if (!preg_match('~\bsandbox\s*=~i', $attrs)) {
+                    // Origin is vouched-for by the manifest but the author
+                    // (or oEmbed handler) didn't set sandbox. Inject a default
+                    // that allows trusted-embed players (YouTube, Vimeo) to
+                    // function without granting top-frame navigation.
+                    $attrs = ' sandbox="' . self::DEFAULT_EMBED_SANDBOX . '"' . $attrs;
+                    return '<iframe' . $attrs . '>' . $m[2] . '</iframe>';
                 }
                 return $m[0]; // Vetted — keep as-is.
             },
             $html,
         ) ?? $html;
     }
+
+    private const DEFAULT_EMBED_SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation';
 
     private static function strip_svg_scripts(string $html): string {
         // Remove any <script> elements that appear inside <svg>...</svg> blocks.
