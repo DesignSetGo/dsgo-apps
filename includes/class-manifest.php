@@ -1586,6 +1586,15 @@ final readonly class Manifest {
         if ($this->http_test_endpoint !== null) {
             $out['http'] = ['test_endpoint' => $this->http_test_endpoint];
         }
+        // TODO(v1.x): permissions.justifications is read at validate-time
+        // (validate_justifications, ~1316) but is NOT round-tripped here —
+        // hydrated manifests come back without the author's per-bucket
+        // rationale. Nothing in v1 reads justifications from a hydrated
+        // manifest yet, so the gap is silent today, but the install dialog
+        // would lie if it ever re-rendered from post meta. When the
+        // diff-on-update path or any future audit surface starts reading
+        // justifications post-install, add a typed accessor + emit block
+        // here in the same change.
         // Only emit `content` when the app has opted into something — keeps
         // round-trip stable for the (default) all-off case.
         if ($this->content_block_styles !== []

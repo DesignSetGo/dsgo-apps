@@ -620,9 +620,13 @@ final class HttpProxyBridgeTest extends WP_UnitTestCase {
     }
 
     public function test_mixed_success_and_failure_each_logs_one_row(): void {
-        // A success, a SSRF-block, and a rate-limit hit should each produce
-        // exactly one row — the rate-limit path is the easiest to double-log
-        // because it runs late in the pipeline.
+        // A success, a rate-limit hit, and a host_not_allowed should each
+        // produce exactly one row — the rate-limit path is the easiest to
+        // double-log because it runs late in the pipeline. The audit log
+        // doesn't store an error_code column (status is the only outcome
+        // signal it keeps), so we pin each row by `host` too — a refactor
+        // that swapped which row got which rejection would change the host
+        // attribution and break this assertion.
         $m = $this->manifest(['api.stripe.com']);
         add_filter('dsgo_apps_http_rate_per_minute', fn () => 1);
         Http_Proxy_Bridge::set_transport_factory_for_tests(
@@ -636,11 +640,15 @@ final class HttpProxyBridgeTest extends WP_UnitTestCase {
 
         global $wpdb;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-        $rows = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}dsgo_apps_http_log");
-        $this->assertSame(3, $rows);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-        $statuses = $wpdb->get_col("SELECT status FROM {$wpdb->prefix}dsgo_apps_http_log ORDER BY id ASC");
-        $this->assertSame(['200', '0', '0'], $statuses);
+        $rows = $wpdb->get_results(
+            "SELECT host, status FROM {$wpdb->prefix}dsgo_apps_http_log ORDER BY id ASC",
+            ARRAY_A,
+        );
+        $this->assertSame([
+            ['host' => 'api.stripe.com', 'status' => '200'],
+            ['host' => 'api.stripe.com', 'status' => '0'],
+            ['host' => 'api.notion.com', 'status' => '0'],
+        ], $rows);
     }
 
     // ===== helpers =====
@@ -675,11 +683,15 @@ final class HttpProxyBridgeTest extends WP_UnitTestCase {
     /**
      * Tests that drive the transport but use a host that does not resolve
      * in the test environment (`api.example.com`, etc.) call this to
-     * short-circuit the SSRF guard with a benign public IP. SSRF-specific
+     * short-circuit the SSRF guard with a non-private IP. SSRF-specific
      * tests still override DNS to a private/loopback address.
+     *
+     * 8.8.8.8 is Google Public DNS — a synthetic, well-known address that
+     * unambiguously reads as "test fixture, not load-bearing." Any non-
+     * private IP would work; the choice is for readability.
      */
     private function bypass_ssrf(): void {
-        Http_Proxy_Bridge::set_dns_resolver_for_tests(fn () => ['93.184.215.14']);
+        Http_Proxy_Bridge::set_dns_resolver_for_tests(fn () => ['8.8.8.8']);
     }
 
     /**
