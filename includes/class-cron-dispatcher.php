@@ -131,14 +131,20 @@ final class CronDispatcher {
         $duration = self::now_ms() - $start_ms;
 
         if (is_wp_error($result)) {
-            // WP_Ability::execute() catches Throwables inside the callback and
-            // wraps them in a WP_Error with code `ability_callback_exception`.
-            // Surface that case as `cron_exception` so the audit log
-            // distinguishes "ability crashed" from "ability returned WP_Error
-            // deliberately" — the two have different operational meaning.
-            $code = $result->get_error_code() === 'ability_callback_exception'
-                ? 'cron_exception'
-                : 'cron_ability_execute_failed';
+            // Three distinct WP_Error codes get distinct cron audit codes:
+            //
+            //   ability_callback_exception     → cron_exception
+            //       (WP_Ability wrapped a Throwable from inside the callback)
+            //   execute_php_class_not_loadable → cron_ability_not_found
+            //       (AbilitiesPublisher's inactive-companion-plugin sentinel
+            //        — operationally identical to a missing ability)
+            //   default                        → cron_ability_execute_failed
+            //       (ability deliberately returned WP_Error)
+            $code = match ($result->get_error_code()) {
+                'ability_callback_exception'     => 'cron_exception',
+                'execute_php_class_not_loadable' => 'cron_ability_not_found',
+                default                          => 'cron_ability_execute_failed',
+            };
             self::log_error($app_id, $job_id, $ability_name, $start_ms, $code, $result->get_error_message(), $duration);
             do_action('dsgo_apps_cron_job_failed', $app_id, $job_id, $ability_name, $result, $duration);
         } else {

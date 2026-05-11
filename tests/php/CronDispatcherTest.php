@@ -108,6 +108,24 @@ final class CronDispatcherTest extends WP_UnitTestCase {
         $this->assertSame(['pong' => 1], $fired['result']);
     }
 
+    public function test_run_inactive_ability_logs_as_not_found(): void {
+        // AbilitiesPublisher's inactive sentinel returns
+        // WP_Error('execute_php_class_not_loadable'). The dispatcher
+        // must map that to cron_ability_not_found rather than the
+        // generic cron_ability_execute_failed — operationally the
+        // companion plugin is missing, not the callback misbehaving.
+        $this->insert_app_post('myapp');
+        $this->register_test_ability(
+            'myapp/inactive',
+            static fn ($input = null) => new \WP_Error('execute_php_class_not_loadable', 'Companion plugin not installed: class Acme\\Plugin\\Nonexistent is not loadable.'),
+        );
+        CronDispatcher::run('myapp', 'sync', 'myapp/inactive');
+        $rows = CronLog::query('myapp');
+        $this->assertCount(1, $rows);
+        $this->assertSame('error', $rows[0]['status']);
+        $this->assertSame('cron_ability_not_found', $rows[0]['error_code']);
+    }
+
     public function test_run_fires_failed_action_on_wp_error(): void {
         $fired = null;
         add_action(
