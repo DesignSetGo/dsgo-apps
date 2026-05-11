@@ -1742,6 +1742,75 @@ class ManifestTest extends WP_UnitTestCase {
         Manifest::validate($arr);
     }
 
+    public function test_media_publish_defaults_to_empty_array_when_absent(): void {
+        $manifest = Manifest::validate($this->valid_inline_manifest());
+        $this->assertSame([], $manifest->media_publish_globs);
+    }
+
+    public function test_media_publish_accepts_array_of_glob_strings(): void {
+        $raw = $this->valid_inline_manifest();
+        $raw['media'] = ['publish' => ['og/*.png', 'screenshots/*']];
+        $manifest = Manifest::validate($raw);
+        $this->assertSame(['og/*.png', 'screenshots/*'], $manifest->media_publish_globs);
+    }
+
+    public function test_media_publish_rejects_non_array(): void {
+        $raw = $this->valid_inline_manifest();
+        $raw['media'] = ['publish' => 'og/*.png'];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessage('media.publish');
+        Manifest::validate($raw);
+    }
+
+    public function test_media_publish_rejects_non_string_entry(): void {
+        $raw = $this->valid_inline_manifest();
+        $raw['media'] = ['publish' => ['ok.png', 42]];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessage('media.publish[1]');
+        Manifest::validate($raw);
+    }
+
+    public function test_media_publish_rejects_empty_string(): void {
+        $raw = $this->valid_inline_manifest();
+        $raw['media'] = ['publish' => ['']];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessage('media.publish[0]');
+        Manifest::validate($raw);
+    }
+
+    public function test_media_publish_rejects_path_escape(): void {
+        $raw = $this->valid_inline_manifest();
+        $raw['media'] = ['publish' => ['../etc/passwd']];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessage('media.publish[0]');
+        Manifest::validate($raw);
+    }
+
+    public function test_media_publish_rejects_absolute_path(): void {
+        $raw = $this->valid_inline_manifest();
+        $raw['media'] = ['publish' => ['/etc/hosts']];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessage('media.publish[0]');
+        Manifest::validate($raw);
+    }
+
+    public function test_media_publish_caps_at_32_patterns(): void {
+        $raw = $this->valid_inline_manifest();
+        $raw['media'] = ['publish' => array_fill(0, 33, '*.png')];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessage('media.publish');
+        Manifest::validate($raw);
+    }
+
+    public function test_media_publish_round_trips_through_to_array(): void {
+        $raw = $this->valid_inline_manifest();
+        $raw['media'] = ['publish' => ['og/*.png']];
+        $manifest = Manifest::validate($raw);
+        $out = $manifest->to_array();
+        $this->assertArrayHasKey('media', $out);
+        $this->assertSame(['og/*.png'], $out['media']['publish']);
+    }
+
     // --- Commerce permission --------------------------------------------------
 
     public function test_permission_enum_includes_commerce(): void {

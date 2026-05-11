@@ -104,6 +104,14 @@ final readonly class Manifest {
          * default is safe — only Authors+ can actually upload at runtime.
          */
         public bool $media_uploads_enabled = true,
+        /**
+         * Glob patterns from `media.publish[]`. Bundled files matching any
+         * pattern are promoted to WP Media Library attachments at install
+         * time by MediaPublisher. Relative to the bundle root; no leading
+         * `/`, no `..`. Capped at 32 patterns by validate().
+         * @var string[]
+         */
+        public array $media_publish_globs = [],
         /** @var string[] commerce providers e.g. ["woocommerce"] */
         public array $commerce_providers = [],
         /** @var string[] commerce endpoints e.g. ["products","cart","checkout"] */
@@ -702,6 +710,7 @@ final readonly class Manifest {
         // bridge defaults the feature ON for every app and gates uploads on
         // the WP `upload_files` capability of the rendering visitor.
         $media_uploads_enabled = true;
+        $media_publish_globs   = [];
         if (array_key_exists('media', $raw)) {
             if (!is_array($raw['media'])) {
                 throw new ManifestError('media', 'must be an object');
@@ -712,6 +721,27 @@ final readonly class Manifest {
                     throw new ManifestError('media.uploads', 'must be a boolean');
                 }
                 $media_uploads_enabled = $val;
+            }
+            if (array_key_exists('publish', $raw['media'])) {
+                $pub = $raw['media']['publish'];
+                if (!is_array($pub)) {
+                    throw new ManifestError('media.publish', 'must be an array of glob strings');
+                }
+                if (count($pub) > 32) {
+                    throw new ManifestError('media.publish', 'at most 32 patterns are allowed');
+                }
+                foreach ($pub as $i => $glob) {
+                    if (!is_string($glob) || $glob === '') {
+                        throw new ManifestError("media.publish[$i]", 'must be a non-empty string');
+                    }
+                    if (str_starts_with($glob, '/')) {
+                        throw new ManifestError("media.publish[$i]", 'must be a relative path (no leading "/")');
+                    }
+                    if (str_contains($glob, '..')) {
+                        throw new ManifestError("media.publish[$i]", 'must not contain ".."');
+                    }
+                    $media_publish_globs[] = $glob;
+                }
             }
         }
 
@@ -935,6 +965,7 @@ final readonly class Manifest {
             abilities_publishes: $abilities_publishes,
             email_recipients: $email_recipients,
             media_uploads_enabled: $media_uploads_enabled,
+            media_publish_globs: $media_publish_globs,
             commerce_providers: $commerce_providers,
             commerce_endpoints: $commerce_endpoints,
             content_block_styles: $content_block_styles,
@@ -1474,6 +1505,9 @@ final readonly class Manifest {
                 is_array($raw['email']['recipients'] ?? null) ? $raw['email']['recipients'] : [],
             ))),
             media_uploads_enabled: !isset($raw['media']['uploads']) || $raw['media']['uploads'] !== false,
+            media_publish_globs: is_array($raw['media']['publish'] ?? null)
+                ? array_values(array_filter($raw['media']['publish'], 'is_string'))
+                : [],
             commerce_providers: is_array($raw['commerce']['providers'] ?? null)
                 ? array_values(array_filter($raw['commerce']['providers'], 'is_string'))
                 : [],
@@ -1589,10 +1623,18 @@ final readonly class Manifest {
                 'recipients' => array_map(fn (EmailRecipient $r) => $r->value, $this->email_recipients),
             ];
         }
-        // Only emit `media` when the app opts out — keeping the manifest
-        // round-trip stable for the (overwhelmingly common) default-on case.
+        // Emit `media` only when the app diverges from defaults (either opts
+        // out of uploads or declares publish globs). Keeps round-trip stable
+        // for the overwhelmingly common case where neither field is set.
+        $media_out = [];
         if ($this->media_uploads_enabled === false) {
-            $out['media'] = ['uploads' => false];
+            $media_out['uploads'] = false;
+        }
+        if ($this->media_publish_globs !== []) {
+            $media_out['publish'] = array_values($this->media_publish_globs);
+        }
+        if ($media_out !== []) {
+            $out['media'] = $media_out;
         }
         if ($this->commerce_providers !== [] || $this->commerce_endpoints !== []) {
             $out['commerce'] = [
