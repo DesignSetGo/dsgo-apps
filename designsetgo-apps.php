@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       DesignSetGo Apps
  * Plugin URI:        https://designsetgo.dev
- * Description:       Drop in any AI-built static bundle and run it as a sandboxed app on your WordPress site at /apps/{slug}, wired to your posts, pages, and users via a permissioned bridge. Lite includes 1 active app per site; Pro removes the cap and adds in-admin AI generation + CLI deploy.
+ * Description:       Drop in any AI-built static bundle and run it as a sandboxed app on your WordPress site at /apps/{slug}, wired to your posts, pages, and users via a permissioned bridge. The free version includes 1 active app per site.
  * Version:           0.2.1
  * Requires at least: 6.9
  * Tested up to:      6.9.4
