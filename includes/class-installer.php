@@ -385,6 +385,7 @@ final class Installer {
             InlineRenderer::bump_cache_version($manifest->id);
             SitemapProvider::invalidate_cache();
             AbilitiesPublisher::register_for_app($manifest);
+            MediaPublisher::publish_for_app($manifest, $bundle_dir);
 
             self::release_install_lock($manifest->id);
 

@@ -22,6 +22,7 @@ class InstallerTest extends WP_UnitTestCase {
             'marketing-site', 'first-root', 'second-root', 'updatable-root',
             'concurrent-test', 'stale-lock-test', 'lock-release-test',
             'vault-recon', 'vault-stable', 'vault-first', 'vault-deleted',
+            'publish-app',
         ] as $id) {
             \DSGo_Apps\Bundle::recursive_delete($uploads_base . $id);
             // Also remove any stash dirs (e.g. rollback-test.previous-XXXXXX).
@@ -493,6 +494,66 @@ class InstallerTest extends WP_UnitTestCase {
         $this->assertFalse(wp_has_ability('publish-diff/old'));
         $this->assertTrue(wp_has_ability('publish-diff/new'));
         \DSGo_Apps\AbilitiesPublisher::unregister_for_app('publish-diff');
+    }
+
+    public function test_install_publishes_manifest_declared_images_to_media_library(): void {
+        $admin_id = self::factory()->user->create(['role' => 'administrator']);
+
+        $manifest = [
+            'manifest_version' => 1,
+            'id'    => 'publish-app',
+            'name'  => 'Publish App',
+            'version' => '0.1.0',
+            'entry' => 'index.html',
+            'isolation' => 'inline',
+            'routes' => [['path' => '/', 'file' => 'index.html']],
+            'display' => ['modes' => ['page'], 'default' => 'page'],
+            'permissions' => ['read' => [], 'write' => []],
+            'runtime' => ['sandbox' => 'strict', 'csp' => [
+                'script_src' => ['self'], 'style_src' => ['self'],
+                'img_src' => ['self', 'data:'], 'connect_src' => ['self'],
+            ]],
+            'media' => ['publish' => ['og/*.png']],
+        ];
+
+        $tiny_png = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEX/AAAZ4gk3AAAAAXRSTlPM0jRW/QAAAApJREFUeJxjYAAAAAIAAUivpHEAAAAASUVORK5CYII='
+        );
+
+        $zip_path = $this->build_zip([
+            'dsgo-app.json' => json_encode($manifest),
+            'index.html'    => '<!doctype html><html><head></head><body></body></html>',
+            'og/hero.png'   => $tiny_png,
+        ]);
+
+        $result = \DSGo_Apps\Installer::install($zip_path, $admin_id);
+        $this->assertSame('publish-app', $result->app_id);
+
+        $attachments = get_posts([
+            'post_type'   => 'attachment',
+            'post_status' => 'inherit',
+            'meta_key'    => \DSGo_Apps\MediaPublisher::SOURCE_META_KEY,
+            'meta_value'  => 'publish-app',
+            'numberposts' => -1,
+        ]);
+        $this->assertCount(1, $attachments, 'one attachment should appear in the media library after install');
+        $this->assertSame('og/hero.png', get_post_meta($attachments[0]->ID, \DSGo_Apps\MediaPublisher::PATH_META_KEY, true));
+    }
+
+    /**
+     * Build a zip from a filename => contents map. Values may be binary strings.
+     *
+     * @param array<string,string> $files
+     */
+    private function build_zip(array $files): string {
+        $tmp = tempnam(sys_get_temp_dir(), 'dsgo-zip-media-');
+        $zip = new \ZipArchive();
+        $zip->open($tmp, \ZipArchive::OVERWRITE);
+        foreach ($files as $name => $contents) {
+            $zip->addFromString($name, $contents);
+        }
+        $zip->close();
+        return $tmp;
     }
 
     private function build_zip_with_publishes(string $id, array $publishes): string {
