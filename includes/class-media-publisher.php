@@ -30,10 +30,9 @@ final readonly class PublishResult {
 
 final class MediaPublisher {
 
-    public const SOURCE_META_KEY    = '_dsgo_apps_source_app';
-    public const PATH_META_KEY      = '_dsgo_apps_publish_path';
-    public const HASH_META_KEY      = '_dsgo_apps_publish_hash';
-    public const MAX_BYTES_PER_FILE = 10 * 1024 * 1024;
+    public const SOURCE_META_KEY = '_dsgo_apps_source_app';
+    public const PATH_META_KEY   = '_dsgo_apps_publish_path';
+    public const HASH_META_KEY   = '_dsgo_apps_publish_hash';
 
     /**
      * Walk the bundle dir and return every relative file path that matches
@@ -134,8 +133,11 @@ final class MediaPublisher {
             self::log_skip($manifest->id, $relative, 'empty file');
             return 'skipped';
         }
-        if ($size > self::MAX_BYTES_PER_FILE) {
-            self::log_skip($manifest->id, $relative, sprintf('file size %d exceeds %d bytes', $size, self::MAX_BYTES_PER_FILE));
+        // Share the per-file byte cap (and its `dsgo_apps_media_max_bytes` filter)
+        // with the runtime bridge so a single site policy governs both surfaces.
+        $max_bytes = (int) apply_filters('dsgo_apps_media_max_bytes', MediaBridge::DEFAULT_MAX_BYTES, $manifest->id);
+        if ($size > $max_bytes) {
+            self::log_skip($manifest->id, $relative, sprintf('file size %d exceeds %d bytes', $size, $max_bytes));
             return 'skipped';
         }
         $ext = strtolower(pathinfo($relative, PATHINFO_EXTENSION));
@@ -266,9 +268,12 @@ final class MediaPublisher {
      * attachment ID is preserved, so any posts referencing the attachment
      * continue to render — with the new image.
      *
-     * The OLD file on disk is deleted after the new one is wired up (with
-     * the path-equality guard, so a sideload that landed at the same
-     * uploads/YYYY/MM path doesn't delete what it just wrote).
+     * The OLD full-size file AND any old image subsizes (thumbnail, medium,
+     * large, …) on disk are deleted after the new file is wired up. The
+     * path-equality guard on the full-size file prevents a sideload that
+     * landed at the same uploads/YYYY/MM path from deleting what it just
+     * wrote; subsizes are keyed by basename so they only ever live under
+     * the original generation's directory.
      */
     private static function replace_attachment_file(
         int $attachment_id,
@@ -276,8 +281,9 @@ final class MediaPublisher {
         string $relative,
         string $hash,
     ): bool {
-        $old_path = get_attached_file($attachment_id);
-        $handled  = self::sideload_to_uploads($abs, $relative);
+        $old_path     = get_attached_file($attachment_id);
+        $old_metadata = wp_get_attachment_metadata($attachment_id);
+        $handled      = self::sideload_to_uploads($abs, $relative);
         if ($handled === null) {
             return false;
         }
@@ -290,6 +296,26 @@ final class MediaPublisher {
 
         if ($old_path && is_string($old_path) && is_file($old_path) && $old_path !== $handled['file']) {
             wp_delete_file($old_path);
+        }
+        // Subsizes for the previous generation are no longer referenced by the
+        // attachment's metadata. Delete them so re-deploys don't accumulate
+        // orphan thumbnails on disk (wp_handle_sideload deduplicates filenames,
+        // so the new generation's subsizes never collide with the old set).
+        if (is_array($old_metadata) && is_string($old_path) && $old_path !== '') {
+            $old_dir = trailingslashit(dirname($old_path));
+            $old_sizes = $old_metadata['sizes'] ?? null;
+            if (is_array($old_sizes)) {
+                foreach ($old_sizes as $size) {
+                    $file = is_array($size) && isset($size['file']) ? (string) $size['file'] : '';
+                    if ($file === '') {
+                        continue;
+                    }
+                    $subsize_path = $old_dir . $file;
+                    if (is_file($subsize_path)) {
+                        wp_delete_file($subsize_path);
+                    }
+                }
+            }
         }
         return true;
     }

@@ -185,8 +185,8 @@ class MediaPublisherTest extends WP_UnitTestCase {
         $this->assertSame(0, $result->failed);
     }
 
-    public function test_publish_skips_files_over_10mb(): void {
-        $big = str_repeat("\x00", MediaPublisher::MAX_BYTES_PER_FILE + 1);
+    public function test_publish_skips_files_over_max_bytes(): void {
+        $big = str_repeat("\x00", \DSGo_Apps\MediaBridge::DEFAULT_MAX_BYTES + 1);
         $this->write_file('og/huge.png', $big);
         $manifest = $this->manifest(['og/*.png']);
 
