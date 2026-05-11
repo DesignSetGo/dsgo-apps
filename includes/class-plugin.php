@@ -44,6 +44,7 @@ final class Plugin {
         require_once $base . 'class-secret-vault.php';
         require_once $base . 'class-http-proxy-log.php';
         require_once $base . 'class-http-proxy-bridge.php';
+        require_once $base . 'class-cron-scheduler.php';
         require_once $base . 'class-privacy.php';
         require_once $base . 'class-post-type.php';
         require_once $base . 'class-settings.php';
@@ -92,6 +93,11 @@ final class Plugin {
         // in activate(); the hook stays registered here so the cron
         // dispatcher can resolve the callback on any boot of the site.
         add_action(Http_Proxy_Log::CRON_HOOK, [Http_Proxy_Log::class, 'purge_expired']);
+        // DSGo-specific cron intervals (dsgo-5min, dsgo-15min) declared in
+        // app manifests. Registered at default filter priority so they're
+        // visible to any wp_schedule_event() call regardless of when in
+        // the boot sequence it fires.
+        add_filter('cron_schedules', [CronScheduler::class, 'register_custom_schedules']);
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch'], 5);
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch_root'], 7);
         add_action('template_redirect', [IframeLoader::class, 'maybe_dispatch_root'], 8);
