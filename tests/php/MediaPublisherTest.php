@@ -172,4 +172,28 @@ class MediaPublisherTest extends WP_UnitTestCase {
         $this->assertNotNull($still_present);
         $this->assertSame('attachment', $still_present->post_type);
     }
+
+    public function test_publish_skips_non_image_mime(): void {
+        $this->write_file('docs/readme.txt', "hello\n");
+        $manifest = $this->manifest(['docs/*.txt']);
+
+        $result = MediaPublisher::publish_for_app($manifest, $this->bundle_dir);
+
+        $this->assertSame(0, $result->published);
+        $this->assertSame(0, $result->updated);
+        $this->assertSame(1, $result->skipped);
+        $this->assertSame(0, $result->failed);
+    }
+
+    public function test_publish_skips_files_over_10mb(): void {
+        $big = str_repeat("\x00", MediaPublisher::MAX_BYTES_PER_FILE + 1);
+        $this->write_file('og/huge.png', $big);
+        $manifest = $this->manifest(['og/*.png']);
+
+        $result = MediaPublisher::publish_for_app($manifest, $this->bundle_dir);
+
+        $this->assertSame(0, $result->published);
+        $this->assertSame(1, $result->skipped);
+        $this->assertSame(0, $result->failed);
+    }
 }

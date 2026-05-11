@@ -30,9 +30,10 @@ final readonly class PublishResult {
 
 final class MediaPublisher {
 
-    public const SOURCE_META_KEY  = '_dsgo_apps_source_app';
-    public const PATH_META_KEY    = '_dsgo_apps_publish_path';
-    public const HASH_META_KEY    = '_dsgo_apps_publish_hash';
+    public const SOURCE_META_KEY    = '_dsgo_apps_source_app';
+    public const PATH_META_KEY      = '_dsgo_apps_publish_path';
+    public const HASH_META_KEY      = '_dsgo_apps_publish_hash';
+    public const MAX_BYTES_PER_FILE = 10 * 1024 * 1024;
 
     /**
      * Walk the bundle dir and return every relative file path that matches
@@ -126,6 +127,21 @@ final class MediaPublisher {
         if (!is_file($real_abs) || !is_readable($real_abs)) {
             self::log_skip($manifest->id, $relative, 'not readable');
             return 'failed';
+        }
+
+        $size = filesize($real_abs);
+        if ($size === false || $size <= 0) {
+            self::log_skip($manifest->id, $relative, 'empty file');
+            return 'skipped';
+        }
+        if ($size > self::MAX_BYTES_PER_FILE) {
+            self::log_skip($manifest->id, $relative, sprintf('file size %d exceeds %d bytes', $size, self::MAX_BYTES_PER_FILE));
+            return 'skipped';
+        }
+        $ext = strtolower(pathinfo($relative, PATHINFO_EXTENSION));
+        if (!self::is_allowed_extension($ext)) {
+            self::log_skip($manifest->id, $relative, sprintf('extension "%s" is not an allowed image type', $ext));
+            return 'skipped';
         }
 
         $contents = file_get_contents($real_abs);
@@ -276,6 +292,17 @@ final class MediaPublisher {
             wp_delete_file($old_path);
         }
         return true;
+    }
+
+    private static function is_allowed_extension(string $ext): bool {
+        foreach (array_keys(MediaBridge::allowed_mimes()) as $pattern) {
+            foreach (explode('|', $pattern) as $allowed) {
+                if ($ext === $allowed) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static function log_skip(string $app_id, string $relative, string $reason): void {
