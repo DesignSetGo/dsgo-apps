@@ -42,9 +42,7 @@ final class AdminPage {
         if ($cap === null) return;
         if (Installer::count_published_apps() < $cap) return;
 
-        // Filterable so Pro can swap in its own admin pricing page (the Lite
-        // stub is removed via remove_submenu_page() once Pro is active, which
-        // would otherwise dead-link the "Meet Riff →" CTA below).
+        // Filterable so a companion add-on can point to its own learn-more page.
         $learn_more_url = (string) apply_filters(
             'dsgo_apps_pro_learn_more_url',
             'https://designsetgo.dev/pricing/'
@@ -68,7 +66,7 @@ final class AdminPage {
                 </strong>
                 <?php esc_html_e('Remove an existing app to install another. A separate add-on can lift the cap and add advanced authoring tools.', 'designsetgo-apps'); ?>
                 <a href="<?php echo esc_url($learn_more_url); ?>" target="_blank" rel="noopener noreferrer">
-                    <?php esc_html_e('Meet Riff →', 'designsetgo-apps'); ?>
+                    <?php esc_html_e('Learn more', 'designsetgo-apps'); ?>
                 </a>
             </p>
         </div>

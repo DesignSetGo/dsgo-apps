@@ -1,6 +1,6 @@
 {
   "name": "designsetgo/apps",
-  "description": "DesignSetGo Apps — sandboxed mini-app runtime for WordPress",
+  "description": "DesignSetGo Apps - sandboxed mini-app runtime for WordPress",
   "type": "wordpress-plugin",
   "license": "GPL-2.0-or-later",
   "require": {
