@@ -36,11 +36,9 @@
  *   success ⇒ object{ok:true, status:int, headers:array, body:mixed}
  *   failure ⇒ object{error_code:string, message:string, retry_after_seconds?:int}
  *
- * Residual risks documented but not fully closed in v1:
- *   - DNS rebinding is pinned for the cURL transport but not the Streams
- *     transport (which has no CURLOPT_RESOLVE equivalent). Sites that have
- *     explicitly switched to Streams remain exposed; v1.1 should either
- *     refuse to operate without cURL or layer a re-resolve check.
+ * The proxy refuses to run unless the active transport can pin the validated
+ * IP with CURLOPT_RESOLVE. That keeps DNS rebinding from turning a valid
+ * allowlisted request into a follow-up request to a private address.
  *   - default_resolve() does not enforce a DNS timeout — a slow authoritative
  *     server can stall the request beyond timeout_ms. Tracked for v1.1.
  *
@@ -220,6 +218,19 @@ final class Http_Proxy_Bridge {
         if (self::$transport_factory !== null) {
             $response = (self::$transport_factory)($url, $args);
         } else {
+            if (!self::transport_supports_ip_pinning()) {
+                return self::log_and_error(
+                    $manifest->id,
+                    $host,
+                    $method,
+                    $path,
+                    $t_start,
+                    'http_transport_unsupported',
+                    'HTTP proxy requires the cURL transport with CURLOPT_RESOLVE support',
+                    [],
+                    $req_bytes
+                );
+            }
             // DNS-pin via CURLOPT_RESOLVE so the actual fetch reaches the
             // SSRF-validated IP rather than re-resolving (and getting a
             // private address from an attacker-controlled NS — classic
@@ -378,6 +389,10 @@ final class Http_Proxy_Bridge {
             $entry = sprintf('%s:%d:%s', $host, $port, $ips[0]);
             curl_setopt($handle, CURLOPT_RESOLVE, [$entry]);
         };
+    }
+
+    private static function transport_supports_ip_pinning(): bool {
+        return function_exists('curl_setopt') && defined('CURLOPT_RESOLVE');
     }
 
     /**

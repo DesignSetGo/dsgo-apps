@@ -1136,6 +1136,7 @@ final class RestApi {
             'http_ssrf_blocked'         => 502,
             'http_rate_limited'         => 429,
             'http_timeout'              => 504,
+            'http_transport_unsupported'=> 503,
             default                     => 502,   // http_network_error + any new error_code
         };
         $body = ['code' => $code, 'message' => (string) ($result->message ?? '')];
