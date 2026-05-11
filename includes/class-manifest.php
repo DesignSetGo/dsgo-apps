@@ -1781,6 +1781,11 @@ final readonly class Manifest {
      * The "what was approved at install" question is answered by the
      * `dsgo_apps_active_buckets` post meta written by the installer, NOT
      * by re-deriving from the hydrated manifest.
+     *
+     * **Security-sensitive fields are not re-validated.** `media.publish[]`
+     * path-safety guards (no leading `/`, no `..`) from validate() are
+     * bypassed here. Only pass arrays that came out of a prior validate()
+     * round trip.
      */
     public static function from_array_unchecked(array $raw): self {
         $modes = [];

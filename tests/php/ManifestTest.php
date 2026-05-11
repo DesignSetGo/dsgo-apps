@@ -1808,6 +1808,14 @@ class ManifestTest extends WP_UnitTestCase {
         Manifest::validate($raw);
     }
 
+    public function test_media_publish_rejects_mid_path_traversal(): void {
+        $raw = $this->valid_inline_manifest();
+        $raw['media'] = ['publish' => ['og/../etc/passwd']];
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessage('media.publish[0]');
+        Manifest::validate($raw);
+    }
+
     public function test_media_publish_rejects_absolute_path(): void {
         $raw = $this->valid_inline_manifest();
         $raw['media'] = ['publish' => ['/etc/hosts']];
