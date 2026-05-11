@@ -45,9 +45,9 @@ final class AdminPage {
         // Filterable so Pro can swap in its own admin pricing page (the Lite
         // stub is removed via remove_submenu_page() once Pro is active, which
         // would otherwise dead-link the "Meet Riff →" CTA below).
-        $upgrade_url = (string) apply_filters(
-            'dsgo_apps_pro_upgrade_url',
-            admin_url('admin.php?page=' . ProUpsell::MENU_SLUG),
+        $learn_more_url = (string) apply_filters(
+            'dsgo_apps_pro_learn_more_url',
+            'https://designsetgo.dev/pricing/'
         );
         ?>
         <div class="notice notice-info">
@@ -66,8 +66,8 @@ final class AdminPage {
                     ));
                     ?>
                 </strong>
-                <?php esc_html_e('Remove an existing app to install another, or upgrade to Pro for unlimited apps + Riff (the in-admin AI app builder).', 'designsetgo-apps'); ?>
-                <a href="<?php echo esc_url($upgrade_url); ?>">
+                <?php esc_html_e('Remove an existing app to install another. A separate add-on can lift the cap and add advanced authoring tools.', 'designsetgo-apps'); ?>
+                <a href="<?php echo esc_url($learn_more_url); ?>" target="_blank" rel="noopener noreferrer">
                     <?php esc_html_e('Meet Riff →', 'designsetgo-apps'); ?>
                 </a>
             </p>

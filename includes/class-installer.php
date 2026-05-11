@@ -249,7 +249,7 @@ final class Installer {
                     throw new InstallerError(
                         'lite_cap_reached',
                         sprintf(
-                            'The free version of DesignSetGo Apps allows %d active app%s per site. Remove the existing app, or upgrade to Pro for unlimited apps + Riff (the in-admin AI builder).',
+                            'The free version of DesignSetGo Apps allows %d active app%s per site. Remove the existing app to install another. A separate add-on can lift the cap and add advanced authoring tools.',
                             $cap,
                             $cap === 1 ? '' : 's',
                         ),
