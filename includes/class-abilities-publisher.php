@@ -79,6 +79,20 @@ final class AbilitiesPublisher {
         }
 
         $wp_current_filter[] = 'wp_abilities_api_init';
+        // TODO: partial-registration leak. If a later entry throws
+        // ManifestError('execute_php_method_not_found'), earlier entries
+        // in this loop have already been registered via
+        // wp_register_ability but the owned-option write below is
+        // skipped — so the next install with the bad entry removed
+        // will think those names are unowned. Same-name retries
+        // self-heal via the wp_has_ability re-register guard, but a
+        // renamed-and-removed sequence would orphan the original name.
+        // The right fix is to call registration_args() for every entry
+        // FIRST (catching ManifestError), then commit the registrations
+        // only if all entries resolved. Deferring because the failure
+        // mode is narrow (method_not_found is an author bug surfaced
+        // before any user-facing version of the manifest) and the
+        // self-heal covers the common case.
         try {
             $current_names = array_map(static fn (array $a): string => $a['name'], $manifest->abilities_publishes);
             foreach ($previously_owned as $old_name) {
@@ -185,14 +199,18 @@ final class AbilitiesPublisher {
                 );
                 $is_inactive = true;
             } elseif (!method_exists($class, $method)) {
-                // Class loaded but method doesn't exist — manifest names
-                // a method that can't be called. This is an author bug
-                // and the install must fail rather than register a
-                // permanently-broken ability.
+                // Class loaded but the named method isn't declared on it
+                // (method_exists is used rather than is_callable because
+                // is_callable returns false for non-static instance
+                // methods declared without `static`, which would
+                // misclassify perfectly valid handlers). This is an
+                // author bug — the manifest names a method that
+                // doesn't exist — and the install must fail rather
+                // than register a permanently-broken ability.
                 throw new ManifestError(
                     sprintf('abilities.publishes[%s].execute_php', $entry['name']),
                     sprintf(
-                        'execute_php_method_not_found: %s::%s does not exist or is not callable',
+                        'execute_php_method_not_found: %s::%s does not exist on the loaded class',
                         $class,
                         $method,
                     ),

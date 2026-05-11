@@ -36,15 +36,17 @@ use WP_UnitTestCase;
  *
  * Three branches:
  *
- *   1. class_exists($class) && is_callable([$class, $method])
+ *   1. class_exists($class) && method_exists($class, $method)
  *      → register the real callback. dsgo.abilities.invoke from PHP
  *        actually runs the companion plugin's code.
  *
- *   2. class_exists($class) && !is_callable([$class, $method])
+ *   2. class_exists($class) && !method_exists($class, $method)
  *      → throw ManifestError. The manifest names a method that
  *        doesn't exist on a class that does — author bug, the
  *        installer must reject it loudly rather than silently
- *        registering an unfireable callback.
+ *        registering an unfireable callback. (method_exists rather
+ *        than is_callable because is_callable returns false for
+ *        non-static instance methods declared without `static`.)
  *
  *   3. !class_exists($class)
  *      → register a sentinel callback that returns WP_Error with code
