@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Abilities</title>
+    <link rel="stylesheet" href="/styles/global.css" />
+  </head>
+  <body>
+    <main>
+      <a class="crumb" href="/">&larr; Tour home</a>
+      <h1>Abilities</h1>
+      <p class="lede">Abilities are typed functions that plugins (and core, in WP 7.0) register so AI agents can call them. Yoast SEO Premium 27.5 ships abilities like <code>analyze_page_seo</code>; an installed DSGo App can invoke them.</p>
+
+      <h2>Live: <code>dsgo.abilities.list()</code></h2>
+      <p>Permission: <span class="perm">abilities</span></p>
+      <p>Returns the abilities matching this app&rsquo;s <code>abilities.consumes</code> patterns. This starter consumes <code>wp/*</code> + <code>dsgo/*</code> &mdash; if no plugin has registered abilities yet, the list will be empty.</p>
+      <ul class="bridge-out" id="abil-list" data-state="loading">
+        <li>Loading&hellip;</li>
+      </ul>
+
+<pre><code>const abilities = await window.dsgo.abilities.list();
+for (const a of abilities) {
+  // a.name, a.label, a.description, a.input_schema, a.output_schema
+}</code></pre>
+
+      <h2>Live: <code>dsgo.abilities.invoke(name, input)</code></h2>
+      <p>Pick an ability above (or type one) and an input JSON. The bridge validates the input against the ability&rsquo;s <code>input_schema</code> before calling.</p>
+      <div class="field">
+        <label for="abil-name">Ability name (e.g. <code>wp/echo</code>)</label>
+        <input class="inp" id="abil-name" type="text" placeholder="namespace/name" />
+      </div>
+      <div class="field">
+        <label for="abil-input">Input (JSON)</label>
+        <textarea class="inp" id="abil-input" placeholder='{}'>{}</textarea>
+      </div>
+      <button class="try-btn" id="abil-invoke">Invoke</button>
+      <p class="status muted" id="abil-status">No invocation yet.</p>
+      <pre id="abil-out" style="display:none"></pre>
+
+<pre><code>const result = await window.dsgo.abilities.invoke('yoast-seo/analyze_page_seo', {
+  post_id: 42,
+});
+// `result` matches the ability's output_schema.
+// Throws { code: 'permission_denied' } if the ability doesn't match
+// any pattern in your manifest's abilities.consumes.</code></pre>
+
+      <div class="note">
+        <strong>The pattern</strong>
+        Abilities turn DSGo Apps into <em>composable agents</em>: write a UI in your app, let the user (or your app&rsquo;s AI loop) call abilities registered by other plugins. Iframe-mode apps can also <strong>publish</strong> abilities of their own via <code>abilities.publishes</code>; the site&rsquo;s AI agent can then call into your app.
+      </div>
+
+      <nav class="footer">
+        <a href="/storage">&larr; Storage</a>
+        <a class="next" href="/ai">AI prompt &rarr;</a>
+      </nav>
+
+      <script>
+        (async () => {
+          const list = document.getElementById('abil-list');
+          const nameInput = document.getElementById('abil-name');
+          try { await window.dsgo.ready; } catch (e) {
+            list.dataset.state = 'error'; list.textContent = '';
+            const li = document.createElement('li');
+            li.textContent = 'Bridge unavailable: ' + (e && e.message ? e.message : String(e));
+            list.appendChild(li);
+            return;
+          }
+          try {
+            const abilities = await window.dsgo.abilities.list();
+            list.dataset.state = 'ready';
+            list.textContent = '';
+            if (!abilities || abilities.length === 0) {
+              const li = document.createElement('li');
+              li.textContent = 'No abilities match this app’s consumes patterns. Install a plugin that registers abilities (e.g. Yoast SEO Premium) to see entries here.';
+              list.appendChild(li);
+            } else {
+              for (const a of abilities) {
+                const li = document.createElement('li');
+                const code = document.createElement('code');
+                code.textContent = a.name;
+                const label = document.createElement('span');
+                label.style.cssText = 'color:var(--muted);font-size:0.85em;margin-left:0.5em';
+                label.textContent = a.label || a.description || '';
+                li.append(code, label);
+                li.style.cursor = 'pointer';
+                li.title = 'Click to fill the invoke form below';
+                li.addEventListener('click', () => { nameInput.value = a.name; });
+                list.appendChild(li);
+              }
+            }
+          } catch (e) {
+            list.dataset.state = 'error'; list.textContent = '';
+            const li = document.createElement('li');
+            li.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            list.appendChild(li);
+          }
+
+          const inputArea = document.getElementById('abil-input');
+          const out       = document.getElementById('abil-out');
+          const status    = document.getElementById('abil-status');
+          document.getElementById('abil-invoke').addEventListener('click', async () => {
+            const name = nameInput.value.trim();
+            if (!name) {
+              status.className = 'status error';
+              status.textContent = 'Enter an ability name (namespace/name).';
+              return;
+            }
+            let input = {};
+            try {
+              input = inputArea.value.trim() ? JSON.parse(inputArea.value) : {};
+            } catch (e) {
+              status.className = 'status error';
+              status.textContent = 'Input is not valid JSON: ' + e.message;
+              return;
+            }
+            status.className = 'status muted';
+            status.textContent = 'Invoking…';
+            out.style.display = 'none';
+            try {
+              const result = await window.dsgo.abilities.invoke(name, input);
+              status.className = 'status ok';
+              status.textContent = 'Returned.';
+              out.style.display = 'block';
+              out.textContent = JSON.stringify(result, null, 2);
+            } catch (e) {
+              status.className = 'status error';
+              status.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            }
+          });
+        })();
+      </script>
+    </main>
+  </body>
+</html>

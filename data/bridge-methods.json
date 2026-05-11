@@ -1,0 +1,229 @@
+{
+    "site.info": {
+        "signature": "dsgo.site.info(): Promise<{ title: string; description: string; url: string; admin_email: string; language: string; timezone: string; gmt_offset: number; date_format: string; time_format: string }>",
+        "description": "Returns site identity + locale/date settings. One call gives the full SiteInfo shape; no paging, no parameters.",
+        "errors": ["permission_denied"],
+        "examples": [
+            "const info = await dsgo.site.info(); document.title = info.title;"
+        ]
+    },
+    "posts.list": {
+        "signature": "dsgo.posts.list(query?: PostsQuery): Promise<{ items: Post[]; total: number; total_pages: number }>",
+        "description": "Paginated list of posts. PostsQuery accepts: type? (CPT slug, default 'post'), per_page?, page?, search?, category?, tag?, orderby? ('date'|'modified'|'title'|'id'), order? ('asc'|'desc'), status?. Returns items + pagination totals (read X-WP-Total / X-WP-TotalPages on the wire). The current admin's caps apply: published posts always; drafts only if editable.",
+        "errors": ["permission_denied", "invalid_params"],
+        "examples": [
+            "const { items, total } = await dsgo.posts.list({ per_page: 20 });",
+            "const recipes = await dsgo.posts.list({ type: 'recipe', per_page: 10 });"
+        ]
+    },
+    "posts.get": {
+        "signature": "dsgo.posts.get(id: number, opts?: { type?: string }): Promise<Post>",
+        "description": "Fetch a single post by ID. Pass opts.type for a CPT lookup (defaults to 'post'). Returns the full Post object including content, excerpt, dates, author, and content_styles (when the manifest opts in).",
+        "errors": ["permission_denied", "not_found"],
+        "examples": [
+            "const post = await dsgo.posts.get(42);",
+            "const recipe = await dsgo.posts.get(42, { type: 'recipe' });"
+        ]
+    },
+    "pages.list": {
+        "signature": "dsgo.pages.list(query?: PostsQuery): Promise<{ items: Post[]; total: number; total_pages: number }>",
+        "description": "Paginated list of pages. Same query shape as posts.list (minus category/tag, which pages don't have).",
+        "errors": ["permission_denied", "invalid_params"],
+        "examples": [
+            "const { items } = await dsgo.pages.list({ per_page: 50 });"
+        ]
+    },
+    "pages.get": {
+        "signature": "dsgo.pages.get(id: number): Promise<Post>",
+        "description": "Fetch a single page by ID. Same Post shape as posts.get.",
+        "errors": ["permission_denied", "not_found"],
+        "examples": [
+            "const about = await dsgo.pages.get(7);"
+        ]
+    },
+    "user.current": {
+        "signature": "dsgo.user.current(): Promise<{ id: number; name: string; slug: string; email: string; avatar_url: string; roles: string[] } | null>",
+        "description": "Returns the currently-logged-in user, or null when the visitor is logged out (NOT a rejection — null is the legitimate anonymous case). Inline-mode apps rendered to logged-out visitors should expect null.",
+        "errors": ["permission_denied"],
+        "examples": [
+            "const me = await dsgo.user.current();",
+            "if (me) heading.textContent = `Welcome back, ${me.name}`;"
+        ]
+    },
+    "user.can": {
+        "signature": "dsgo.user.can(cap: string): Promise<boolean>",
+        "description": "Capability check for the current user. Returns false (not a rejection) when no session is present. Useful for showing admin-only UI conditionally without a role check.",
+        "errors": ["permission_denied"],
+        "examples": [
+            "if (await dsgo.user.can('manage_options')) showAdminMenu();"
+        ]
+    },
+    "storage.app.get": {
+        "signature": "dsgo.storage.app.get(key: string): Promise<unknown>",
+        "description": "Per-app storage shared by all users — use for app-wide settings. No manifest permission required. Values are JSON-serialized; the bridge rejects non-serializable values.",
+        "errors": ["invalid_params", "storage_quota_exceeded"],
+        "examples": [
+            "const settings = await dsgo.storage.app.get('settings');"
+        ]
+    },
+    "storage.app.set": {
+        "signature": "dsgo.storage.app.set(key: string, value: unknown): Promise<void>",
+        "description": "Set per-app storage. Total quota: 64KB per app across all keys.",
+        "errors": ["invalid_params", "storage_quota_exceeded"],
+        "examples": [
+            "await dsgo.storage.app.set('settings', { theme: 'dark' });"
+        ]
+    },
+    "storage.user.get": {
+        "signature": "dsgo.storage.user.get(key: string): Promise<unknown>",
+        "description": "Per-user, per-app storage. Each user has their own values; use for in-app preferences. Returns null when no session is present.",
+        "errors": ["invalid_params", "storage_quota_exceeded"],
+        "examples": [
+            "const layout = await dsgo.storage.user.get('layout');"
+        ]
+    },
+    "storage.user.set": {
+        "signature": "dsgo.storage.user.set(key: string, value: unknown): Promise<void>",
+        "description": "Set per-user storage. Quota: 16KB per (user, app) pair. Requires a logged-in session.",
+        "errors": ["invalid_params", "not_authenticated", "storage_quota_exceeded"],
+        "examples": [
+            "await dsgo.storage.user.set('layout', 'compact');"
+        ]
+    },
+    "bridge.ping": {
+        "signature": "dsgo.bridge.ping(): Promise<{ ok: true; bridge_version: number; server_time: string }>",
+        "description": "Liveness check. Confirms the bridge is reachable; returns the protocol version and the server's current ISO 8601 timestamp. No permission required.",
+        "errors": [],
+        "examples": [
+            "const r = await dsgo.bridge.ping();",
+            "console.log('bridge', r.bridge_version, 'at', r.server_time);"
+        ]
+    },
+    "abilities.list": {
+        "signature": "dsgo.abilities.list(): Promise<AbilityDescriptor[]>",
+        "description": "List the WordPress Abilities matching the manifest's abilities.consumes allowlist. Each AbilityDescriptor has name, label, description, category, input_schema, output_schema, and annotations (readonly/destructive/idempotent). Requires permissions.read: ['abilities'].",
+        "errors": ["permission_denied"],
+        "examples": [
+            "const abilities = await dsgo.abilities.list();",
+            "const yoast = abilities.filter(a => a.name.startsWith('yoast/'));"
+        ]
+    },
+    "abilities.invoke": {
+        "signature": "dsgo.abilities.invoke<T = unknown>(name: string, args?: Record<string, unknown>): Promise<T>",
+        "description": "Invoke a registered ability. The name MUST be in abilities.consumes. Args are JSON-passed to the ability's PHP execute_callback. Result shape depends on the ability — declare a type parameter to type-check the response.",
+        "errors": ["permission_denied", "ability_not_consumed", "ability_not_implemented", "invalid_params"],
+        "examples": [
+            "const score = await dsgo.abilities.invoke('yoast/analyze-page-seo', { post_id: 42 });"
+        ]
+    },
+    "ai.prompt": {
+        "signature": "dsgo.ai.prompt(params: { messages: Array<{role: 'user'|'assistant'|'system', content: string}>; max_tokens?: number; tools?: 'auto'|string[] }): Promise<AiPromptResult>",
+        "description": "Single-shot AI completion via the site's WP 7.0 Connector. Synchronous (no streaming). When tools is set, the model can call abilities the app declares in abilities.consumes — result.tool_calls echoes each invocation with its result.",
+        "errors": ["permission_denied", "ai_not_configured", "tool_call_cap_exceeded", "rate_limited", "invalid_params"],
+        "examples": [
+            "const r = await dsgo.ai.prompt({ messages: [{ role: 'user', content: 'Summarize: ' + text }], max_tokens: 200 });",
+            "const r2 = await dsgo.ai.prompt({ messages: [...], tools: 'auto' });"
+        ]
+    },
+    "email.send": {
+        "signature": "dsgo.email.send(params: { to: 'admin'|'current_user'; subject: string; body: string; isHtml?: boolean; replyTo?: string }): Promise<{ sent: true }>",
+        "description": "Send transactional email through wp_mail(). The current stub only accepts symbolic recipients ('admin' → site admin email, 'current_user' → logged-in user's email) — arbitrary addresses ship with 2026-05-09-email-design.md. body is plain by default; pass isHtml: true for HTML (sanitized via wp_kses_post). Per-app daily cap enforced server-side.",
+        "errors": ["permission_denied", "not_authenticated", "email_recipient_invalid", "email_rate_limited", "email_send_failed"],
+        "examples": [
+            "await dsgo.email.send({ to: 'admin', subject: 'Order #42 confirmed', body: 'Thanks!' });"
+        ]
+    },
+    "media.upload": {
+        "signature": "dsgo.media.upload(file: Blob, opts?: { filename?: string; altText?: string }): Promise<MediaUploadResult>",
+        "description": "Upload a Blob (or File) to the WP media library. Multipart wire format. Returns { id, url, mime_type, filename, width|null, height|null, alt_text }. Requires the current user to have 'upload_files'. Core opt-out: every app gets this method unless manifest declares media.uploads: false.",
+        "errors": ["permission_denied", "media_too_large", "media_mime_not_allowed", "media_upload_failed"],
+        "examples": [
+            "const input = document.querySelector('input[type=file]');",
+            "const result = await dsgo.media.upload(input.files[0], { altText: 'Hero image' });",
+            "img.src = result.url;"
+        ]
+    },
+    "router.navigate": {
+        "signature": "dsgo.router.navigate(path: string, opts?: NavigateOptions): Promise<void>",
+        "description": "Navigate to a different in-bundle route. Inline-mode apps only — no-op in iframe mode. The parent enforces the mount-prefix and rejects paths in WordPress-reserved prefixes (/wp-admin, /wp-json, etc.).",
+        "errors": ["invalid_params"],
+        "examples": [
+            "await dsgo.router.navigate('/about');"
+        ]
+    },
+    "commerce.products.list": {
+        "signature": "dsgo.commerce.products.list(query?: CommerceProductsQuery): Promise<{ items: CommerceProduct[]; total: number; total_pages: number }>",
+        "description": "List products from the active commerce provider (WooCommerce in v1). Tries the woocommerce/list-products ability first, falls back to REST. Requires permissions.read: ['commerce'].",
+        "errors": ["permission_denied", "invalid_params"],
+        "examples": [
+            "const { items } = await dsgo.commerce.products.list({ per_page: 12 });"
+        ]
+    },
+    "commerce.products.get": {
+        "signature": "dsgo.commerce.products.get(id: number): Promise<CommerceProduct>",
+        "description": "Fetch one product by ID. Tries woocommerce/get-product ability first, falls back to REST.",
+        "errors": ["permission_denied", "not_found"],
+        "examples": [
+            "const p = await dsgo.commerce.products.get(42);"
+        ]
+    },
+    "commerce.cart.get": {
+        "signature": "dsgo.commerce.cart.get(): Promise<CommerceCart>",
+        "description": "Current shopper's cart: items, totals, applied coupons, shipping requirement.",
+        "errors": ["permission_denied"],
+        "examples": [
+            "const cart = await dsgo.commerce.cart.get();"
+        ]
+    },
+    "commerce.cart.add_item": {
+        "signature": "dsgo.commerce.cart.addItem(params: { id: number; quantity?: number; variation?: { attribute: string; value: string }[] }): Promise<CommerceCart>",
+        "description": "Add a product to the cart. Returns the updated cart. Note: the bridge wire method is named commerce.cart.add_item but the client API uses addItem.",
+        "errors": ["permission_denied", "product_not_found", "out_of_stock", "invalid_params"],
+        "examples": [
+            "await dsgo.commerce.cart.addItem({ id: 42, quantity: 1 });"
+        ]
+    },
+    "commerce.cart.update_item": {
+        "signature": "dsgo.commerce.cart.updateItem(params: { key: string; quantity: number }): Promise<CommerceCart>",
+        "description": "Update quantity on an existing line. Quantity 0 removes the line.",
+        "errors": ["permission_denied", "item_not_found", "invalid_params"],
+        "examples": [
+            "await dsgo.commerce.cart.updateItem({ key: 'abc123', quantity: 2 });"
+        ]
+    },
+    "commerce.cart.remove_item": {
+        "signature": "dsgo.commerce.cart.removeItem(params: { key: string }): Promise<CommerceCart>",
+        "description": "Remove a cart line by its server-issued key.",
+        "errors": ["permission_denied", "item_not_found"],
+        "examples": [
+            "await dsgo.commerce.cart.removeItem({ key: 'abc123' });"
+        ]
+    },
+    "commerce.checkout.open_hosted_page": {
+        "signature": "dsgo.commerce.checkout.openHostedPage(params?: { return_to?: string }): Promise<{ url: string; navigated: boolean }>",
+        "description": "Hand off to WooCommerce's hosted checkout. The bridge navigates the top window directly (iframe mode: parent navigates; inline mode: current window). WC's session cookie carries the cart through the navigation.",
+        "errors": ["permission_denied", "cart_empty"],
+        "examples": [
+            "const r = await dsgo.commerce.checkout.openHostedPage();",
+            "// navigation already dispatched — r.url is informational"
+        ]
+    },
+    "help.method": {
+        "signature": "dsgo.help.method(name: string): Promise<{ signature: string; description: string; errors: string[]; examples: string[] }>",
+        "description": "Look up any bridge method's full documentation at runtime. Always available — no manifest permission required. The harness uses this to discover methods without enumerating every signature in the system prompt. Returns 'not_found' for unknown methods.",
+        "errors": ["not_found"],
+        "examples": [
+            "const help = await dsgo.help.method('posts.list');",
+            "console.log(help.signature, help.description);"
+        ]
+    },
+    "http.fetch": {
+        "signature": "dsgo.http.fetch(url: string, init?: { method?: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE'|'HEAD'; headers?: Record<string,string>; body?: string; timeout_ms?: number }): Promise<{ ok: true; status: number; headers: Record<string,string>; body: unknown }>",
+        "description": "Server-mediated outbound HTTP — the app never holds credentials. URL must be https; host must match the manifest's permissions.http allowlist (exact or *.subdomain wildcard). Header values may include {{ALIAS}} tokens that get substituted from the per-app sodium-encrypted secret vault before the request is issued. The proxy strips Cookie / Set-Cookie / Host both inbound and outbound, blocks SSRF (private/loopback/link-local IPs + self-target), pins DNS to the validated IP on the cURL transport to defeat rebinding, and never follows 30x redirects. JSON content-type responses auto-parse into a structured body; everything else stays a raw string.",
+        "errors": ["http_permission_denied", "http_invalid_url", "http_method_not_allowed", "http_host_not_allowed", "http_invalid_header", "http_invalid_body", "http_unknown_secret", "http_secret_not_set", "http_ssrf_blocked", "http_request_too_large", "http_response_too_large", "http_rate_limited", "http_timeout", "http_network_error"],
+        "examples": [
+            "const r = await dsgo.http.fetch('https://api.stripe.com/v1/charges', { method: 'POST', headers: { 'Authorization': 'Bearer {{STRIPE_SECRET}}', 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'amount=100&currency=usd' });",
+            "if (r.status === 200) console.log(r.body.id);"
+        ]
+    }
+}

@@ -1,0 +1,153 @@
+=== DesignSetGo Apps ===
+Contributors: designsetgo
+Tags: ai, claude, sandbox, iframe, vibe-coding
+Requires at least: 6.9
+Tested up to: 7.0
+Requires PHP: 8.2
+Stable tag: 0.2.0
+License: GPL-2.0-or-later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+
+Drop in any Claude artifact or AI-built static bundle and run it as a sandboxed app on your WordPress site, wired to your posts and users.
+
+== Description ==
+
+**Vibe-code an app, drop it on your WordPress site, done.** DesignSetGo Apps is a sandboxed runtime for the static HTML/CSS/JS bundles you build with Claude Code, Cursor, ChatGPT, v0, Claude.ai artifacts, or any AI tool that emits a single page or a built static project. Save it, upload it, and it lives at `/apps/your-slug` on your site — fully sandboxed, with a permissioned bridge to your posts, pages, taxonomies, current user, and per-app storage.
+
+The plugin never fetches code from a remote URL. Only users with the `manage_options` capability can install or update apps. Visitors can only run apps the admin has already installed.
+
+= The 60-second flow =
+
+1. Open Claude.ai (or Cursor, or ChatGPT, or any AI builder) and ask it to build the thing — a calculator, a quiz, a product configurator, a custom landing page, an internal dashboard, whatever.
+2. Download the artifact (or "Save HTML" / export as a static bundle).
+3. In WP-admin, go to **DSGo Apps** → **Upload artifact**, drop the `.html` or `.zip`, give it an ID.
+4. The plugin wraps it in a manifest, sandboxes it, and hands you a live URL.
+
+That's the whole loop. No build pipeline, no plugin scaffolding, no theme work.
+
+= Lite includes one active app per site =
+
+The free version on WordPress.org runs **one** active app per site. That's enough to cover the most common case — drop in a single AI-built page or widget and call it done. The artifact-upload flow, the full bridge runtime, the sandbox, the block embed, and Apps-as-Abilities publishing are all in Lite, with no nag screens.
+
+If you want to run multiple apps, generate apps in WP-admin via Riff (the in-admin AI builder), deploy from your terminal with the CLI, or push the same bundle to many client sites, **DesignSetGo Apps Pro** removes the cap and adds the authoring tools. Lite users can start a 14-day Pro trial directly from the admin (no card required) when they're ready to try it.
+
+= Two isolation modes =
+
+* **Inline (default)** — the app renders directly into a WordPress response. Real, indexable URLs at `/apps/{slug}/{path}`, multi-page support via a `routes` array, optional theme header/footer wrap, and automatic inclusion in the WP sitemap. Isolation is enforced by a strict per-request `Content-Security-Policy` header and HTML sanitization at both install time and render time.
+* **Iframe** — the app runs inside a sandboxed `<iframe sandbox="allow-scripts">` with an opaque origin. Single-page, not crawlable, but the safest default for code you didn't write yourself (pasted Claude Artifacts, AI-generated bundles you haven't reviewed, etc.).
+
+Both modes use the same bridge wire format. Apps written against the `@designsetgo/app-client` library work in either mode without code changes.
+
+= Two ways to install an app =
+
+* **Drop in a bundle (the default)** — zip up the static build, or just upload the raw `.html` from a Claude artifact. The plugin handles the rest. This is the path most sites use.
+* **Vibe-code in your IDE, deploy from the terminal** — the optional `@designsetgo/cli` package (`npx designsetgo apps deploy`) authenticates as a `manage_options` admin via a one-time application password, packages the current working directory, and pushes it through the same install endpoint. Great for Claude Code, Cursor, Codex, or Aider workflows where the app source lives in a normal project. (Pro lifts the cap so you can iterate freely; Lite users can use the CLI but stay subject to the 1-app cap.)
+
+= What apps can do through the bridge =
+
+With explicit permission grants in the manifest, apps can read site info, posts, pages, taxonomies, the current user, and read/write per-app + per-user persistent storage. Each app's own storage is isolated from every other app on the site by a per-(user, app) nonce on the storage endpoint — one app cannot read or overwrite another app's saved data, regardless of mode.
+
+The CLI prints the requested permissions before each install so the admin sees what they're authorizing. Only users with the `manage_options` WordPress capability can install apps.
+
+= Two trust models — read this before installing apps you didn't write =
+
+**Iframe-mode** apps run inside `<iframe sandbox="allow-scripts">` with an opaque origin and a strict `Content-Security-Policy` (`connect-src 'none'` by default). The bridge's declared-permission gate is enforced at both the application layer *and* the network layer, so an iframe-mode bundle physically cannot issue an undeclared REST call. This is the safe default for code you didn't write yourself.
+
+**Inline-mode** apps render as real WordPress pages and share the visiting user's same-origin REST cookies. The bridge's permission gate is the recommended path, but a malicious inline-mode bundle could in principle issue same-origin calls to `/wp-json/wp/v2/...` and inherit the visiting user's WordPress capabilities. **Treat installing an inline-mode app the same as installing any third-party WordPress plugin** — only install bundles whose source you trust. For pasted Claude Artifacts, AI-generated code from an unknown author, or anything you haven't reviewed line-by-line, choose iframe mode at install time.
+
+= AI features built on WordPress 7.0 =
+
+When an app calls `dsgo.ai.prompt()` or invokes an AI-backed ability, the call routes through the WordPress 7.0 AI Client to whichever Connector you configured at **Settings → Connectors**. **You hold the provider relationship; DSGo never sees the key, stores the key, or charges for inference.** The plugin works on WordPress 6.9 too — apps that use the AI surface degrade gracefully when no Connector is configured.
+
+Apps can also *publish* abilities the site's AI agent (and any other plugin using the WP 7.0 Abilities API) can invoke — "Apps-as-Abilities" — turning every installed app into a callable tool the rest of the site's AI surface knows about.
+
+= What's shipped =
+
+* Iframe and inline runtimes (inline default; multi-page routes, theme wrap, sitemap inclusion all here)
+* Claude-artifact upload importer — paste an HTML file or a static `.zip` and ship it as a sandboxed app in seconds
+* Manual zip upload from WP-admin for bundles built with a `dsgo-app.json` manifest
+* TypeScript bridge client (`@designsetgo/app-client`)
+* CLI (`@designsetgo/cli`) with `init`, `login`, `deploy`, `list` — Claude Code / Cursor / Codex / Aider workflows work out of the box
+* WP REST endpoints for install, list, uninstall, and bridge proxy
+* AI surface — `dsgo.ai.prompt()` calls the site's WordPress 7.0 AI Client + Connectors
+* Abilities consumption — `dsgo.abilities.list/invoke()` lets apps call any ability registered by another plugin (Yoast SEO Premium, etc.)
+* Apps-as-Abilities — apps publish their own abilities via `abilities.publishes`
+* Gutenberg block for embedding installed apps inside posts and pages
+* Dynamic routes (`/apps/{slug}/posts/:slug`) backed by live data sources (`wp:posts`, `wp:pages`, `wp:cpt:*`, `wc:products`)
+* Sitemap provider for inline-mode routes
+* PHPUnit + Vitest + Playwright test suites
+
+== Installation ==
+
+1. Upload the plugin folder to `/wp-content/plugins/`.
+2. Activate **DesignSetGo Apps** through the **Plugins** screen in WordPress.
+3. Visit **DSGo Apps** in the admin menu to install your first bundle. Drop in a Claude artifact `.html` or upload a built `.zip`. Or run `npx designsetgo apps deploy` from a project directory.
+
+== Frequently Asked Questions ==
+
+= How many apps can I run on the free version? =
+
+One. The Lite plugin (this one) lets you run a single active app per site — enough to cover the typical "drop in one AI-built page" use case. Trash the existing app to install a different one. To run multiple apps simultaneously, upgrade to **DesignSetGo Apps Pro**, which removes the cap and adds the in-admin AI builder (Riff) and CLI deploy. Plus and Agency tiers add multi-site licensing; Agency adds white-label and multi-site CLI deploy. Lite users can start a free 14-day Pro trial from WP-admin with no card required.
+
+= What's the difference between Lite and Pro? =
+
+Lite is the free runtime — sandbox, bridge, artifact upload, block embed, abilities publishing — capped at 1 active app per site. Pro removes the cap and adds Riff (the in-admin AI builder), CLI deploy, multi-site licensing, and (on the Agency plan) white-label and multi-site CLI deploy.
+
+= Where do app bundles live on disk? =
+
+Under `wp-content/uploads/dsgo-apps/{slug}/`. The plugin extracts the zip on install and serves files from there.
+
+= Do I need a paid Anthropic / OpenAI key to use this? =
+
+Only if your apps actually want to call AI. The runtime, bridge, multi-page routing, abilities consumption, and storage all work without any provider key.
+
+When an app does call `dsgo.ai.prompt()` or invokes an AI-backed ability, the call routes through the WordPress 7.0 AI Client to whichever Connector you configured at **Settings → Connectors**. You hold the provider relationship; DSGo never sees the key, stores the key, or charges for inference. The plugin works on WordPress 6.9 too — apps that use the AI surface degrade gracefully when no Connector is configured.
+
+= Is the source open? =
+
+Yes. The Lite plugin runtime, bridge client, CLI, and bridge protocol are all open source under GPL-2.0-or-later. The Pro add-on (Riff and the AI authoring layer) is closed source and distributed via Freemius.
+
+= What personal data does the plugin store? =
+
+Apps that use `dsgo.user.storage.*` save per-user values into WordPress user metadata, scoped per-app. Apps that use the email bridge cause the plugin to keep a per-app audit log (capped at 200 entries) recording the recipient *type*, the subject line, and a one-way SHA-256 hash of the recipient address — never the address itself.
+
+The plugin integrates with WordPress's built-in privacy tooling: requests made through **Tools → Export Personal Data** and **Tools → Erase Personal Data** include DesignSetGo Apps data, and a suggested privacy-policy paragraph is registered via `wp_add_privacy_policy_content` so admins can paste it into their site policy from **Settings → Privacy → Policy Guide**.
+
+The plugin does not transmit personal data to DesignSetGo or any external service.
+
+== Screenshots ==
+
+1. Drop a Claude artifact into the WP-admin importer; the app is live in seconds.
+2. The DSGo Apps admin screen — install, list, and uninstall apps from a single page.
+3. Embed an installed app as a Gutenberg block inside any post or page.
+4. App settings — choose a root app, configure the URL prefix, opt into theme wrap.
+5. A live inline-mode app rendered at `/apps/example/`.
+
+== Upgrade Notice ==
+
+= 0.2.0 =
+Lite is now capped at 1 active app per site (Pro removes the cap). Adds a "Cap reached" admin notice with an upgrade link. No data migration; no breaking changes.
+
+= 0.1.0 =
+Initial public release.
+
+== Changelog ==
+
+= 0.2.0 =
+* **Lite cap.** The free plugin now enforces a 1-active-app cap. Re-installing the same slug counts as an update and bypasses the cap; trashed apps don't count. The new `dsgo_apps_lite_app_cap` filter lets DesignSetGo Apps Pro lift the cap when a license is active.
+* **Cap-reached admin notice.** When the apps-list page is at the cap, an info notice surfaces with a "See Pro plans" link.
+* **REST install endpoints** (`apps`, `apps/import-html`, `apps/install-starter`) return the new `lite_cap_reached` error code with HTTP 403 when the cap is hit.
+* No changes to the bridge protocol, manifest schema, CLI, or any existing app-side API. Bundles built for 0.1.x continue to run unchanged.
+
+= 0.1.0 =
+* Initial release.
+* Iframe runtime with sandboxed `<iframe sandbox="allow-scripts">` rendering.
+* Inline runtime (default): multi-page rendering at `/apps/{slug}/{path}`, strict per-request CSP, install-time + render-time HTML sanitization, optional theme header/footer wrap, sitemap integration.
+* TypeScript bridge client with iframe and inline transports auto-selected by `manifest.isolation`.
+* CLI (`@designsetgo/cli`) with `init`, `login`, `deploy`, `list` commands; `--from-artifact` flag for pasted Claude Artifact bundles.
+* REST API for install, list, uninstall, and bridge proxy with per-method permission enforcement.
+* AI surface — `dsgo.ai.prompt()` routes through the user's WordPress 7.0 Connector; no DSGo-held keys.
+* Abilities consumption — `dsgo.abilities.list/invoke()` for calling abilities registered by other plugins.
+* Apps-as-Abilities — manifest `abilities.publishes` registers app-provided abilities the site's AI agent can invoke.
+* Gutenberg block (`dsgo-apps/embed`) for embedding installed apps inside posts and pages.
+* Dynamic routes (`/apps/{slug}/customers/:id`) with live data sources (`wp:posts`, `wp:pages`, `wp:cpt:*`, `wc:products`).

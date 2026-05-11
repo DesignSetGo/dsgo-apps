@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "dsgo-apps/embed",
+  "title": "DesignSetGo App",
+  "category": "embed",
+  "icon": "screenoptions",
+  "description": "Embed an installed DesignSetGo App inline in a post or page.",
+  "keywords": ["dsgo", "app", "embed", "designsetgo"],
+  "supports": {
+    "align": ["wide", "full"],
+    "html": false,
+    "reusable": true,
+    "spacing": { "margin": true }
+  },
+  "attributes": {
+    "appId":      { "type": "string",  "default": "" },
+    "height":     { "type": "number",  "default": 480 },
+    "autoResize": { "type": "boolean", "default": false },
+    "align":      { "type": "string" }
+  },
+  "editorScript": "file:./index.js",
+  "editorStyle":  "file:./index.css",
+  "style":        "file:./style-index.css",
+  "render":       "file:./render.php"
+}

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>User &amp; permissions</title>
+    <link rel="stylesheet" href="/styles/global.css" />
+  </head>
+  <body>
+    <main>
+      <a class="crumb" href="/">&larr; Tour home</a>
+      <h1>User &amp; permissions</h1>
+      <p class="lede">Identify the visitor, gate UI by capability, and see what happens when an app calls a surface it didn&rsquo;t declare.</p>
+
+      <h2>Live: <code>dsgo.user.current()</code></h2>
+      <p>Permission: <span class="perm">user</span></p>
+      <p>Returns the visitor&rsquo;s record, or <code>null</code> when anonymous.</p>
+      <dl class="kv" id="user-out" data-state="loading">
+        <dt>Loading&hellip;</dt><dd></dd>
+      </dl>
+
+<pre><code>const user = await window.dsgo.user.current();
+if (user) {
+  // user.id, user.name, user.slug, user.email,
+  // user.avatar_url, user.roles
+} else {
+  // anonymous visitor
+}</code></pre>
+
+      <h2>Live: <code>dsgo.user.can(capability)</code></h2>
+      <p>Returns <code>false</code> for anonymous visitors. Use this to hide admin-only UI without trusting the client.</p>
+      <div class="row">
+        <input class="inp grow" id="cap-input" type="text" value="manage_options" placeholder="capability" />
+        <button class="try-btn" id="cap-check">Check</button>
+      </div>
+      <p class="status muted" id="cap-status">No check yet.</p>
+
+<pre><code>if (await window.dsgo.user.can('manage_options')) {
+  showAdminPanel();
+}
+// The bridge enforces capabilities server-side too &mdash;
+// `user.can` is for UI hints only.</code></pre>
+
+      <h2>Live: <strong>permission denied</strong></h2>
+      <p>This starter&rsquo;s manifest declares all 7 permissions, so a denial demo from <em>this</em> app would require removing one. Instead, here&rsquo;s the call shape and the error you&rsquo;d see in an app whose manifest is missing the relevant permission:</p>
+
+<pre><code>// In an app whose manifest does NOT include "posts" in permissions.read:
+try {
+  await window.dsgo.posts.list();
+} catch (err) {
+  console.log(err.code);    // "permission_denied"
+  console.log(err.message); // "permission `posts` not granted in manifest"
+}</code></pre>
+
+      <div class="note">
+        <strong>The denial pattern</strong>
+        Every bridge method rejects with an object shaped <code>{ code, message }</code>. Common codes: <code>permission_denied</code>, <code>not_found</code>, <code>invalid_input</code>, <code>quota_exceeded</code>. Always wrap calls in <code>try/catch</code> and surface the <code>code</code> &mdash; users can copy it into a support request.
+      </div>
+
+      <nav class="footer">
+        <a href="/pages">&larr; Pages</a>
+        <a class="next" href="/storage">Storage &rarr;</a>
+      </nav>
+
+      <script>
+        (async () => {
+          const userOut = document.getElementById('user-out');
+          try { await window.dsgo.ready; } catch (e) {
+            userOut.dataset.state = 'error';
+            userOut.textContent = '';
+            const dt = document.createElement('dt'); dt.textContent = 'Error';
+            const dd = document.createElement('dd'); dd.textContent = 'Bridge unavailable: ' + (e && e.message ? e.message : String(e));
+            userOut.append(dt, dd);
+            return;
+          }
+
+          try {
+            const user = await window.dsgo.user.current();
+            userOut.dataset.state = 'ready';
+            userOut.textContent = '';
+            if (!user) {
+              const dt = document.createElement('dt'); dt.textContent = 'Visitor';
+              const dd = document.createElement('dd'); dd.textContent = 'Anonymous (not logged in)';
+              userOut.append(dt, dd);
+            } else {
+              const fields = [
+                ['ID',     user.id],
+                ['Name',   user.name],
+                ['Slug',   user.slug],
+                ['Email',  user.email],
+                ['Roles',  Array.isArray(user.roles) ? user.roles.join(', ') : ''],
+                ['Avatar', user.avatar_url],
+              ];
+              for (const [k, v] of fields) {
+                const dt = document.createElement('dt'); dt.textContent = k;
+                const dd = document.createElement('dd'); dd.textContent = v == null || v === '' ? '—' : String(v);
+                userOut.append(dt, dd);
+              }
+            }
+          } catch (e) {
+            userOut.dataset.state = 'error';
+            userOut.textContent = '';
+            const dt = document.createElement('dt'); dt.textContent = 'Error';
+            const dd = document.createElement('dd'); dd.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            userOut.append(dt, dd);
+          }
+
+          const capInput  = document.getElementById('cap-input');
+          const capStatus = document.getElementById('cap-status');
+          document.getElementById('cap-check').addEventListener('click', async () => {
+            const cap = capInput.value.trim();
+            if (!cap) {
+              capStatus.className = 'status error';
+              capStatus.textContent = 'Enter a capability name (e.g. edit_posts).';
+              return;
+            }
+            capStatus.className = 'status muted';
+            capStatus.textContent = 'Checking…';
+            try {
+              const ok = await window.dsgo.user.can(cap);
+              capStatus.className = 'status ' + (ok ? 'ok' : 'error');
+              capStatus.textContent = ok
+                ? 'You have ' + cap + '.'
+                : 'You do NOT have ' + cap + ' (or you are anonymous).';
+            } catch (e) {
+              capStatus.className = 'status error';
+              capStatus.textContent = (e && e.code ? '[' + e.code + '] ' : '') + (e && e.message ? e.message : String(e));
+            }
+          });
+        })();
+      </script>
+    </main>
+  </body>
+</html>

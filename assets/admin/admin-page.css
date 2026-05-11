@@ -1,0 +1,1006 @@
+/* DesignSetGo Apps — admin page (Settings → DSGo Apps replacement).
+ * Aesthetic: refined editorial. Warm neutral cream + deep ink + a single
+ * emerald accent. Serif display type breaks the wp-admin sans-serif rhythm
+ * intentionally — this surface is meant to feel like a product page, not a
+ * settings panel.
+ */
+
+/* Shared design-system tokens. Surfaces that re-use this palette can adopt
+ * the `.dsgo-admin` class on their root element to inherit the tokens; this
+ * stylesheet is the canonical source so any drift is caught here. */
+.dsgo-admin,
+.dsgo-riff {
+    --dsgo-bg:       #fbf9f4;
+    --dsgo-surface:  #ffffff;
+    --dsgo-ink:      #171615;
+    --dsgo-ink-soft: #4a4744;
+    --dsgo-mute:     #8a8580;
+    --dsgo-rule:     #e8e3da;
+    --dsgo-rule-soft:#f1ede4;
+    --dsgo-accent:   #1f5b4a;
+    --dsgo-accent-2: #d76b3a;
+    --dsgo-danger:   #a4332a;
+    --dsgo-radius:   14px;
+    --dsgo-radius-sm:8px;
+
+    --dsgo-display:
+        "Iowan Old Style", "Source Serif Pro", "Apple Garamond", "Baskerville",
+        Georgia, "Times New Roman", serif;
+    --dsgo-body:
+        ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --dsgo-mono:
+        ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.dsgo-admin {
+    /* Break the wp-admin .wrap inset so the page fills its chrome. */
+    margin: -10px -20px 0;
+    padding: 0 40px 64px;
+    background: var(--dsgo-bg);
+    color: var(--dsgo-ink);
+    font-family: var(--dsgo-body);
+    font-size: 15px;
+    line-height: 1.55;
+    min-height: calc(100vh - 32px);
+    box-sizing: border-box;
+    /* Contain any descendant overflow so it never bubbles up to body scroll
+       (which would shift the relatively-positioned wp-admin sidebar off-screen). */
+    overflow-x: clip;
+    max-width: 100vw;
+}
+
+/* Reset some wp-admin form defaults bleeding in */
+.dsgo-admin button { font-family: inherit; }
+.dsgo-admin a { color: var(--dsgo-accent); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+.dsgo-admin a:hover { text-decoration-thickness: 2px; }
+.dsgo-admin code { font-family: var(--dsgo-mono); font-size: 0.92em; background: var(--dsgo-rule-soft); padding: 0.08em 0.4em; border-radius: 4px; color: var(--dsgo-ink); }
+
+/* HERO ───────────────────────────────────────────────────────────────── */
+
+.dsgo-admin__hero {
+    padding: 64px 0 40px;
+    border-bottom: 1px solid var(--dsgo-rule);
+    margin-bottom: 40px;
+    animation: dsgo-fade-up 480ms cubic-bezier(.2,.7,.2,1) both;
+}
+.dsgo-admin__eyebrow {
+    margin: 0 0 14px;
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--dsgo-mute);
+    font-weight: 500;
+}
+.dsgo-admin__title {
+    font-family: var(--dsgo-display);
+    font-weight: 400;
+    font-size: clamp(2.5rem, 4.5vw, 4rem);
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    margin: 0 0 18px;
+    color: var(--dsgo-ink);
+}
+.dsgo-admin__lede {
+    max-width: 56ch;
+    font-size: 17px;
+    line-height: 1.55;
+    color: var(--dsgo-ink-soft);
+    margin: 0;
+}
+
+/* LAYOUT ─────────────────────────────────────────────────────────────── */
+
+.dsgo-admin__layout {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    max-width: 1100px;
+}
+
+/* Empty state: install card is the hero, list is suppressed. */
+.dsgo-admin--empty .dsgo-card--list { display: none; }
+
+/* Has-apps state: list is primary; install card is collapsed behind a toggle. */
+.dsgo-admin--has-apps .dsgo-card--install { display: none; }
+.dsgo-admin--has-apps .dsgo-card--install.is-open { display: block; }
+
+/* Toggle is only meaningful in the has-apps view. */
+.dsgo-install-toggle { display: none; }
+.dsgo-admin--has-apps .dsgo-install-toggle { display: inline-flex; }
+
+.dsgo-card {
+    background: var(--dsgo-surface);
+    border: 1px solid var(--dsgo-rule);
+    border-radius: var(--dsgo-radius);
+    padding: 32px;
+    animation: dsgo-fade-up 580ms cubic-bezier(.2,.7,.2,1) both;
+    box-sizing: border-box;
+    min-width: 0;
+}
+/* Install card mounts on demand in has-apps mode (display:none → block when
+   toggled open), which re-runs the entrance animation every time. Skip the
+   fade so the panel slides in cleanly without a flash. */
+.dsgo-admin--has-apps .dsgo-card--install { animation: none; }
+
+/* INSTALL TOGGLE ────────────────────────────────────────────────────── */
+
+.dsgo-card__header--list {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.dsgo-card__header-text { min-width: 0; flex: 1 1 auto; }
+
+.dsgo-install-toggle {
+    appearance: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px 8px 12px;
+    border: 1px solid var(--dsgo-accent);
+    border-radius: 999px;
+    background: var(--dsgo-accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 500;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    flex: 0 0 auto;
+}
+.dsgo-install-toggle:hover {
+    background: #174433;
+    border-color: #174433;
+}
+.dsgo-install-toggle:focus-visible {
+    outline: 2px solid var(--dsgo-accent);
+    outline-offset: 2px;
+}
+.dsgo-install-toggle__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+    transition: transform 220ms cubic-bezier(.2,.7,.2,1);
+}
+.dsgo-install-toggle__icon svg { display: block; }
+.dsgo-install-toggle[aria-expanded="true"] .dsgo-install-toggle__icon {
+    transform: rotate(45deg);
+}
+
+.dsgo-card__header { margin-bottom: 24px; }
+.dsgo-card__title {
+    font-family: var(--dsgo-display);
+    font-size: 24px;
+    line-height: 1.15;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+    color: var(--dsgo-ink);
+}
+.dsgo-card__subtitle {
+    margin: 0;
+    color: var(--dsgo-mute);
+    font-size: 14px;
+}
+
+/* DROPZONE ──────────────────────────────────────────────────────────── */
+
+.dsgo-dropzone {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 44px 24px 36px;
+    border: 1.5px dashed var(--dsgo-rule);
+    border-radius: var(--dsgo-radius);
+    background: var(--dsgo-bg);
+    transition: border-color 220ms ease, background 220ms ease, transform 220ms ease;
+    cursor: pointer;
+    text-align: center;
+}
+.dsgo-dropzone:hover {
+    border-color: var(--dsgo-ink-soft);
+    background: var(--dsgo-rule-soft);
+}
+.dsgo-dropzone:focus-visible {
+    outline: 2px solid var(--dsgo-accent);
+    outline-offset: 3px;
+}
+.dsgo-dropzone.is-dragover {
+    border-color: var(--dsgo-accent);
+    background: rgba(31, 91, 74, 0.06);
+    transform: scale(1.005);
+}
+.dsgo-dropzone.is-uploading {
+    pointer-events: none;
+    opacity: 0.65;
+}
+
+.dsgo-dropzone__icon {
+    color: var(--dsgo-ink-soft);
+    transition: color 220ms ease, transform 220ms ease;
+}
+.dsgo-dropzone.is-dragover .dsgo-dropzone__icon {
+    color: var(--dsgo-accent);
+    transform: translateY(-2px);
+}
+.dsgo-dropzone__primary {
+    margin: 0;
+    font-family: var(--dsgo-display);
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: -0.005em;
+    color: var(--dsgo-ink);
+}
+.dsgo-dropzone__secondary {
+    margin: 0;
+    color: var(--dsgo-mute);
+    font-size: 14px;
+}
+.dsgo-link {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--dsgo-accent);
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.dsgo-link:hover { text-decoration-thickness: 2px; }
+
+/* STATUS ─────────────────────────────────────────────────────────────── */
+
+.dsgo-status { margin-top: 18px; }
+.dsgo-status__bar {
+    height: 3px;
+    background: var(--dsgo-rule);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.dsgo-status__fill {
+    height: 100%;
+    width: 0;
+    background: var(--dsgo-accent);
+    transition: width 200ms ease;
+}
+.dsgo-status__text {
+    margin: 10px 0 0;
+    font-size: 13px;
+    color: var(--dsgo-ink-soft);
+    line-height: 1.5;
+}
+.dsgo-status.is-error .dsgo-status__fill { background: var(--dsgo-danger); }
+.dsgo-status.is-error .dsgo-status__text  { color: var(--dsgo-danger); }
+.dsgo-status.is-success .dsgo-status__fill { background: var(--dsgo-accent); }
+
+/* ALT PATH (CLI) ─────────────────────────────────────────────────────── */
+
+.dsgo-altpath {
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid var(--dsgo-rule-soft);
+}
+.dsgo-altpath summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--dsgo-ink-soft);
+    list-style: none;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.dsgo-altpath summary::-webkit-details-marker { display: none; }
+.dsgo-altpath summary::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 200ms ease;
+    margin-bottom: 2px;
+}
+.dsgo-altpath[open] summary::before { transform: rotate(45deg); margin-top: -2px; margin-bottom: 0; }
+.dsgo-code {
+    margin: 14px 0 12px;
+    padding: 16px 18px;
+    background: var(--dsgo-ink);
+    color: #f5efe3;
+    border-radius: var(--dsgo-radius-sm);
+    font-family: var(--dsgo-mono);
+    font-size: 13px;
+    line-height: 1.7;
+    overflow-x: auto;
+    white-space: pre;
+}
+.dsgo-altpath__note {
+    margin: 0;
+    font-size: 13px;
+    color: var(--dsgo-mute);
+    line-height: 1.55;
+}
+
+/* APP LIST ───────────────────────────────────────────────────────────── */
+
+.dsgo-applist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.dsgo-applist__skel {
+    height: 56px;
+    background: linear-gradient(90deg, var(--dsgo-rule-soft) 0%, var(--dsgo-rule) 50%, var(--dsgo-rule-soft) 100%);
+    background-size: 200% 100%;
+    border-radius: var(--dsgo-radius-sm);
+    animation: dsgo-shimmer 1.4s linear infinite;
+}
+.dsgo-applist__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 12px 20px;
+    padding: 18px 4px;
+    border-bottom: 1px solid var(--dsgo-rule-soft);
+    transition: background 160ms ease;
+    position: relative;
+}
+.dsgo-applist__row:last-child { border-bottom: 0; }
+.dsgo-applist__row:hover { background: var(--dsgo-rule-soft); }
+.dsgo-applist__row.is-home::before {
+    content: '';
+    position: absolute; left: -12px; top: 8px; bottom: 8px; width: 2px;
+    background: var(--dsgo-accent); border-radius: 2px;
+}
+.dsgo-applist__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    grid-column: 3 / 4;
+}
+/* Three rigid columns (main + URL chip + actions) need ~600px of fixed
+   content to fit; below that we stack the URL and actions onto their own
+   rows. The breakpoint is generous on purpose — between 720–960px viewports
+   the wp-admin sidebar leaves ~640px of usable card width, which is exactly
+   where the three-column layout starts overflowing into body scroll. */
+@media (max-width: 960px) {
+    .dsgo-applist__row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .dsgo-applist__url { grid-column: 1 / -1; justify-self: start; max-width: 100%; }
+    .dsgo-applist__actions { grid-column: 1 / -1; justify-content: flex-end; flex-wrap: wrap; }
+}
+.dsgo-applist__main { min-width: 0; }
+.dsgo-applist__title-row {
+    display: flex; align-items: center; gap: 10px;
+}
+.dsgo-applist__title {
+    font-weight: 600;
+    color: var(--dsgo-ink);
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dsgo-applist__home-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--dsgo-accent);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+/* Author-set display values override the UA `[hidden] { display: none }`
+   rule, so the JS toggle on `.hidden` would otherwise have no effect. */
+.dsgo-applist__home-badge[hidden] {
+    display: none;
+}
+.dsgo-applist__meta {
+    margin-top: 2px;
+    font-size: 12.5px;
+    color: var(--dsgo-mute);
+    font-family: var(--dsgo-mono);
+}
+.dsgo-applist__url {
+    font-size: 12px;
+    font-family: var(--dsgo-mono);
+    color: var(--dsgo-ink-soft);
+    text-decoration: none;
+    padding: 6px 10px;
+    border: 1px solid var(--dsgo-rule);
+    border-radius: 999px;
+    transition: border-color 160ms ease, color 160ms ease;
+    white-space: nowrap;
+    /* Long URLs (long site domains, deep paths) would otherwise force the
+       grid auto column wider than its container and overflow the card. */
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dsgo-applist__url:hover { border-color: var(--dsgo-ink-soft); color: var(--dsgo-ink); text-decoration: none; }
+.dsgo-applist__home {
+    appearance: none;
+    background: none;
+    border: 1px solid var(--dsgo-rule);
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--dsgo-ink-soft);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+    white-space: nowrap;
+}
+.dsgo-applist__home:hover {
+    color: var(--dsgo-accent);
+    border-color: var(--dsgo-accent);
+}
+.dsgo-applist__home--demote { color: var(--dsgo-mute); }
+.dsgo-applist__home--demote:hover { color: var(--dsgo-ink); border-color: var(--dsgo-ink-soft); }
+
+.dsgo-applist__delete {
+    appearance: none;
+    background: none;
+    border: 1px solid transparent;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--dsgo-mute);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 160ms ease, border-color 160ms ease;
+}
+.dsgo-applist__delete:hover {
+    color: var(--dsgo-danger);
+    border-color: rgba(164, 51, 42, 0.3);
+}
+
+/* Consent panel — appended inline to a row when promoting/stepping down. */
+.dsgo-consent {
+    grid-column: 1 / -1;
+    margin-top: 12px;
+    padding: 22px 24px;
+    background: var(--dsgo-rule-soft);
+    border-radius: var(--dsgo-radius);
+    border: 1px solid var(--dsgo-rule);
+    animation: dsgo-fade-up 220ms cubic-bezier(.2,.7,.2,1) both;
+}
+.dsgo-consent__title {
+    margin: 0 0 12px;
+    font-family: var(--dsgo-display);
+    font-size: 19px;
+    font-weight: 400;
+    letter-spacing: -0.005em;
+    color: var(--dsgo-ink);
+    outline: none;
+}
+.dsgo-consent__title:focus-visible {
+    outline: 2px solid var(--dsgo-accent);
+    outline-offset: 4px;
+    border-radius: 4px;
+}
+.dsgo-consent__body { font-size: 13.5px; line-height: 1.55; color: var(--dsgo-ink-soft); }
+.dsgo-consent__heading {
+    margin: 14px 0 6px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--dsgo-mute);
+    font-weight: 600;
+}
+.dsgo-consent__list {
+    list-style: none;
+    margin: 0 0 4px;
+    padding: 0;
+}
+.dsgo-consent__list li {
+    padding: 4px 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.dsgo-consent__list code {
+    background: rgba(255,255,255,0.7);
+    border: 1px solid var(--dsgo-rule);
+    color: var(--dsgo-ink);
+    font-size: 12px;
+}
+.dsgo-consent__footnote {
+    margin: 14px 0 0;
+    font-size: 12.5px;
+    color: var(--dsgo-mute);
+    font-style: italic;
+    line-height: 1.5;
+}
+.dsgo-consent__footnote--warn {
+    color: var(--dsgo-accent-2);
+    font-style: normal;
+}
+.dsgo-consent__actions {
+    margin-top: 18px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.dsgo-consent__cancel,
+.dsgo-consent__confirm {
+    appearance: none;
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-family: inherit;
+    transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.dsgo-consent__cancel {
+    background: transparent;
+    border: 1px solid var(--dsgo-rule);
+    color: var(--dsgo-ink-soft);
+}
+.dsgo-consent__cancel:hover {
+    border-color: var(--dsgo-ink-soft);
+    color: var(--dsgo-ink);
+}
+.dsgo-consent__confirm {
+    background: var(--dsgo-accent);
+    border: 1px solid var(--dsgo-accent);
+    color: #fff;
+    font-weight: 500;
+}
+.dsgo-consent__confirm:hover {
+    background: #174433;
+    border-color: #174433;
+}
+.dsgo-consent__confirm:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.dsgo-applist__empty {
+    padding: 24px 0;
+    color: var(--dsgo-mute);
+    font-size: 14px;
+    font-style: italic;
+}
+
+/* FOOTNOTE ───────────────────────────────────────────────────────────── */
+
+.dsgo-admin__footnote {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 40px;
+    padding-top: 24px;
+    border-top: 1px solid var(--dsgo-rule);
+    font-size: 13px;
+    color: var(--dsgo-mute);
+}
+.dsgo-admin__footnote code {
+    background: transparent;
+    padding: 0;
+    color: var(--dsgo-ink);
+    font-weight: 500;
+}
+
+/* ANIMATIONS ─────────────────────────────────────────────────────────── */
+
+@keyframes dsgo-fade-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes dsgo-shimmer {
+    from { background-position: 200% 0; }
+    to   { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .dsgo-admin__hero, .dsgo-card,
+    .dsgo-panel, .dsgo-consent { animation: none; }
+    .dsgo-applist__skel { animation: none; }
+    .dsgo-dropzone, .dsgo-dropzone__icon, .dsgo-status__fill,
+    .dsgo-applist__row, .dsgo-applist__url, .dsgo-applist__delete,
+    .dsgo-altpath summary::before { transition: none; }
+}
+
+/* TABS + URL PANEL ───────────────────────────────────────────────────── */
+
+.dsgo-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--dsgo-rule);
+}
+.dsgo-tab {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--dsgo-ink-soft);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 500;
+    margin-bottom: -1px;
+    padding: 10px 14px;
+    transition: color 120ms ease, border-color 120ms ease;
+}
+.dsgo-tab:hover { color: var(--dsgo-ink); }
+.dsgo-tab.is-active {
+    color: var(--dsgo-accent);
+    border-bottom-color: var(--dsgo-accent);
+}
+.dsgo-tab:focus-visible {
+    outline: 2px solid var(--dsgo-accent);
+    outline-offset: 2px;
+    border-radius: var(--dsgo-radius-sm);
+}
+
+.dsgo-panel { animation: dsgo-fade-up 220ms ease both; }
+.dsgo-panel__lede {
+    color: var(--dsgo-ink-soft);
+    font-size: 13px;
+    margin: 0 0 14px 0;
+    line-height: 1.5;
+}
+.dsgo-panel__lede code {
+    background: var(--dsgo-rule-soft);
+    border-radius: 4px;
+    font-family: var(--dsgo-mono);
+    font-size: 12px;
+    padding: 2px 6px;
+}
+
+.dsgo-field { margin-bottom: 14px; }
+.dsgo-field__label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--dsgo-ink);
+}
+.dsgo-field__hint {
+    color: var(--dsgo-mute);
+    font-size: 12px;
+    margin: 6px 0 0 0;
+}
+.dsgo-input {
+    background: var(--dsgo-surface);
+    border: 1px solid var(--dsgo-rule);
+    border-radius: var(--dsgo-radius-sm);
+    color: var(--dsgo-ink);
+    font: inherit;
+    padding: 10px 12px;
+    width: 100%;
+    box-sizing: border-box;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.dsgo-input:focus-visible {
+    border-color: var(--dsgo-accent);
+    box-shadow: 0 0 0 3px rgba(31, 91, 74, 0.18);
+    /* Transparent outline is invisible in normal modes but Forced Colors
+       Mode (Windows High Contrast) preserves outline while suppressing
+       box-shadow, so this keeps the focus ring visible there. */
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+}
+.dsgo-field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+@media (max-width: 540px) {
+    .dsgo-field-row { grid-template-columns: 1fr; }
+}
+
+.dsgo-field--toggle { margin-bottom: 0; }
+.dsgo-toggle {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+    align-items: start;
+    cursor: pointer;
+    padding: 10px 12px;
+    border-radius: var(--dsgo-radius-sm);
+    transition: background-color 120ms ease;
+}
+.dsgo-toggle:hover { background: rgba(31, 91, 74, 0.04); }
+.dsgo-toggle input[type="checkbox"] {
+    margin: 3px 0 0 0;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--dsgo-accent);
+    cursor: pointer;
+}
+.dsgo-toggle__label {
+    display: grid;
+    gap: 4px;
+}
+.dsgo-toggle__label strong {
+    font-size: 14px;
+    color: var(--dsgo-ink);
+    font-weight: 600;
+}
+.dsgo-toggle__label .dsgo-field__hint {
+    margin: 0;
+    line-height: 1.5;
+}
+.dsgo-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+
+/* SETTINGS PAGE ──────────────────────────────────────────────────────── */
+
+.dsgo-admin--settings .dsgo-admin__settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    max-width: 880px;
+}
+/* The Settings API emits an empty <h2></h2> from do_settings_sections when
+   no section title is registered. Hide it so the layout doesn't have a gap. */
+.dsgo-admin--settings .dsgo-admin__settings-form > h2:empty { display: none; }
+
+.dsgo-prefix-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.dsgo-prefix-row__token {
+    font-family: var(--dsgo-mono);
+    font-size: 13px;
+    color: var(--dsgo-mute);
+    background: var(--dsgo-rule-soft);
+    padding: 6px 10px;
+    border-radius: var(--dsgo-radius-sm);
+    white-space: nowrap;
+}
+.dsgo-prefix-row__input {
+    flex: 0 1 220px;
+    min-width: 160px;
+    font-family: var(--dsgo-mono);
+}
+.dsgo-field--disabled .dsgo-prefix-row__input,
+.dsgo-field--disabled .dsgo-prefix-row__token {
+    opacity: 0.5;
+}
+.dsgo-field--disabled .dsgo-prefix-row__input { cursor: not-allowed; }
+
+.dsgo-prefix-preview {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--dsgo-rule);
+    border-radius: var(--dsgo-radius-sm);
+    background: var(--dsgo-rule-soft);
+}
+.dsgo-prefix-preview__label {
+    margin: 0 0 4px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--dsgo-mute);
+}
+.dsgo-prefix-preview__url {
+    margin: 0;
+    font-family: var(--dsgo-mono);
+    font-size: 14px;
+    word-break: break-all;
+}
+.dsgo-prefix-preview__warn {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: #8a4b00;
+}
+
+.dsgo-settings__home {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 18px 20px;
+    border: 1px solid var(--dsgo-rule);
+    border-radius: var(--dsgo-radius-sm);
+    background: var(--dsgo-rule-soft);
+}
+.dsgo-settings__home--active {
+    border-color: var(--dsgo-accent);
+    background: rgba(31, 91, 74, 0.06);
+}
+.dsgo-settings__home-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    background: var(--dsgo-accent);
+    color: #fff;
+    font-size: 18px;
+    line-height: 1;
+}
+.dsgo-settings__home-body { flex: 1 1 auto; }
+.dsgo-settings__home-eyebrow {
+    margin: 0 0 4px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dsgo-mute);
+    font-weight: 600;
+}
+.dsgo-settings__home-slug { margin: 0 0 8px; }
+.dsgo-settings__home-slug code {
+    font-size: 14px;
+    padding: 2px 8px;
+}
+.dsgo-settings__home-explainer {
+    margin: 0 0 8px;
+    color: var(--dsgo-mute);
+    font-size: 13px;
+    line-height: 1.5;
+}
+.dsgo-settings__home-empty {
+    margin: 0 0 8px;
+    color: var(--dsgo-mute);
+    font-size: 13px;
+}
+.dsgo-settings__home-link { margin: 0; font-size: 13px; }
+
+.dsgo-actions--settings { justify-content: flex-start; margin-top: 0; }
+
+/* WP admin overrides ─────────────────────────────────────────────────── */
+
+#wpcontent {
+    padding-left: 0 !important;
+    /* `.dsgo-admin` uses a -20px right margin to fill the chrome, which
+       extends 20px past `#wpcontent`'s right edge. Without clipping here,
+       that overflow becomes body-level horizontal scroll, which in turn
+       shifts the relatively-positioned wp-admin sidebar off-screen. */
+    overflow-x: clip;
+    /* `.dsgo-admin` pulls itself up with margin-top: -10px to break out of
+       `.wrap`'s default inset, but without a `.wrap` wrapper the natural
+       top of `#wpbody-content` sits a few pixels below the admin bar — and
+       wp-admin's body bg (#f0f0f1) shows through as a gray strip there.
+       Painting `#wpcontent` cream makes any leftover gap blend with the
+       page's own background instead of revealing the chrome. The literal
+       value mirrors `--dsgo-bg` on `.dsgo-admin` — the custom property is
+       scoped to `.dsgo-admin` so it doesn't resolve on its ancestor. */
+    background: #fbf9f4;
+}
+.dsgo-admin h1, .dsgo-admin h2 {
+    /* Negate WP defaults that would re-apply elsewhere. */
+    background: transparent;
+    padding: 0;
+}
+
+/* ─── Install-dialog bucket rows (2026-05-09 bucket model) ───────────── */
+/*
+ * Rendered server-side by Bucket_Renderer. The structure is one <details>
+ * per active bucket, plus an unchanged/removed footer + storage note.
+ * See dsgo-apps/includes/class-bucket-renderer.php for the HTML contract.
+ */
+.dsgo-install-consent-body {
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--dsgo-ink-soft);
+}
+.dsgo-install-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.dsgo-bucket {
+    border: 1px solid var(--dsgo-line, #d4d6dc);
+    border-radius: 6px;
+    background: var(--dsgo-surface, #fff);
+    padding: 0;
+    overflow: hidden;
+}
+.dsgo-bucket__summary {
+    cursor: pointer;
+    padding: 10px 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    align-items: baseline;
+    list-style: none;
+    user-select: none;
+}
+.dsgo-bucket__summary::-webkit-details-marker { display: none; }
+.dsgo-bucket__summary::before {
+    content: "▸";
+    font-size: 11px;
+    color: var(--dsgo-ink-soft, #6a6c74);
+    transition: transform .15s ease;
+    margin-right: 2px;
+}
+.dsgo-bucket[open] > .dsgo-bucket__summary::before { transform: rotate(90deg); }
+.dsgo-bucket__label {
+    font-weight: 600;
+    color: var(--dsgo-ink, #1d1f25);
+}
+.dsgo-bucket__justification {
+    color: var(--dsgo-ink-soft, #6a6c74);
+}
+.dsgo-bucket__new-badge {
+    display: inline-block;
+    background: #ffeec6;
+    color: #6a4400;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    line-height: 1.2;
+}
+.dsgo-bucket--new {
+    /* Highlight new permissions on update — orange left border accent. */
+    border-left: 3px solid #f0a500;
+}
+.dsgo-bucket__details {
+    padding: 8px 14px 12px;
+    border-top: 1px solid var(--dsgo-line, #e8e9ed);
+    background: var(--dsgo-surface-soft, #fafbfc);
+}
+.dsgo-bucket__details ul { margin: 0 0 0 1em; padding: 0; }
+.dsgo-bucket__details li { margin: 2px 0; }
+.dsgo-bucket__details code {
+    font-size: 12px;
+    background: var(--dsgo-surface, #fff);
+    border: 1px solid var(--dsgo-line, #e8e9ed);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+.dsgo-bucket__detail-heading {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dsgo-ink-soft, #6a6c74);
+    margin: 8px 0 4px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+.dsgo-bucket__detail-heading:first-child { margin-top: 0; }
+.dsgo-install-dialog__unchanged {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--dsgo-ink-soft, #6a6c74);
+    font-style: italic;
+}
+.dsgo-install-dialog__removed {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border: 1px dashed var(--dsgo-line, #d4d6dc);
+    border-radius: 4px;
+    background: transparent;
+    font-size: 12px;
+}
+.dsgo-install-dialog__removed h4 {
+    margin: 0 0 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dsgo-ink-soft, #6a6c74);
+}
+.dsgo-install-dialog__removed ul { margin: 0 0 0 1em; }
+.dsgo-install-dialog__storage-note {
+    margin: 8px 0 0;
+    font-size: 11.5px;
+    color: var(--dsgo-ink-soft, #6a6c74);
+    font-style: italic;
+    text-align: center;
+}

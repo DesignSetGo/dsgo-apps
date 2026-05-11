@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<phpunit
+    bootstrap="bootstrap.php"
+    backupGlobals="false"
+    colors="true"
+>
+    <testsuites>
+        <testsuite name="DSGo Apps Free">
+            <directory>./</directory>
+            <exclude>./bootstrap.php</exclude>
+        </testsuite>
+    </testsuites>
+    <coverage>
+        <include>
+            <directory suffix=".php">../../includes</directory>
+        </include>
+    </coverage>
+</phpunit>
