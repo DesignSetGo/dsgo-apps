@@ -45,6 +45,8 @@ final class Plugin {
         require_once $base . 'class-http-proxy-log.php';
         require_once $base . 'class-http-proxy-bridge.php';
         require_once $base . 'class-cron-scheduler.php';
+        require_once $base . 'class-cron-log.php';
+        require_once $base . 'class-cron-dispatcher.php';
         require_once $base . 'class-privacy.php';
         require_once $base . 'class-post-type.php';
         require_once $base . 'class-settings.php';
@@ -98,6 +100,13 @@ final class Plugin {
         // visible to any wp_schedule_event() call regardless of when in
         // the boot sequence it fires.
         add_filter('cron_schedules', [CronScheduler::class, 'register_custom_schedules']);
+        // Bind every installed app's scheduled jobs to CronDispatcher::run.
+        // Runs on init priority 9 so the hook callbacks resolve before
+        // WP-cron starts firing (cron events fire on `init` itself; the
+        // hook table is checked on shutdown). One bound action per job;
+        // when WP-cron fires `dsgo_apps_cron_<app>_<job>`, the dispatcher
+        // looks up the ability and logs the outcome.
+        add_action('init', [self::class, 'register_cron_dispatch_hooks'], 9);
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch'], 5);
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch_root'], 7);
         add_action('template_redirect', [IframeLoader::class, 'maybe_dispatch_root'], 8);
@@ -192,6 +201,52 @@ final class Plugin {
         }
     }
 
+    /**
+     * Bind every installed app's scheduled jobs to CronDispatcher::run.
+     * Iterates published dsgo_app posts, reads each manifest's
+     * scheduled.jobs[], and registers one `add_action` per job pointing
+     * at the dispatcher with the (app_id, job_id, ability_name) args
+     * curried in. Idempotent within a single request — WordPress
+     * dedupes identical add_action calls.
+     *
+     * Bound to `init` at priority 9 so the hooks resolve before
+     * wp-cron's `wp_cron()` runs on `init` priority 10 (the default).
+     */
+    public static function register_cron_dispatch_hooks(): void {
+        $apps = get_posts([
+            'post_type'      => PostType::SLUG,
+            'post_status'    => 'publish',
+            'posts_per_page' => -1,
+            'no_found_rows'  => true,
+            'fields'         => 'ids',
+        ]);
+        foreach ($apps as $post_id) {
+            $post = get_post($post_id);
+            if (!$post instanceof \WP_Post) continue;
+            $manifest_arr = get_post_meta($post_id, 'dsgo_apps_manifest', true);
+            if (!is_array($manifest_arr)) continue;
+            $jobs = $manifest_arr['scheduled']['jobs'] ?? null;
+            if (!is_array($jobs)) continue;
+            $app_id = $post->post_name;
+            foreach ($jobs as $job) {
+                if (!is_array($job) || !isset($job['id'], $job['ability'])
+                    || !is_string($job['id']) || !is_string($job['ability'])
+                ) {
+                    continue;
+                }
+                $hook = CronScheduler::hook($app_id, $job['id']);
+                $ability_name = $job['ability'];
+                $job_id = $job['id'];
+                add_action(
+                    $hook,
+                    static function () use ($app_id, $job_id, $ability_name): void {
+                        CronDispatcher::run($app_id, $job_id, $ability_name);
+                    },
+                );
+            }
+        }
+    }
+
     public static function activate(): void {
         // Ensure all dependencies are loaded — clean-process activation
         // (e.g. WP-CLI) may invoke this before plugins_loaded fires.
@@ -215,6 +270,11 @@ final class Plugin {
         if (!wp_next_scheduled(Http_Proxy_Log::CRON_HOOK)) {
             wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', Http_Proxy_Log::CRON_HOOK);
         }
+
+        // Cron audit log table (Task 5 of the cron+webhooks plan).
+        // Daily retention purge is wired alongside other dsgo cleanup hooks
+        // in Task 18; for now we just ensure the table exists.
+        CronLog::create_table();
 
         // One-shot welcome notice so admins land on the install screen instead
         // of an empty Plugins list. Cleared after first render.
