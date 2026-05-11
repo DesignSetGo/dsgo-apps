@@ -856,13 +856,35 @@ class ManifestTest extends WP_UnitTestCase {
 
     public function test_secrets_allowed_with_webhooks_only_no_http(): void {
         // An app that only receives webhooks (no outbound HTTP) is still
-        // allowed to declare secrets (signing keys). Detected via raw_field
-        // since the webhooks block doesn't have a typed validator yet.
+        // allowed to declare secrets (signing keys). Updated 2026-05-11 to
+        // honor the cron+webhooks plan's full contract: webhooks.endpoints
+        // now requires `permissions.run: ["webhooks"]`, a published ability
+        // with `execute_php`, and a properly-shaped auth block. The test
+        // still proves the original claim — secrets are admissible when
+        // webhooks is the only secret-consuming surface.
         $arr = $this->valid_inline_manifest();
-        $arr['webhooks'] = ['endpoints' => [['id' => 'stripe', 'ability' => 'a/b', 'auth' => []]]];
+        $arr['id']                       = 'mysite';
+        $arr['permissions']['run']       = ['webhooks'];
+        $arr['abilities']                = ['publishes' => [[
+            'name'        => 'mysite/handle-stripe',
+            'label'       => 'Handle Stripe event',
+            'description' => 'Handle a Stripe webhook event for the test.',
+            'category'    => 'commerce',
+            'execute_php' => ['class' => 'Acme\\Foo', 'method' => 'execute'],
+        ]]];
+        $arr['webhooks'] = ['endpoints' => [[
+            'id'      => 'stripe',
+            'ability' => 'mysite/handle-stripe',
+            'auth'    => [
+                'type'         => 'hmac-sha256',
+                'scheme'       => 'stripe',
+                'secret_alias' => 'STRIPE_WEBHOOK_SECRET',
+            ],
+        ]]];
         $arr['secrets']  = [['alias' => 'STRIPE_WEBHOOK_SECRET', 'description' => 'Stripe webhook signing secret.']];
         $m = Manifest::validate($arr);
         $this->assertCount(1, $m->secrets);
+        $this->assertCount(1, $m->webhook_endpoints());
     }
 
     public function test_required_secrets_defaults_to_all_declared_aliases(): void {

@@ -207,6 +207,32 @@ final readonly class Manifest {
         return $cursor;
     }
 
+    /**
+     * Typed accessor for `scheduled.jobs[]`. Returns the validated entries —
+     * empty array if the manifest declares no scheduled work. Each entry has
+     * the shape `{id, ability, schedule, time?, day_of_week?}`. Field order
+     * and absent-optional handling match the input manifest verbatim.
+     *
+     * @return array<int, array{id:string,ability:string,schedule:string,time?:string,day_of_week?:int}>
+     */
+    public function scheduled_jobs(): array {
+        $jobs = $this->raw['scheduled']['jobs'] ?? [];
+        return is_array($jobs) ? $jobs : [];
+    }
+
+    /**
+     * Typed accessor for `webhooks.endpoints[]`. Returns the validated
+     * entries — empty array if the manifest declares no webhooks. Each
+     * entry has the shape `{id, ability, auth, rate_limit_per_minute?,
+     * async?, idempotency_header?}`.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function webhook_endpoints(): array {
+        $endpoints = $this->raw['webhooks']['endpoints'] ?? [];
+        return is_array($endpoints) ? $endpoints : [];
+    }
+
     public static function validate(array $raw): self {
         self::assert_int($raw, 'manifest_version');
         if ($raw['manifest_version'] !== 1) {
@@ -249,6 +275,7 @@ final readonly class Manifest {
         if ($raw['permissions']['write'] !== []) {
             throw new ManifestError('permissions.write', 'must be empty in v1');
         }
+        $permissions_run = self::validate_permissions_run($raw['permissions']['run'] ?? null);
         $permissions_http = self::validate_permissions_http($raw['permissions']['http'] ?? null);
         [$secrets, $required_secrets] = self::validate_secrets(
             $raw['secrets'] ?? null,
@@ -937,6 +964,14 @@ final readonly class Manifest {
             $author = $raw['author'];
         }
 
+        // Scheduled jobs + webhook endpoints — both surfaces cross-reference
+        // abilities.publishes (must reference a published ability that carries
+        // execute_php) AND the top-level secrets[] block (webhooks only). Run
+        // them after abilities/secrets validation has produced canonical
+        // arrays so we can lean on those rather than re-parsing $raw.
+        self::validate_scheduled($raw, $permissions_run, $abilities_publishes);
+        self::validate_webhooks($raw, $permissions_run, $abilities_publishes, $secrets);
+
         // Justifications run last so we have the full activated-bucket set.
         self::validate_justifications($raw, $perms);
 
@@ -1360,6 +1395,298 @@ final readonly class Manifest {
             $out[] = strtolower($host);
         }
         return $out;
+    }
+
+    /**
+     * Validate `permissions.run` — the run-automatically permission gate.
+     * Allowlist: `scheduled`, `webhooks`. Returns the normalized string[] or
+     * throws ManifestError. Absent/empty array is valid (means the app has
+     * not opted into any background work).
+     *
+     * Shape-only here — the cross-reference that the corresponding
+     * `scheduled` / `webhooks` blocks ARE present lives in
+     * `validate_scheduled()` and `validate_webhooks()` so the error message
+     * can name the dependent surface.
+     *
+     * @return string[]
+     */
+    private static function validate_permissions_run(mixed $raw): array {
+        if ($raw === null) return [];
+        if (!is_array($raw)) {
+            throw new ManifestError('permissions.run', 'run_invalid: must be an array of "scheduled" and/or "webhooks"');
+        }
+        $allowed = ['scheduled', 'webhooks'];
+        $out = [];
+        foreach ($raw as $i => $v) {
+            if (!is_string($v) || !in_array($v, $allowed, true)) {
+                throw new ManifestError(
+                    sprintf('permissions.run[%d]', $i),
+                    sprintf('run_permission_unknown: "%s" must be one of "scheduled", "webhooks"', is_scalar($v) ? (string) $v : gettype($v)),
+                );
+            }
+            if (in_array($v, $out, true)) {
+                throw new ManifestError(
+                    sprintf('permissions.run[%d]', $i),
+                    sprintf('run_permission_duplicate: "%s" listed twice', $v),
+                );
+            }
+            $out[] = $v;
+        }
+        return $out;
+    }
+
+    /**
+     * Validate the optional `scheduled` block + cross-reference each job's
+     * `ability` against the validated `abilities.publishes[]`. A job's
+     * referenced ability must exist AND carry `execute_php` (since cron
+     * dispatch invokes the php callable, not the app).
+     *
+     * Field rules:
+     *   - schedule ∈ {hourly, twicedaily, daily, weekly, dsgo-15min, dsgo-5min}
+     *   - id matches `^[a-z][a-z0-9-]{0,63}$`
+     *   - max 5 jobs, unique ids
+     *   - time `HH:MM` only on `daily` / `weekly`
+     *   - day_of_week 0–6 only on `weekly`
+     *
+     * @param array<int, array<string, mixed>> $abilities_publishes
+     */
+    private static function validate_scheduled(array $raw, array $permissions_run, array $abilities_publishes): void {
+        if (!array_key_exists('scheduled', $raw)) return;
+        if (!in_array('scheduled', $permissions_run, true)) {
+            throw new ManifestError(
+                'scheduled',
+                'run_scheduled_not_permitted: "scheduled" block requires "scheduled" in permissions.run',
+            );
+        }
+        if (!is_array($raw['scheduled'])) {
+            throw new ManifestError('scheduled', 'must be an object with a "jobs" array');
+        }
+        $jobs = $raw['scheduled']['jobs'] ?? null;
+        if (!is_array($jobs)) {
+            throw new ManifestError('scheduled.jobs', 'must be an array');
+        }
+        if (count($jobs) > 5) {
+            throw new ManifestError(
+                'scheduled.jobs',
+                sprintf('scheduled_too_many: %d jobs (max 5)', count($jobs)),
+            );
+        }
+        // Cross-ref maps for ability lookup.
+        $ability_index = [];
+        foreach ($abilities_publishes as $a) {
+            $ability_index[$a['name']] = $a;
+        }
+        $allowed_schedules = ['hourly', 'twicedaily', 'daily', 'weekly', 'dsgo-15min', 'dsgo-5min'];
+        $seen_ids = [];
+        foreach ($jobs as $i => $job) {
+            $path = "scheduled.jobs[$i]";
+            if (!is_array($job)) {
+                throw new ManifestError($path, 'must be an object');
+            }
+            $id = $job['id'] ?? null;
+            if (!is_string($id) || !preg_match('/^[a-z][a-z0-9-]{0,63}$/', $id)) {
+                throw new ManifestError("$path.id", 'scheduled_id_invalid: must match ^[a-z][a-z0-9-]{0,63}$');
+            }
+            if (isset($seen_ids[$id])) {
+                throw new ManifestError("$path.id", sprintf('scheduled_duplicate_id: "%s"', $id));
+            }
+            $seen_ids[$id] = true;
+
+            $ability_name = $job['ability'] ?? null;
+            if (!is_string($ability_name) || $ability_name === '') {
+                throw new ManifestError("$path.ability", 'is required and must be a non-empty string');
+            }
+            if (!isset($ability_index[$ability_name])) {
+                throw new ManifestError(
+                    "$path.ability",
+                    sprintf('scheduled_ability_not_found: "%s" is not declared in abilities.publishes', $ability_name),
+                );
+            }
+            if (!isset($ability_index[$ability_name]['execute_php'])) {
+                throw new ManifestError(
+                    "$path.ability",
+                    sprintf('scheduled_ability_not_php_callable: "%s" must declare execute_php', $ability_name),
+                );
+            }
+
+            $schedule = $job['schedule'] ?? null;
+            if (!is_string($schedule) || !in_array($schedule, $allowed_schedules, true)) {
+                throw new ManifestError(
+                    "$path.schedule",
+                    sprintf('scheduled_invalid_schedule: "%s" must be one of %s', is_scalar($schedule) ? (string) $schedule : gettype($schedule), implode(', ', $allowed_schedules)),
+                );
+            }
+
+            $time_applies = in_array($schedule, ['daily', 'weekly'], true);
+            if (array_key_exists('time', $job)) {
+                if (!$time_applies) {
+                    throw new ManifestError(
+                        "$path.time",
+                        'scheduled_time_not_applicable: "time" is only valid on "daily" or "weekly" schedules',
+                    );
+                }
+                $time_val = $job['time'];
+                if (!is_string($time_val) || !preg_match('/^([01][0-9]|2[0-3]):[0-5][0-9]$/', $time_val)) {
+                    throw new ManifestError(
+                        "$path.time",
+                        sprintf('scheduled_invalid_time: "%s" must be HH:MM (24-hour, zero-padded)', is_scalar($time_val) ? (string) $time_val : gettype($time_val)),
+                    );
+                }
+            }
+
+            $day_applies = ($schedule === 'weekly');
+            if (array_key_exists('day_of_week', $job)) {
+                if (!$day_applies) {
+                    throw new ManifestError(
+                        "$path.day_of_week",
+                        'scheduled_day_not_applicable: "day_of_week" is only valid on the "weekly" schedule',
+                    );
+                }
+                $dow = $job['day_of_week'];
+                if (!is_int($dow) || $dow < 0 || $dow > 6) {
+                    throw new ManifestError(
+                        "$path.day_of_week",
+                        sprintf('scheduled_invalid_day: must be an integer 0–6 (got %s)', is_scalar($dow) ? (string) $dow : gettype($dow)),
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * Validate the optional `webhooks` block + cross-reference each endpoint's
+     * `ability` against `abilities.publishes[]` (must exist AND carry
+     * `execute_php`) and each endpoint's `auth.secret_alias` against the
+     * top-level `secrets[]` block.
+     *
+     * Auth shapes:
+     *   - hmac-sha256: requires `scheme` ∈ {stripe, github, slack, generic} + `secret_alias`
+     *   - bearer: requires `secret_alias`; `scheme` is forbidden (caught with `webhook_auth_scheme_not_applicable`)
+     *
+     * @param array<int, array<string, mixed>> $abilities_publishes
+     * @param array<int, array{alias:string,description:string}> $secrets
+     */
+    private static function validate_webhooks(array $raw, array $permissions_run, array $abilities_publishes, array $secrets): void {
+        if (!array_key_exists('webhooks', $raw)) return;
+        if (!in_array('webhooks', $permissions_run, true)) {
+            throw new ManifestError(
+                'webhooks',
+                'run_webhooks_not_permitted: "webhooks" block requires "webhooks" in permissions.run',
+            );
+        }
+        if (!is_array($raw['webhooks'])) {
+            throw new ManifestError('webhooks', 'must be an object with an "endpoints" array');
+        }
+        $endpoints = $raw['webhooks']['endpoints'] ?? null;
+        if (!is_array($endpoints)) {
+            throw new ManifestError('webhooks.endpoints', 'must be an array');
+        }
+        if (count($endpoints) > 10) {
+            throw new ManifestError(
+                'webhooks.endpoints',
+                sprintf('webhooks_too_many: %d endpoints (max 10)', count($endpoints)),
+            );
+        }
+        $ability_index = [];
+        foreach ($abilities_publishes as $a) {
+            $ability_index[$a['name']] = $a;
+        }
+        $secret_aliases = array_column($secrets, 'alias');
+        $allowed_hmac_schemes = ['stripe', 'github', 'slack', 'generic'];
+        $seen_ids = [];
+        foreach ($endpoints as $i => $endpoint) {
+            $path = "webhooks.endpoints[$i]";
+            if (!is_array($endpoint)) {
+                throw new ManifestError($path, 'must be an object');
+            }
+            $id = $endpoint['id'] ?? null;
+            if (!is_string($id) || !preg_match('/^[a-z][a-z0-9-]{0,63}$/', $id)) {
+                throw new ManifestError("$path.id", 'webhook_id_invalid: must match ^[a-z][a-z0-9-]{0,63}$');
+            }
+            if (isset($seen_ids[$id])) {
+                throw new ManifestError("$path.id", sprintf('webhooks_duplicate_id: "%s"', $id));
+            }
+            $seen_ids[$id] = true;
+
+            $ability_name = $endpoint['ability'] ?? null;
+            if (!is_string($ability_name) || $ability_name === '') {
+                throw new ManifestError("$path.ability", 'is required and must be a non-empty string');
+            }
+            if (!isset($ability_index[$ability_name])) {
+                throw new ManifestError(
+                    "$path.ability",
+                    sprintf('webhook_ability_not_found: "%s" is not declared in abilities.publishes', $ability_name),
+                );
+            }
+            if (!isset($ability_index[$ability_name]['execute_php'])) {
+                throw new ManifestError(
+                    "$path.ability",
+                    sprintf('webhook_ability_not_php_callable: "%s" must declare execute_php', $ability_name),
+                );
+            }
+
+            if (!array_key_exists('auth', $endpoint)) {
+                throw new ManifestError("$path.auth", 'webhook_auth_missing: every endpoint must declare an auth scheme');
+            }
+            $auth = $endpoint['auth'];
+            if (!is_array($auth)) {
+                throw new ManifestError("$path.auth", 'must be an object');
+            }
+            $auth_type = $auth['type'] ?? null;
+            if (!is_string($auth_type) || !in_array($auth_type, ['hmac-sha256', 'bearer'], true)) {
+                throw new ManifestError(
+                    "$path.auth.type",
+                    sprintf('webhook_auth_unknown_type: "%s" must be one of "hmac-sha256", "bearer"', is_scalar($auth_type) ? (string) $auth_type : gettype($auth_type)),
+                );
+            }
+            if ($auth_type === 'hmac-sha256') {
+                $scheme = $auth['scheme'] ?? null;
+                if (!is_string($scheme) || !in_array($scheme, $allowed_hmac_schemes, true)) {
+                    throw new ManifestError(
+                        "$path.auth.scheme",
+                        sprintf('webhook_auth_unknown_scheme: "%s" must be one of %s', is_scalar($scheme) ? (string) $scheme : gettype($scheme), implode(', ', $allowed_hmac_schemes)),
+                    );
+                }
+            } else {
+                // bearer — `scheme` is not meaningful and is rejected so authors
+                // don't accidentally mix hmac and bearer config.
+                if (array_key_exists('scheme', $auth)) {
+                    throw new ManifestError(
+                        "$path.auth.scheme",
+                        'webhook_auth_scheme_not_applicable: "scheme" is only valid when auth.type is "hmac-sha256"',
+                    );
+                }
+            }
+            $secret_alias = $auth['secret_alias'] ?? null;
+            if (!is_string($secret_alias) || $secret_alias === '') {
+                throw new ManifestError("$path.auth.secret_alias", 'is required and must be a non-empty string');
+            }
+            if (!in_array($secret_alias, $secret_aliases, true)) {
+                throw new ManifestError(
+                    "$path.auth.secret_alias",
+                    sprintf('webhook_auth_secret_not_declared: "%s" is not declared in secrets[]', $secret_alias),
+                );
+            }
+
+            if (array_key_exists('rate_limit_per_minute', $endpoint)) {
+                $rl = $endpoint['rate_limit_per_minute'];
+                if (!is_int($rl) || $rl < 1 || $rl > 600) {
+                    throw new ManifestError(
+                        "$path.rate_limit_per_minute",
+                        sprintf('webhook_rate_limit_invalid: must be an integer between 1 and 600 (got %s)', is_scalar($rl) ? (string) $rl : gettype($rl)),
+                    );
+                }
+            }
+            if (array_key_exists('async', $endpoint) && !is_bool($endpoint['async'])) {
+                throw new ManifestError("$path.async", 'webhook_async_invalid: must be a boolean');
+            }
+            if (array_key_exists('idempotency_header', $endpoint)) {
+                $h = $endpoint['idempotency_header'];
+                if (!is_string($h) || $h === '') {
+                    throw new ManifestError("$path.idempotency_header", 'webhook_idempotency_header_invalid: must be a non-empty string');
+                }
+            }
+        }
     }
 
     /**
