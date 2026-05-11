@@ -122,4 +122,54 @@ class MediaPublisherTest extends WP_UnitTestCase {
         $result = MediaPublisher::publish_for_app($manifest, $this->bundle_dir);
         $this->assertSame(0, $result->published + $result->updated + $result->skipped + $result->failed);
     }
+
+    public function test_republish_with_same_contents_is_skipped(): void {
+        $this->write_file('og/hero.png', self::tiny_png_bytes());
+        $manifest = $this->manifest(['og/*.png']);
+
+        $first = MediaPublisher::publish_for_app($manifest, $this->bundle_dir);
+        $this->assertSame(1, $first->published);
+
+        $second = MediaPublisher::publish_for_app($manifest, $this->bundle_dir);
+        $this->assertSame(0, $second->published);
+        $this->assertSame(0, $second->updated);
+        $this->assertSame(1, $second->skipped);
+        $this->assertSame(0, $second->failed);
+    }
+
+    public function test_republish_with_changed_contents_updates_in_place(): void {
+        $abs = $this->write_file('og/hero.png', self::tiny_png_bytes());
+        $manifest = $this->manifest(['og/*.png']);
+
+        $first = MediaPublisher::publish_for_app($manifest, $this->bundle_dir);
+        $this->assertSame(1, $first->published);
+
+        $attachment_id = (int) get_posts([
+            'post_type'   => 'attachment',
+            'post_status' => 'inherit',
+            'meta_key'    => MediaPublisher::SOURCE_META_KEY,
+            'meta_value'  => 'sample',
+            'fields'      => 'ids',
+            'numberposts' => 1,
+        ])[0];
+
+        // Append a byte so the SHA-256 differs; still a valid PNG for sideload purposes
+        // because tiny_png_bytes() is a complete IEND-terminated stream and WP only
+        // checks the leading magic bytes for mime detection. If WP's stricter
+        // image-validation rejects the appended bytes, use a fresh tiny_png_bytes()
+        // variant; either way, the hash differs.
+        file_put_contents($abs, self::tiny_png_bytes() . "\x00");
+
+        $second = MediaPublisher::publish_for_app($manifest, $this->bundle_dir);
+        $this->assertSame(0, $second->published);
+        $this->assertSame(1, $second->updated);
+        $this->assertSame(0, $second->skipped);
+        $this->assertSame(0, $second->failed);
+
+        // Same attachment ID is preserved across the update so any posts
+        // referencing it continue to render the new file.
+        $still_present = get_post($attachment_id);
+        $this->assertNotNull($still_present);
+        $this->assertSame('attachment', $still_present->post_type);
+    }
 }
