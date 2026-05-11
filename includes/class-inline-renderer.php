@@ -360,24 +360,35 @@ final class InlineRenderer {
         // The admin-bar's CSS+JS are emitted inline into the rendered page HTML
         // (with a per-request CSP nonce) rather than enqueued, because this is
         // a bundle-output context, not a normal WP template.
+        //
+        // WP's `admin-bar` script handle declares `hoverintent-js` as a dep,
+        // and the `admin-bar` style handle declares `dashicons` as a dep. We
+        // emit both deps inline before the admin-bar tags so `admin-bar.min.js`
+        // can find `jQuery.hoverIntent` at runtime (otherwise it throws
+        // "l.hoverintent is not a function") and the toolbar's icons render
+        // instead of showing as empty squares.
         // phpcs:disable WordPress.WP.EnqueuedResources.NonEnqueuedScript, WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet
-        $bar_css = '<link rel="stylesheet" href="' . esc_url(includes_url('css/admin-bar.min.css')) . '">';
+        $dashicons_css = '<link rel="stylesheet" href="' . esc_url(includes_url('css/dashicons.min.css')) . '">';
+        $bar_css       = '<link rel="stylesheet" href="' . esc_url(includes_url('css/admin-bar.min.css')) . '">';
         $bar_bump = '<style nonce="' . esc_attr($nonce) . '">'
             . 'html{margin-top:32px!important;}'
             . '@media screen and (max-width:782px){html{margin-top:46px!important;}}'
             . '</style>';
-        $bar_js  = '<script src="' . esc_url(includes_url('js/admin-bar.min.js')) . '" nonce="' . esc_attr($nonce) . '"></script>';
+        $hoverintent_js = '<script src="' . esc_url(includes_url('js/hoverintent-js.min.js')) . '" nonce="' . esc_attr($nonce) . '"></script>';
+        $bar_js         = '<script src="' . esc_url(includes_url('js/admin-bar.min.js')) . '" nonce="' . esc_attr($nonce) . '"></script>';
         // phpcs:enable WordPress.WP.EnqueuedResources.NonEnqueuedScript, WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet
+        $head_tags = $dashicons_css . $bar_css . $bar_bump;
+        $body_tags = $hoverintent_js . $bar_js;
 
         if (preg_match('#</head>#i', $html)) {
-            $html = preg_replace('#</head>#i', $bar_css . $bar_bump . '</head>', $html, 1) ?? $html;
+            $html = preg_replace('#</head>#i', $head_tags . '</head>', $html, 1) ?? $html;
         } else {
-            $html = $bar_css . $bar_bump . $html;
+            $html = $head_tags . $html;
         }
         if (preg_match('#</body>#i', $html)) {
-            $html = preg_replace('#</body>#i', $bar . $bar_js . '</body>', $html, 1) ?? $html;
+            $html = preg_replace('#</body>#i', $bar . $body_tags . '</body>', $html, 1) ?? $html;
         } else {
-            $html .= $bar . $bar_js;
+            $html .= $bar . $body_tags;
         }
         return $html;
     }

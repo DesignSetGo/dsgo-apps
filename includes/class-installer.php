@@ -562,7 +562,6 @@ final class Installer {
         $bundle_url  = rtrim(Bundle::url_for($app_id), '/') . '/';
         $assets_url  = rtrim(plugins_url('assets/', DSGO_APPS_FILE), '/') . '/';
         $external    = $manifest->external_origins;
-        $connect_src = $external !== [] ? implode(' ', $external) : "'none'";
 
         // Apps that read site content (products, posts, users, media) get
         // image URLs back from the bridge pointing at the WP uploads root.
@@ -572,6 +571,45 @@ final class Installer {
         $content_origins = CSPBuilder::content_image_origins($manifest);
         $img_src_extra   = $content_origins !== [] ? ' ' . implode(' ', $content_origins) : '';
 
+        // Apps that opt into `content.blockStyles` render arbitrary block
+        // markup whose stylesheets, fonts, images, and embedded sub-frames
+        // live on the host site origin (`/wp-content/plugins/...`,
+        // `/wp-content/themes/...`, `/wp-includes/...`). Without widening
+        // CSP to the host origin those resources get blocked even though
+        // the opt-in explicitly trusts them.
+        //
+        // `img-src` additionally allows any `https:` origin: page authors
+        // routinely embed images from third-party hosts (Unsplash, CDNs,
+        // gravatar variants, social embeds), and the opt-in already trusts
+        // whatever the host's `wp_kses_post()` sanitizer let through.
+        // Images cannot execute, so the marginal risk over allowing all
+        // host-origin assets is minimal.
+        $block_origin    = '';
+        $block_img_extra = '';
+        $frame_src       = "'none'";
+        if ($manifest->content_block_styles !== []) {
+            $block_origin    = ' ' . home_url();
+            $block_img_extra = ' https:';
+            $frame_src       = $block_origin;
+        }
+
+        // connect-src always includes the plugin assets dir so the browser
+        // can fetch source maps (`bridge-client.js.map`) when DevTools is
+        // open. Without this, every developer sees a CSP error on every
+        // page load even though source maps are dev-only. App scripts
+        // themselves cannot read the bridge client's body — `<script src>`
+        // already loads it, and the response body is opaque to the app's
+        // sandboxed origin regardless of CSP.
+        //
+        // The block-styles opt-in does NOT widen connect-src further —
+        // same-origin XHR from injected block JS is rare and high-risk,
+        // and the bridge itself uses postMessage, not fetch.
+        $connect_sources = [$assets_url];
+        if ($external !== []) {
+            $connect_sources = array_merge($connect_sources, $external);
+        }
+        $connect_src = implode(' ', $connect_sources);
+
         // Note: `frame-ancestors` is intentionally omitted. This CSP is
         // delivered via a `<meta http-equiv>` element (DOMDocument-injected
         // into the bundle's index.html), and browsers ignore frame-ancestors
@@ -580,10 +618,11 @@ final class Installer {
         return implode('; ', [
             "default-src 'none'",
             "script-src $assets_url $bundle_url 'unsafe-inline'",
-            "style-src $bundle_url 'unsafe-inline'",
-            "img-src $bundle_url data: blob:" . $img_src_extra,
-            "font-src $bundle_url",
+            "style-src $bundle_url 'unsafe-inline'" . $block_origin,
+            "img-src $bundle_url data: blob:" . $img_src_extra . $block_origin . $block_img_extra,
+            "font-src $bundle_url" . $block_origin,
             "connect-src $connect_src",
+            "frame-src $frame_src",
         ]);
     }
 
