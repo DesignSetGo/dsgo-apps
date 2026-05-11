@@ -1604,7 +1604,7 @@ final readonly class Manifest {
                 throw new ManifestError("$path.id", 'webhook_id_invalid: must match ^[a-z][a-z0-9-]{0,63}$');
             }
             if (isset($seen_ids[$id])) {
-                throw new ManifestError("$path.id", sprintf('webhooks_duplicate_id: "%s"', $id));
+                throw new ManifestError("$path.id", sprintf('webhook_duplicate_id: "%s"', $id));
             }
             $seen_ids[$id] = true;
 

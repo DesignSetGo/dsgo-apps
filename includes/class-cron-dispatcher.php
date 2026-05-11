@@ -40,11 +40,12 @@ final class CronDispatcher {
     private const ERROR_MSG_MAX = 1000;
 
     /**
-     * Default per-job timeout in seconds when the ability doesn't carry
-     * one. Mirrors the manifest validator's default in
-     * Manifest::validate_published_ability().
+     * Fallback timeout in seconds, used when the manifest entry doesn't
+     * carry a `timeout_seconds` value AND we can't read it from post meta
+     * (e.g. malformed manifest array). Matches the manifest validator's
+     * default in Manifest::validate_published_ability().
      */
-    private const DEFAULT_TIMEOUT_SECONDS = 30;
+    private const FALLBACK_TIMEOUT_SECONDS = 30;
 
     /**
      * Fire the ability scheduled for (app_id, job_id). Bound to
@@ -68,6 +69,7 @@ final class CronDispatcher {
             self::log_error($app_id, $job_id, $ability_name, $start_ms, 'cron_app_not_found', 'App not found');
             return;
         }
+        $app_post_id = $posts[0]->ID;
 
         // Step 2: resolve the ability. The companion plugin may not be
         // installed yet (or may have been deactivated). Check existence
@@ -89,14 +91,26 @@ final class CronDispatcher {
             return;
         }
 
-        // Step 3: budget the request. PHP-CLI cron runs without a hard
-        // time-limit; long jobs in fpm should at least raise the ceiling.
+        // Step 3: budget the request. Read the published ability's
+        // `timeout_seconds` from the stored manifest (the manifest
+        // validator caps it at 5-120; falls back to 30 otherwise) and
+        // raise the request's time limit to that + 10s headroom for the
+        // log write. PHP-CLI cron runs without a hard ceiling, but fpm
+        // workers need this so a slow ability doesn't trip max_execution.
+        $timeout = self::resolve_timeout($app_post_id, $ability_name);
         if (function_exists('set_time_limit')) {
-            @set_time_limit(self::DEFAULT_TIMEOUT_SECONDS + 10);
+            set_time_limit($timeout + 10);
         }
 
-        // Step 4: execute. Catch every Throwable so the cron tick never
-        // surfaces a fatal to WP-cron's process supervisor.
+        // Step 4: execute. The WP_Ability::execute wrapper already
+        // catches Throwables from the callback and returns them as
+        // WP_Error('ability_callback_exception'); that path is handled
+        // in the is_wp_error branch below. The outer try/catch here is
+        // defensive belt-and-suspenders for the rare case where
+        // $ability->execute itself throws BEFORE the wrapper engages —
+        // e.g. a malformed WP_Ability instance, a fatal during input
+        // validation, or an Abilities-API bug. Cron must never surface
+        // a fatal to wp-cron's process supervisor.
         try {
             $result = $ability->execute(null);
         } catch (\Throwable $e) {
@@ -158,5 +172,29 @@ final class CronDispatcher {
 
     private static function now_ms(): int {
         return (int) round(microtime(true) * 1000);
+    }
+
+    /**
+     * Resolve the published-ability `timeout_seconds` declared in the
+     * manifest stored on the app's post. Returns FALLBACK_TIMEOUT_SECONDS
+     * if the manifest can't be read or the ability entry is missing —
+     * the dispatcher must always succeed in budgeting itself rather than
+     * blocking dispatch on meta-read corner cases.
+     */
+    private static function resolve_timeout(int $app_post_id, string $ability_name): int {
+        $manifest_arr = get_post_meta($app_post_id, 'dsgo_apps_manifest', true);
+        if (!is_array($manifest_arr)) {
+            return self::FALLBACK_TIMEOUT_SECONDS;
+        }
+        $publishes = $manifest_arr['abilities']['publishes'] ?? null;
+        if (!is_array($publishes)) {
+            return self::FALLBACK_TIMEOUT_SECONDS;
+        }
+        foreach ($publishes as $entry) {
+            if (is_array($entry) && ($entry['name'] ?? null) === $ability_name && isset($entry['timeout_seconds']) && is_int($entry['timeout_seconds'])) {
+                return $entry['timeout_seconds'];
+            }
+        }
+        return self::FALLBACK_TIMEOUT_SECONDS;
     }
 }

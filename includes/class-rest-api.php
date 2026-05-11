@@ -607,6 +607,12 @@ final class RestApi {
         self::cleanup_user_storage_batch((int) $post->ID);
 
         AbilitiesPublisher::unregister_for_app($id);
+        // TODO(Task 7+): also call
+        //   CronScheduler::unschedule_all($id, $job_ids_from_manifest)
+        // here so deleting an app doesn't leave orphan cron events
+        // pointing at a vanished ability. The dispatcher would log
+        // cron_app_not_found on each tick if we don't — survivable
+        // but noisy and indefinite.
         // Purge the per-app sodium-encrypted secret vault. The plugin-wide
         // uninstall.php sweep catches stragglers via wp_options LIKE, but
         // a per-app delete should drop the encrypted blob immediately

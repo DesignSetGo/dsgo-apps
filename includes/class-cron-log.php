@@ -76,7 +76,7 @@ final class CronLog {
      */
     public static function insert(array $row): void {
         global $wpdb;
-        $wpdb->insert(
+        $ok = $wpdb->insert(
             self::table_name(),
             [
                 'app_id'       => $row['app_id'],
@@ -90,6 +90,19 @@ final class CronLog {
             ],
             ['%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s'],
         );
+        if ($ok === false) {
+            // Audit gaps are silent by nature — if we can't write the
+            // row, leave a breadcrumb in the PHP error log so missing
+            // history isn't invisible to operators. We deliberately do
+            // NOT throw: the caller is mid-cron-tick and we never want
+            // log-write failures to mask the underlying job outcome.
+            error_log(sprintf(
+                'dsgo_apps: CronLog::insert failed (app=%s job=%s): %s',
+                $row['app_id'] ?? '?',
+                $row['job_id'] ?? '?',
+                $wpdb->last_error,
+            ));
+        }
     }
 
     /**

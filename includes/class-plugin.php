@@ -203,24 +203,40 @@ final class Plugin {
 
     /**
      * Bind every installed app's scheduled jobs to CronDispatcher::run.
-     * Iterates published dsgo_app posts, reads each manifest's
-     * scheduled.jobs[], and registers one `add_action` per job pointing
-     * at the dispatcher with the (app_id, job_id, ability_name) args
-     * curried in. Idempotent within a single request — WordPress
-     * dedupes identical add_action calls.
      *
-     * Bound to `init` at priority 9 so the hooks resolve before
-     * wp-cron's `wp_cron()` runs on `init` priority 10 (the default).
+     * Gated on `wp_doing_cron() || is_admin()` because the hook bindings
+     * only matter (a) when wp-cron fires the registered hooks, or
+     * (b) when the admin "Run now" button dispatches via admin-ajax.
+     * Skipping the scan on front-end page loads avoids per-request
+     * metaqueries for every installed app on every visitor request.
+     *
+     * Memoized within a single request via wp_cache_set so the scan
+     * runs at most once per worker even when the hook fires multiple
+     * times (e.g. admin-ajax + nested init).
+     *
+     * TODO(Task 7+): replace the per-request scan with a transient
+     * primed by Installer::install / RestApi::delete_app, so cron
+     * boot doesn't pay the post+meta cost at all in the steady state.
+     * The transient should be keyed by (app_id, job_id, ability) and
+     * invalidated on install / update / delete.
      */
     public static function register_cron_dispatch_hooks(): void {
-        $apps = get_posts([
+        if (!wp_doing_cron() && !is_admin()) {
+            return;
+        }
+        if (wp_cache_get('dispatch_hooks_bound', 'dsgo_apps_cron') === true) {
+            return;
+        }
+        wp_cache_set('dispatch_hooks_bound', true, 'dsgo_apps_cron');
+
+        $app_ids = get_posts([
             'post_type'      => PostType::SLUG,
             'post_status'    => 'publish',
             'posts_per_page' => -1,
             'no_found_rows'  => true,
             'fields'         => 'ids',
         ]);
-        foreach ($apps as $post_id) {
+        foreach ($app_ids as $post_id) {
             $post = get_post($post_id);
             if (!$post instanceof \WP_Post) continue;
             $manifest_arr = get_post_meta($post_id, 'dsgo_apps_manifest', true);

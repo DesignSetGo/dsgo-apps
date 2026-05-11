@@ -44,12 +44,12 @@ final class ManifestWebhooksValidationTest extends WP_UnitTestCase {
         $this->assertCount(10, $manifest->webhook_endpoints());
     }
 
-    public function test_webhooks_duplicate_id_rejected(): void {
+    public function test_webhook_duplicate_id_rejected(): void {
         $arr = $this->webhook_manifest([
             $this->valid_endpoint('stripe-events'),
             $this->valid_endpoint('stripe-events'),
         ]);
-        $this->expectExceptionMessage('webhooks_duplicate_id');
+        $this->expectExceptionMessage('webhook_duplicate_id');
         Manifest::validate($arr);
     }
 
