@@ -157,7 +157,7 @@ final class WebhookQueue {
      */
     public static function mark_failed(int $id, string $error_msg): void {
         global $wpdb;
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- custom queue table; $wpdb->update is the correct WP API for write-path queue status updates; no caching layer applies to mutable queue state
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom queue table; $wpdb->update is the correct WP API for write-path queue status updates; no caching layer applies to mutable queue state
         $wpdb->update(
             self::table_name(),
             [
@@ -176,7 +176,7 @@ final class WebhookQueue {
      */
     public static function delete(int $id): void {
         global $wpdb;
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- custom queue table; $wpdb->delete is the correct WP API for removing processed queue rows; no caching layer applies to this cleanup path
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom queue table; $wpdb->delete is the correct WP API for removing processed queue rows; no caching layer applies to this cleanup path
         $wpdb->delete(self::table_name(), ['id' => $id], ['%d']);
     }
 }

@@ -19,6 +19,9 @@ declare(strict_types=1);
 
 defined('ABSPATH') || exit;
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound
+// Template-scope locals (passed in by AdminPage::render_cron_tab), not plugin globals.
+
 /** @var array{
  *   app_id:string,
  *   app_name:string,

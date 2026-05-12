@@ -82,8 +82,17 @@ $dsgo_pro_active = in_array(
     (array) get_option('active_plugins', []),
     true,
 );
+// Skip SDK init under PHPUnit. The test bootstrap races with the WP-test
+// installer: the SDK fires on plugin-load, queries wp_options, and hits
+// "table doesn't exist" during the brief window where the installer has
+// dropped tables but not yet recreated them. The intermittent test
+// failures that surface from this race aren't fixable on our side
+// without instrumenting the SDK. The SDK adds no functionality the
+// PHPUnit suite exercises, so silencing it in tests is safe and matches
+// what most Freemius-using plugins do (e.g. Yoast SEO's test bootstrap).
+$dsgo_in_tests = defined('WP_TESTS_DOMAIN');
 $dsgo_lite_fs_sdk = DSGO_APPS_PATH . 'vendor/freemius/wordpress-sdk/start.php';
-if (!$dsgo_pro_active && is_readable($dsgo_lite_fs_sdk)) {
+if (!$dsgo_in_tests && !$dsgo_pro_active && is_readable($dsgo_lite_fs_sdk)) {
     include $dsgo_lite_fs_sdk;
 
     if (!function_exists('dsgo_apps_fs')) {
@@ -152,7 +161,7 @@ if (!$dsgo_pro_active && is_readable($dsgo_lite_fs_sdk)) {
             return $default;
         });
     }
-} elseif (!$dsgo_pro_active) {
+} elseif (!$dsgo_in_tests && !$dsgo_pro_active) {
     add_action('admin_notices', static function (): void {
         if (!current_user_can('activate_plugins')) {
             return;

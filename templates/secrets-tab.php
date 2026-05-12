@@ -36,6 +36,9 @@ declare(strict_types=1);
 
 defined('ABSPATH') || exit;
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound
+// Template-scope locals (passed in by AdminPage::render_secrets_tab), not plugin globals.
+
 $ctx_set_aliases = array_flip($ctx['set_aliases']);
 $ctx_required    = array_flip($ctx['required']);
 $missing_required = array_diff($ctx['required'], $ctx['set_aliases']);
