@@ -621,8 +621,11 @@ final class InlineRenderer {
         return preg_replace_callback($tag_re, function (array $m) use ($prefix, $is_root, $upload_base, $route_prefix, $routes, $is_bundle_file, $bundle_dir): string {
             $tag   = strtolower($m[1]);
             $attrs = $m[2];
-            // Anchors only rewrite `href`; everything else uses src/href as before.
-            $candidate_attrs = $tag === 'a' ? ['href'] : ['src', 'href'];
+            // Anchors rewrite `href`; <video> also exposes `poster` to a still
+            // image; everything else uses `src`/`href`.
+            $candidate_attrs = $tag === 'a'
+                ? ['href']
+                : ($tag === 'video' ? ['src', 'href', 'poster'] : ['src', 'href']);
             foreach ($candidate_attrs as $attr) {
                 $val = self::extract_attr_local($attrs, $attr);
                 if ($val === null || $val === '') continue;
@@ -943,6 +946,16 @@ final class InlineRenderer {
             status_header(200);
             self::stream_asset($asset_abs);
             exit;
+        }
+        // If the manifest declares a `/404` static route, serve it with a 404
+        // status so root-mounted apps own the not-found surface (URL stays
+        // as-is). Apps without a `/404` route fall through to WP's native
+        // 404 template.
+        foreach ($manifest->routes as $r) {
+            if (($r['path'] ?? null) === '/404') {
+                self::emit_404($manifest);
+                exit;
+            }
         }
         // Fall through — let WP serve its normal 404 template.
     }

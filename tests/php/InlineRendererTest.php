@@ -41,6 +41,21 @@ class InlineRendererTest extends WP_UnitTestCase {
         $this->assertNull(InlineRenderer::resolve_route($manifest, '/nope'));
     }
 
+    public function test_resolves_custom_404_route(): void {
+        // A manifest may declare a `/404` static route; the root-mount
+        // dispatcher serves it (with HTTP 404) when no other route or asset
+        // matches, in place of WP's native 404 template.
+        $arr = $this->minimal_inline_manifest();
+        $arr['mount'] = ['mode' => 'root'];
+        $arr['routes'][] = ['path' => '/404', 'file' => '404.html', 'title' => 'Not found'];
+        $manifest = Manifest::validate($arr);
+        $resolved = InlineRenderer::resolve_route($manifest, '/404');
+        $this->assertNotNull($resolved);
+        [$hit] = $resolved;
+        $this->assertSame('/404', $hit['path']);
+        $this->assertSame('404.html', $hit['file']);
+    }
+
     // --- routes[].claim (added 2026-05-10) ---
 
     public function test_route_claims_path_returns_true_for_claimed_static_route(): void {
@@ -196,6 +211,30 @@ class InlineRendererTest extends WP_UnitTestCase {
         // Non-bundle paths must be left alone (route link + WP path).
         $this->assertStringContainsString('href="/contact"', $out);
         $this->assertStringContainsString('src="/wp-content/uploads/img.png"', $out);
+    }
+
+    public function test_rewrite_bundle_asset_paths_rewrites_video_poster_and_sources(): void {
+        // A `<video>` element with `poster` plus child `<source>` tags: all
+        // three asset URLs must be rewritten to the upload URL. Without
+        // poster handling, managed-host nginx fast-paths 404 the thumbnail
+        // while sources load, producing a blank video box on first paint.
+        $bundle = sys_get_temp_dir() . '/dsgo-video-poster-' . uniqid();
+        mkdir($bundle, 0755, true);
+        file_put_contents($bundle . '/clip.webm', 'webm');
+        file_put_contents($bundle . '/clip.mp4',  'mp4');
+        file_put_contents($bundle . '/clip-poster.jpg', 'jpg');
+        $arr      = $this->minimal_inline_manifest();
+        $arr['id'] = 'demo';
+        $manifest = Manifest::validate($arr);
+        $html = '<video class="x" autoplay muted loop playsinline preload="metadata" poster="/clip-poster.jpg">'
+              . '<source src="/clip.webm" type="video/webm">'
+              . '<source src="/clip.mp4" type="video/mp4">'
+              . '</video>';
+        $out = InlineRenderer::rewrite_bundle_asset_paths($html, $bundle, $manifest);
+        $upload_re = preg_quote(rtrim((string) wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH), '/'), '#');
+        $this->assertMatchesRegularExpression('#poster="' . $upload_re . '/clip-poster\.jpg(?:\?v=\d+)?"#', $out);
+        $this->assertMatchesRegularExpression('#src="' . $upload_re . '/clip\.webm(?:\?v=\d+)?"#', $out);
+        $this->assertMatchesRegularExpression('#src="' . $upload_re . '/clip\.mp4(?:\?v=\d+)?"#', $out);
     }
 
     public function test_prefixed_mount_routes_use_prefix_not_upload_url(): void {
