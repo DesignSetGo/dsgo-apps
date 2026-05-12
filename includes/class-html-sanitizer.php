@@ -407,7 +407,19 @@ final class HtmlSanitizer {
     }
 
     private static function strip_javascript_in_attrs(string $html): string {
-        return preg_replace('#\s+(href|src|action|formaction)\s*=\s*"(?:\s*(?:javascript|vbscript):[^"]*)"#i', '', $html) ?? $html;
+        // Match javascript:/vbscript: URIs in any HTML5 attribute-value form
+        // (double-quoted, single-quoted, unquoted). Anchors `action`/`formaction`
+        // aren't always in WP's URL-protocol enforcement, so this is the only
+        // line of defense for those — supporting just double-quoted left
+        // single-quoted/unquoted javascript: URIs intact.
+        return preg_replace(
+            '#\s+(href|src|action|formaction)\s*=\s*'
+            . '(?:"\s*(?:javascript|vbscript):[^"]*"'
+            . '|\'\s*(?:javascript|vbscript):[^\']*\''
+            . '|(?:javascript|vbscript):[^\s>]*)#i',
+            '',
+            $html,
+        ) ?? $html;
     }
 
     private static function strip_data_uri_outside_img(string $html): string {
@@ -421,7 +433,12 @@ final class HtmlSanitizer {
 
     private static function strip_data_in_attrs(string $tag, array $attrs): string {
         foreach ($attrs as $a) {
-            $tag = preg_replace('#\s+' . preg_quote($a, '#') . '\s*=\s*"data:[^"]*"#i', '', $tag) ?? $tag;
+            $tag = preg_replace(
+                '#\s+' . preg_quote($a, '#') . '\s*=\s*'
+                . '(?:"data:[^"]*"|\'data:[^\']*\'|data:[^\s>]*)#i',
+                '',
+                $tag,
+            ) ?? $tag;
         }
         return $tag;
     }
@@ -430,18 +447,35 @@ final class HtmlSanitizer {
     private static array $extract_attr_pattern_cache = [];
 
     private static function extract_attr(string $attrs, string $name): ?string {
-        // Cache compiled pattern strings per attribute name so the
-        // hot-path callers (every <script>, <link>, <iframe> in the
-        // document) don't burn CPU on `preg_quote()` for the same
-        // half-dozen attribute names per request. PHP also caches
-        // compiled regex internally, so a stable pattern string hits
-        // that cache too.
+        // Match all three HTML5 attribute-value forms:
+        //   name="value"   double-quoted
+        //   name='value'   single-quoted
+        //   name=value     unquoted (terminated by whitespace, `>`, or end)
+        // Matching only double-quoted previously let single-quoted/unquoted
+        // attributes slip past every callsite that read a value here —
+        // including `src` on the remote-script-rejection path, which made
+        // `<script src='https://evil/x.js'>` survive sanitize and then get
+        // nonce-stamped by the inline renderer.
+        //
+        // Cache compiled pattern strings per attribute name so the hot-path
+        // callers (every <script>, <link>, <iframe> in the document) don't
+        // burn CPU on `preg_quote()` for the same half-dozen attribute names
+        // per request.
         if (!isset(self::$extract_attr_pattern_cache[$name])) {
             self::$extract_attr_pattern_cache[$name] =
-                '#\b' . preg_quote($name, '#') . '\s*=\s*"([^"]*)"#i';
+                '#\b' . preg_quote($name, '#')
+                . '\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+))#i';
         }
         if (preg_match(self::$extract_attr_pattern_cache[$name], $attrs, $m)) {
-            return $m[1];
+            // PCRE leaves un-matched alternation groups as empty strings (or
+            // unset on older versions); whichever quoting form matched is the
+            // first non-empty capture.
+            if (isset($m[1]) && $m[1] !== '') return $m[1];
+            if (isset($m[2]) && $m[2] !== '') return $m[2];
+            if (isset($m[3]) && $m[3] !== '') return $m[3];
+            // All three groups empty means an explicit empty value
+            // (`name=""` / `name=''`); preserve that distinction.
+            return '';
         }
         return null;
     }

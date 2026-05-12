@@ -197,8 +197,20 @@ final class AsyncWebhookHandler {
             return;
         }
 
-        // Step 5: success. Drop the row so the encrypted payload
-        // doesn't linger past dispatch.
+        // Step 5: success. Record the idempotency key so a retried
+        // delivery of the same signed event is short-circuited at the
+        // sync handler's check (step 5 of WebhookHandler::handle). The
+        // sync path records here on success; the async path used to
+        // skip this — meaning Stripe / GitHub / Slack retries of an
+        // already-completed event would re-execute the bound ability.
+        // record() is a no-op for empty event ids, so unconditional.
+        WebhookIdempotency::record(
+            $row['app_id'],
+            $row['endpoint_id'],
+            (string) ($row['idempotency_key'] ?? ''),
+        );
+        // Drop the row so the encrypted payload doesn't linger past
+        // dispatch.
         WebhookQueue::delete($queue_row_id);
         WebhookLog::insert([
             'app_id'      => $row['app_id'],

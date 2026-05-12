@@ -213,6 +213,53 @@ class InlineRendererTest extends WP_UnitTestCase {
         $this->assertStringContainsString('src="/wp-content/uploads/img.png"', $out);
     }
 
+    /**
+     * Pairs with the HtmlSanitizer attribute-quoting fix: extract_attr_local
+     * now reads single-quoted and unquoted attribute values, so the URL
+     * rewriter must also REWRITE them while preserving the author's original
+     * quoting style. Otherwise a single-quoted bundle path would survive the
+     * extract step but the rewrite would silently no-op (or worse, swap to
+     * double-quoted and break a CSP rule that pinned the exact attribute
+     * shape).
+     */
+    public function test_rewrite_preserves_single_quoted_attribute(): void {
+        $bundle = sys_get_temp_dir() . '/dsgo-rewrite-sq-' . uniqid();
+        mkdir($bundle . '/_astro', 0755, true);
+        file_put_contents($bundle . '/_astro/foo.js', '/* x */');
+        $arr = $this->minimal_inline_manifest();
+        $arr['id'] = 'demo';
+        $manifest = Manifest::validate($arr);
+        $html = "<script src='/_astro/foo.js'></script>";
+        $out = InlineRenderer::rewrite_bundle_asset_paths($html, $bundle, $manifest);
+        $upload_path = rtrim((string) wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH), '/');
+        $upload_path_re = preg_quote($upload_path, '#');
+        // Rewritten value present AND wrapped in the original single quotes.
+        $this->assertMatchesRegularExpression(
+            "#src='" . $upload_path_re . "/_astro/foo\\.js(?:\\?v=\\d+)?'#",
+            $out,
+            'single-quoted bundle path should be rewritten in single quotes',
+        );
+    }
+
+    public function test_rewrite_preserves_unquoted_attribute(): void {
+        $bundle = sys_get_temp_dir() . '/dsgo-rewrite-uq-' . uniqid();
+        mkdir($bundle . '/_astro', 0755, true);
+        file_put_contents($bundle . '/_astro/foo.js', '/* x */');
+        $arr = $this->minimal_inline_manifest();
+        $arr['id'] = 'demo';
+        $manifest = Manifest::validate($arr);
+        $html = '<script src=/_astro/foo.js></script>';
+        $out = InlineRenderer::rewrite_bundle_asset_paths($html, $bundle, $manifest);
+        $upload_path = rtrim((string) wp_parse_url(Bundle::url_for($manifest->id), PHP_URL_PATH), '/');
+        $upload_path_re = preg_quote($upload_path, '#');
+        // Rewritten value present, still unquoted, terminated by the closing `>`.
+        $this->assertMatchesRegularExpression(
+            '#src=' . $upload_path_re . '/_astro/foo\\.js(?:\\?v=\\d+)?>#',
+            $out,
+            'unquoted bundle path should be rewritten without adding quotes',
+        );
+    }
+
     public function test_rewrite_bundle_asset_paths_rewrites_video_poster_and_sources(): void {
         // A `<video>` element with `poster` plus child `<source>` tags: all
         // three asset URLs must be rewritten to the upload URL. Without

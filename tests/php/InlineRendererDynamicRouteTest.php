@@ -131,6 +131,60 @@ class InlineRendererDynamicRouteTest extends WP_UnitTestCase {
         $this->assertSame($tpl, $out);
     }
 
+    /**
+     * Security regression: a `{{{field}}}` raw substitution must not be able to
+     * introduce a new `<script>` tag into the document. The downstream sanitizer
+     * intentionally allows inline `<script>` blocks so the renderer can stamp a
+     * per-request CSP nonce on them — that's safe for AUTHOR-supplied scripts in
+     * the static template, but a script value coming from dataset content (which
+     * may originate from a lower-trust author) would also get nonce-stamped and
+     * execute in the inline page's WordPress origin.
+     */
+    public function test_raw_substitution_strips_script_tag(): void {
+        $tpl = '<div>{{{message}}}</div>';
+        $out = InlineRenderer::substitute($tpl, [
+            'message' => '<p>hi</p><script>alert(1)</script>',
+        ]);
+        $this->assertStringContainsString('<p>hi</p>', $out);
+        $this->assertStringNotContainsString('<script', $out);
+        $this->assertStringNotContainsString('alert(1)', $out);
+    }
+
+    public function test_raw_substitution_strips_script_with_attributes(): void {
+        $tpl = '<div>{{{html}}}</div>';
+        $out = InlineRenderer::substitute($tpl, [
+            'html' => '<p>ok</p><script type="module" src="https://evil/x.js"></script>',
+        ]);
+        $this->assertStringContainsString('<p>ok</p>', $out);
+        $this->assertStringNotContainsString('<script', $out);
+        $this->assertStringNotContainsString('evil', $out);
+    }
+
+    public function test_raw_substitution_strips_script_with_single_quoted_attrs(): void {
+        // Pairs with the single-quoted-attr fix in HtmlSanitizer — a downstream
+        // attacker who controls dataset content shouldn't be able to bypass via
+        // single quotes either.
+        $tpl = '<section>{{{body}}}</section>';
+        $out = InlineRenderer::substitute($tpl, [
+            'body' => "<script src='https://evil/x.js'></script>safe",
+        ]);
+        $this->assertStringContainsString('safe', $out);
+        $this->assertStringNotContainsString('<script', $out);
+    }
+
+    public function test_raw_substitution_preserves_template_script_blocks(): void {
+        // The strip targets scripts INTRODUCED by raw values; legitimate
+        // `<script>` tags in the static template must survive substitution
+        // unchanged so the renderer can nonce-stamp them.
+        $tpl = '<script>const x = 1;</script><div>{{{html}}}</div>';
+        $out = InlineRenderer::substitute($tpl, [
+            'html' => '<script>alert(1)</script>kept',
+        ]);
+        $this->assertStringContainsString('<script>const x = 1;</script>', $out);
+        $this->assertStringNotContainsString('alert(1)', $out);
+        $this->assertStringContainsString('kept', $out);
+    }
+
     public function test_substitute_treats_literal_double_brace_in_raw_value_as_text(): void {
         // Dataset entry contains literal "{{ literal }}" — the second pass must
         // NOT re-substitute it, since {{{}}} ran first and the value was

@@ -6,6 +6,7 @@ namespace DSGo_Apps\Tests;
 use DSGo_Apps\AsyncWebhookHandler;
 use DSGo_Apps\PostType;
 use DSGo_Apps\Secret_Vault;
+use DSGo_Apps\WebhookIdempotency;
 use DSGo_Apps\WebhookLog;
 use DSGo_Apps\WebhookQueue;
 use WP_UnitTestCase;
@@ -128,6 +129,57 @@ final class AsyncWebhookHandlerTest extends WP_UnitTestCase {
         $this->assertSame('ok', $rows[0]['status']);
         $this->assertSame(1, (int) $rows[0]['async']);
         $this->assertSame(200, (int) $rows[0]['http_status']);
+    }
+
+    /**
+     * Security regression: the sync webhook handler records the idempotency
+     * key after success so duplicate signed deliveries are short-circuited.
+     * The async path stored the key on the queue row but never wrote it to
+     * the idempotency cache after success — a provider retry of the same
+     * signed event would re-execute the bound ability.
+     */
+    public function test_run_on_success_records_idempotency_key(): void {
+        $this->install_app_with_endpoint('myapp', 'stripe-events', 'myapp/handle', fn () => ['ok' => true]);
+        $id = AsyncWebhookHandler::enqueue('myapp', 'stripe-events', 'evt_dedupe_me', '{}', '{}');
+
+        // Sanity: nothing recorded yet.
+        $this->assertFalse(WebhookIdempotency::check('myapp', 'stripe-events', 'evt_dedupe_me'));
+
+        AsyncWebhookHandler::run($id);
+
+        $this->assertTrue(
+            WebhookIdempotency::check('myapp', 'stripe-events', 'evt_dedupe_me'),
+            'a successful async delivery must record the idempotency key so retries are deduped',
+        );
+    }
+
+    public function test_run_on_success_with_no_idempotency_key_does_not_record_empty(): void {
+        // Empty/null key path: record() is a no-op for empty event ids;
+        // the handler should still succeed cleanly without writing a
+        // garbage transient that would collide with other empty-id events.
+        $this->install_app_with_endpoint('myapp', 'stripe-events', 'myapp/handle', fn () => ['ok' => true]);
+        $id = AsyncWebhookHandler::enqueue('myapp', 'stripe-events', null, '{}', '{}');
+
+        AsyncWebhookHandler::run($id);
+
+        $this->assertNull(WebhookQueue::get($id));
+        $this->assertFalse(WebhookIdempotency::check('myapp', 'stripe-events', ''));
+    }
+
+    public function test_run_wp_error_does_not_record_idempotency(): void {
+        // A retryable failure must NOT record the idempotency key — otherwise
+        // the retry on the next cron tick would be incorrectly deduped at
+        // the sync layer and the event would be lost. (The async path
+        // resumes by queue row id, not by re-entering the sync handler,
+        // so technically the cache wouldn't bite, but recording on failure
+        // is still wrong: a fresh re-delivery from the provider would be
+        // suppressed under the impression we'd succeeded.)
+        $this->install_app_with_endpoint('myapp', 'stripe-events', 'myapp/handle', fn () => new \WP_Error('upstream', 'transient'));
+        $id = AsyncWebhookHandler::enqueue('myapp', 'stripe-events', 'evt_failing', '{}', '{}');
+
+        AsyncWebhookHandler::run($id);
+
+        $this->assertFalse(WebhookIdempotency::check('myapp', 'stripe-events', 'evt_failing'));
     }
 
     public function test_run_wp_error_increments_attempts_and_reschedules(): void {

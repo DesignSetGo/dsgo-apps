@@ -272,4 +272,89 @@ class HtmlSanitizerTest extends WP_UnitTestCase {
             'allow_root_paths' => true,
         ]);
     }
+
+    /**
+     * Regression: the attribute extractor only matched double-quoted values, so
+     * single-quoted and unquoted attributes slipped past every check that read
+     * a value out of an attribute (`src`, `href`, `type`, `nonce`, `rel`).
+     * A bundle could ship `<script src='https://evil/x.js'>` and the renderer
+     * would nonce-stamp it, executing the remote script in WordPress origin.
+     */
+    public function test_rejects_single_quoted_remote_script_src(): void {
+        $this->expectException(HtmlSanitizerError::class);
+        $this->expectExceptionMessage('script src');
+        HtmlSanitizer::sanitize("<script src='https://evil.example/x.js'></script>", [
+            'nonce' => 'NONCE',
+        ]);
+    }
+
+    public function test_rejects_unquoted_remote_script_src(): void {
+        $this->expectException(HtmlSanitizerError::class);
+        $this->expectExceptionMessage('script src');
+        HtmlSanitizer::sanitize('<script src=https://evil.example/x.js></script>', [
+            'nonce' => 'NONCE',
+        ]);
+    }
+
+    public function test_rejects_single_quoted_protocol_relative_script(): void {
+        $this->expectException(HtmlSanitizerError::class);
+        $this->expectExceptionMessage('script src');
+        HtmlSanitizer::sanitize("<script src='//cdn.evil/x.js'></script>", [
+            'nonce' => 'NONCE',
+        ]);
+    }
+
+    public function test_rejects_single_quoted_remote_link_stylesheet(): void {
+        // `<link rel='stylesheet' href='...'>` — same attribute-extraction bug
+        // path. Browsers fetch & apply the remote stylesheet, which can render
+        // attacker-controlled CSS over the WP-origin inline page.
+        $this->expectException(HtmlSanitizerError::class);
+        HtmlSanitizer::sanitize("<link rel='stylesheet' href='https://evil/x.css'>", [
+            'nonce' => 'NONCE',
+        ]);
+    }
+
+    public function test_strips_javascript_uri_in_single_quoted_href(): void {
+        // strip_javascript_in_attrs only matched double-quoted attrs, so a
+        // single-quoted javascript: URI rode through.
+        $html = "<a href='javascript:alert(1)'>x</a>";
+        $out = HtmlSanitizer::sanitize($html, ['nonce' => 'NONCE']);
+        $this->assertStringNotContainsString('javascript:', $out);
+    }
+
+    public function test_strips_javascript_uri_in_unquoted_href(): void {
+        $html = '<a href=javascript:alert(1)>x</a>';
+        $out = HtmlSanitizer::sanitize($html, ['nonce' => 'NONCE']);
+        $this->assertStringNotContainsString('javascript:', $out);
+    }
+
+    public function test_rejects_single_quoted_mismatched_script_nonce(): void {
+        // A bundled script with single-quoted nonce that disagrees with the
+        // per-request nonce should fail loud, same as the double-quoted case.
+        $this->expectException(HtmlSanitizerError::class);
+        $this->expectExceptionMessage('match the per-request nonce');
+        HtmlSanitizer::sanitize("<script src='./app.js' nonce='WRONG'></script>", [
+            'nonce' => 'NONCE',
+        ]);
+    }
+
+    public function test_allows_single_quoted_bundled_script(): void {
+        // Once the extractor handles single quotes, legitimate single-quoted
+        // bundle-relative scripts must still pass.
+        $out = HtmlSanitizer::sanitize("<script src='./assets/app.js'></script>", [
+            'nonce' => 'NONCE',
+        ]);
+        $this->assertStringContainsString('app.js', $out);
+    }
+
+    public function test_inert_type_application_json_recognised_with_single_quotes(): void {
+        // `<script type='application/json'>` is inert; the body-content rule
+        // for executable scripts must not reject it just because of quoting.
+        $out = HtmlSanitizer::sanitize(
+            "<script type='application/json' id='data'>{\"x\":1}</script>",
+            ['nonce' => 'NONCE'],
+        );
+        $this->assertStringContainsString('application/json', $out);
+        $this->assertStringContainsString('"x":1', $out);
+    }
 }

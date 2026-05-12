@@ -666,9 +666,24 @@ final class InlineRenderer {
                         $new_val .= $sep . 'v=' . $mtime;
                     }
                 }
-                $attrs = preg_replace(
-                    '#(\b' . preg_quote($attr, '#') . '\s*=\s*")' . preg_quote($val, '#') . '(")#',
-                    '$1' . $new_val . '$2',
+                // Rewrite the attribute value while preserving the author's
+                // original quoting style (`"`, `'`, or unquoted). Matching
+                // double-quoted only would silently no-op on single-quoted
+                // bundle paths and they would be left pointing at routes the
+                // host web server can't resolve.
+                $attrs = preg_replace_callback(
+                    '#(\b' . preg_quote($attr, '#') . '\s*=\s*)'
+                    . '(?:"' . preg_quote($val, '#') . '"'
+                    . '|\'' . preg_quote($val, '#') . '\''
+                    . '|(' . preg_quote($val, '#') . ')(?=[\s>]|$))#',
+                    static function (array $m) use ($new_val): string {
+                        // $m[1] is the `name=` prefix; the byte right after
+                        // tells us how the original value was quoted.
+                        $after_eq = substr($m[0], strlen($m[1]), 1);
+                        if ($after_eq === '"') return $m[1] . '"' . $new_val . '"';
+                        if ($after_eq === "'") return $m[1] . "'" . $new_val . "'";
+                        return $m[1] . $new_val;
+                    },
                     $attrs,
                     1,
                 ) ?? $attrs;
@@ -711,8 +726,18 @@ final class InlineRenderer {
     }
 
     private static function extract_attr_local(string $attrs, string $name): ?string {
-        if (preg_match('#\b' . preg_quote($name, '#') . '\s*=\s*"([^"]*)"#i', $attrs, $m)) {
-            return $m[1];
+        // Match all three HTML5 attribute-value forms (double-quoted,
+        // single-quoted, unquoted). Mirrors HtmlSanitizer::extract_attr;
+        // see that method's comment for context. Without this, the URL
+        // rewriter and nonce-stamper silently skipped any attribute whose
+        // value wasn't double-quoted.
+        $pattern = '#\b' . preg_quote($name, '#')
+            . '\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+))#i';
+        if (preg_match($pattern, $attrs, $m)) {
+            if (isset($m[1]) && $m[1] !== '') return $m[1];
+            if (isset($m[2]) && $m[2] !== '') return $m[2];
+            if (isset($m[3]) && $m[3] !== '') return $m[3];
+            return '';
         }
         return null;
     }
@@ -1211,6 +1236,21 @@ final class InlineRenderer {
             fn(array $m) => $raw_results[(int) $m[1]] ?? '',
             $stripped,
         ) ?? $stripped;
+
+        // 4b. Strip any `<script>` tag introduced by a raw value. Template
+        //     scripts were stashed in $blocks at step 1 and will be restored
+        //     verbatim by step 5; anything matching `<script>` here can only
+        //     have come from a `{{{field}}}` substitution. The downstream
+        //     sanitizer intentionally allows inline scripts so the renderer
+        //     can stamp a per-request CSP nonce on them — without this strip,
+        //     a script value coming from dataset content (potentially a
+        //     lower-trust author) would also get nonce-stamped and execute
+        //     in the inline page's WordPress origin.
+        $stripped = preg_replace('#<script\b[^>]*>.*?</script>#is', '', $stripped) ?? $stripped;
+        // Also strip orphaned opening/closing tags so a value like
+        // `<script src=...>` (no closing tag, attacker hopes the parser
+        // recovers) leaves nothing exploitable behind.
+        $stripped = preg_replace('#</?script\b[^>]*>?#i', '', $stripped) ?? $stripped;
 
         // 5. Restore the original <script>/<style> blocks unchanged.
         return self::restore_blocks($stripped, $blocks);
