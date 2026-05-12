@@ -37,6 +37,7 @@ final class Plugin {
         require_once $base . 'class-media-publisher.php';
         require_once $base . 'class-html-sanitizer.php';
         require_once $base . 'class-csp-builder.php';
+        require_once $base . 'class-pro-feature-gate.php';
         require_once $base . 'class-permissions.php';
         require_once $base . 'class-bucket-renderer.php';
         require_once $base . 'class-bridge-method-registry.php';
