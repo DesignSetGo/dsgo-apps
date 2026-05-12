@@ -216,6 +216,43 @@ final class RestApi {
                 'timeout_ms' => ['required' => false, 'type' => 'integer', 'default' => 10000],
             ],
         ]);
+
+        // CLI preflight stub — registers at priority 20 so Pro's Cli_Auth
+        // (which hooks at priority 10) wins when Pro is installed. The
+        // callback bails immediately if the route is already registered.
+        \add_action('rest_api_init', [self::class, 'register_cli_preflight_stub'], 20);
+    }
+
+    /**
+     * Default CLI preflight responder. Returns the canonical "free" shape
+     * the CLI uses to decide whether to attempt a deploy. Pro's Cli_Auth
+     * overrides this route at a lower hook priority when installed.
+     */
+    public static function handle_cli_preflight_default(): \WP_REST_Response {
+        return new \WP_REST_Response([
+            'is_active'    => false,
+            'plan'         => 'free',
+            'capabilities' => ['multi_site_cli' => false],
+        ], 200);
+    }
+
+    /**
+     * Register the Lite CLI preflight stub if Pro has not already claimed
+     * the route. Hooked on rest_api_init@20 so Pro's registration at
+     * priority 10 runs first; when Pro is absent, the route doesn't exist
+     * yet and the stub registers itself.
+     */
+    public static function register_cli_preflight_stub(): void {
+        $routes = \rest_get_server()->get_routes();
+        if (isset($routes['/dsgo/v1/cli/preflight'])) {
+            // Pro already registered the real preflight; don't overwrite it.
+            return;
+        }
+        \register_rest_route('dsgo/v1', '/cli/preflight', [
+            'methods'             => 'GET',
+            'callback'            => [self::class, 'handle_cli_preflight_default'],
+            'permission_callback' => static fn () => \current_user_can('manage_options'),
+        ]);
     }
 
     /**

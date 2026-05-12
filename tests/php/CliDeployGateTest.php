@@ -114,6 +114,60 @@ final class CliDeployGateTest extends WP_UnitTestCase {
         $this->assertFalse(RestApi::is_app_password_request());
     }
 
+    // ---- CLI preflight stub (Lite) ----------------------------------------
+
+    /**
+     * Unit-style: the stub handler always returns the canonical free shape,
+     * regardless of whether Pro is installed. Calling the method directly
+     * avoids the route-registration race in a test environment where Pro may
+     * also be active.
+     */
+    public function test_lite_preflight_handler_returns_free_shape(): void {
+        $response = RestApi::handle_cli_preflight_default();
+
+        $this->assertSame(200, $response->get_status());
+        $this->assertSame(
+            ['is_active' => false, 'plan' => 'free', 'capabilities' => ['multi_site_cli' => false]],
+            $response->get_data(),
+        );
+    }
+
+    /**
+     * Integration: the /dsgo/v1/cli/preflight route must exist (either Lite's
+     * stub or Pro's real handler) and require manage_options.
+     */
+    public function test_cli_preflight_route_requires_manage_options(): void {
+        $subscriber_id = self::factory()->user->create(['role' => 'subscriber']);
+        wp_set_current_user($subscriber_id);
+
+        $request  = new WP_REST_Request('GET', '/dsgo/v1/cli/preflight');
+        $response = $this->server->dispatch($request);
+
+        // WP returns 401 for unauthenticated/low-priv when permission_callback returns false.
+        $this->assertContains($response->get_status(), [401, 403]);
+    }
+
+    /**
+     * Integration: an administrator can reach /dsgo/v1/cli/preflight and
+     * receives a 200 with the expected top-level keys. When Pro is installed
+     * in the test environment its handler fires instead of the stub, but the
+     * response shape contract (is_active / plan / capabilities) is the same.
+     */
+    public function test_cli_preflight_route_returns_200_for_admin(): void {
+        wp_set_current_user($this->admin_id);
+
+        $request  = new WP_REST_Request('GET', '/dsgo/v1/cli/preflight');
+        $response = $this->server->dispatch($request);
+
+        $this->assertSame(200, $response->get_status());
+        $data = $response->get_data();
+        $this->assertArrayHasKey('is_active', $data);
+        $this->assertArrayHasKey('plan', $data);
+        $this->assertArrayHasKey('capabilities', $data);
+        $this->assertIsArray($data['capabilities']);
+        $this->assertArrayHasKey('multi_site_cli', $data['capabilities']);
+    }
+
     // ---- Helpers ----------------------------------------------------------
 
     /**
