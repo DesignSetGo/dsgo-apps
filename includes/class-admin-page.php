@@ -136,6 +136,7 @@ final class AdminPage {
             'maxFileCount'     => Bundle::MAX_FILE_COUNT,
             'docsUrl'          => 'https://designsetgo.dev/docs',
             'settingsUrl'      => admin_url('admin.php?page=designsetgo-apps-settings'),
+            'pricingUrl'       => (string) apply_filters('dsgo_apps_pro_pricing_url', 'https://designsetgo.dev/pricing'),
         ]);
     }
 
@@ -485,6 +486,39 @@ npx designsetgo apps deploy --build</code></pre>
             </p>
         </div>
         <?php
+    }
+
+    /**
+     * Returns the list of Pro-gated features declared in this manifest that
+     * are not currently active on this site. Empty array when every declared
+     * feature is either absent or gated open.
+     *
+     * @param array<string,mixed> $manifest_arr Stored manifest array.
+     * @return string[] Internal feature names from ProFeatureGate's canonical set.
+     */
+    public static function inactive_pro_features_for_manifest(array $manifest_arr): array {
+        $inactive = [];
+        $declares = [
+            'cron'               => !empty($manifest_arr['scheduled']['jobs']),
+            'webhooks'           => !empty($manifest_arr['webhooks']['endpoints']),
+            'abilities_publish'  => !empty($manifest_arr['abilities']['publishes']),
+            'dynamic_routes'     => self::manifest_has_dynamic_route($manifest_arr),
+        ];
+        foreach ($declares as $feature => $declared) {
+            if ($declared && !ProFeatureGate::is_enabled($feature)) {
+                $inactive[] = $feature;
+            }
+        }
+        return $inactive;
+    }
+
+    private static function manifest_has_dynamic_route(array $manifest_arr): bool {
+        foreach (($manifest_arr['routes'] ?? []) as $route) {
+            if (!empty($route['dataset']['source'])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -164,6 +164,35 @@
             del.parentNode.insertBefore(secretsLink, del);
         }
 
+        // "Pro features inactive" badge. Shown when the manifest declares
+        // Pro-gated features that the current license hasn't unlocked.
+        if (Array.isArray(app.inactive_pro_features) && app.inactive_pro_features.length) {
+            var featureLabels = {
+                cron:               __('scheduled jobs', 'designsetgo-apps'),
+                webhooks:           __('webhook endpoints', 'designsetgo-apps'),
+                abilities_publish:  __('abilities publishing', 'designsetgo-apps'),
+                dynamic_routes:     __('dynamic routes', 'designsetgo-apps'),
+            };
+            var labels = app.inactive_pro_features.map(function (f) {
+                return featureLabels[f] || f;
+            });
+            var badge = document.createElement('p');
+            badge.className = 'dsgo-applist__pro-inactive';
+            var badgeText = document.createTextNode(
+                sprintf(
+                    /* translators: %s: comma-separated list of inactive Pro features */
+                    __('Pro features inactive: %s.', 'designsetgo-apps'),
+                    labels.join(', '),
+                ) + ' '
+            );
+            badge.appendChild(badgeText);
+            var upgradeLink = document.createElement('a');
+            upgradeLink.href = cfg.pricingUrl || 'https://designsetgo.dev/pricing';
+            upgradeLink.textContent = __('Activate Pro →', 'designsetgo-apps');
+            badge.appendChild(upgradeLink);
+            node.querySelector('.dsgo-applist__main').appendChild(badge);
+        }
+
         // Extension seam: Pro (or any third-party plugin enqueued on this
         // page) listens for this event to inject row-level actions.
         // detail.app: the app object from /dsgo/v1/apps; detail.node: the

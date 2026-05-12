@@ -324,9 +324,12 @@ final class RestApi {
                 'mount'         => ['mode' => $mount_mode],
                 'url'           => home_url($base_path),
                 'routes'        => is_array($manifest) && $isolation === 'inline' ? ($manifest['routes'] ?? []) : [],
-                'is_site_home'  => $mount_mode === 'root',
-                'home_eligible' => is_array($modes) && in_array('page', $modes, true),
-                'has_secrets'   => $secrets_count > 0,
+                'is_site_home'          => $mount_mode === 'root',
+                'home_eligible'         => is_array($modes) && in_array('page', $modes, true),
+                'has_secrets'           => $secrets_count > 0,
+                'inactive_pro_features' => is_array($manifest)
+                    ? AdminPage::inactive_pro_features_for_manifest($manifest)
+                    : [],
             ];
         }
 

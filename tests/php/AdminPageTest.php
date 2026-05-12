@@ -75,6 +75,33 @@ class AdminPageTest extends WP_UnitTestCase {
         $this->assertSame('', (string) ob_get_clean());
     }
 
+    public function test_inactive_pro_features_lists_all_gated_features_in_manifest(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        $manifest = [
+            'scheduled' => ['jobs' => [['id' => 'sync']]],
+            'webhooks'  => ['endpoints' => [['path' => '/inbound']]],
+            'abilities' => ['publishes' => [['name' => 'foo']]],
+            'routes'    => [['path' => '/posts/:slug', 'dataset' => ['source' => 'wp:posts']]],
+        ];
+        $inactive = AdminPage::inactive_pro_features_for_manifest($manifest);
+        sort($inactive);
+        $this->assertSame(['abilities_publish', 'cron', 'dynamic_routes', 'webhooks'], $inactive);
+    }
+
+    public function test_inactive_pro_features_returns_empty_when_gate_is_open(): void {
+        add_filter('dsgo_apps_pro_feature_enabled', '__return_true');
+        $manifest = ['scheduled' => ['jobs' => [['id' => 'sync']]]];
+        $this->assertSame([], AdminPage::inactive_pro_features_for_manifest($manifest));
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+    }
+
+    public function test_inactive_pro_features_returns_empty_when_manifest_declares_no_pro_features(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        $this->assertSame([], AdminPage::inactive_pro_features_for_manifest([
+            'routes' => [['path' => '/'], ['path' => '/about']], // static routes only
+        ]));
+    }
+
     public function test_reading_notice_renders_when_root_app_is_set(): void {
         wp_set_current_user($this->admin_id);
         $post_id = $this->factory->post->create([

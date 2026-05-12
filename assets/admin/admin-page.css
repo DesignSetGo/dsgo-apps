@@ -417,6 +417,20 @@
     color: var(--dsgo-mute);
     font-family: var(--dsgo-mono);
 }
+.dsgo-applist__pro-inactive {
+    margin: 5px 0 0;
+    font-size: 12px;
+    color: var(--dsgo-mute);
+    line-height: 1.5;
+}
+.dsgo-applist__pro-inactive a {
+    color: var(--dsgo-mute);
+    font-size: 12px;
+    white-space: nowrap;
+}
+.dsgo-applist__pro-inactive a:hover {
+    color: var(--dsgo-ink-soft);
+}
 .dsgo-applist__url {
     font-size: 12px;
     font-family: var(--dsgo-mono);
