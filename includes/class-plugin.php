@@ -54,6 +54,7 @@ final class Plugin {
         require_once $base . 'class-webhook-log.php';
         require_once $base . 'class-webhook-queue.php';
         require_once $base . 'class-async-webhook-handler.php';
+        require_once $base . 'class-webhook-handler.php';
         require_once $base . 'class-privacy.php';
         require_once $base . 'class-post-type.php';
         require_once $base . 'class-settings.php';
