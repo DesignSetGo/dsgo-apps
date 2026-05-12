@@ -685,12 +685,25 @@ final class RestApi {
         self::cleanup_user_storage_batch((int) $post->ID);
 
         AbilitiesPublisher::unregister_for_app($id);
-        // TODO(Task 7+): also call
-        //   CronScheduler::unschedule_all($id, $job_ids_from_manifest)
-        // here so deleting an app doesn't leave orphan cron events
-        // pointing at a vanished ability. The dispatcher would log
-        // cron_app_not_found on each tick if we don't — survivable
-        // but noisy and indefinite.
+        // Unschedule any cron events bound to this app's jobs (Task 15
+        // of the cron+webhooks plan). Without this, deleting an app
+        // leaves orphan cron events that fire and log cron_app_not_found
+        // indefinitely. Read the prior manifest to enumerate job ids;
+        // if the manifest is malformed we skip silently — the
+        // dispatcher's own app-not-found guard catches leftover events
+        // on next fire.
+        $stored_manifest = get_post_meta($post->ID, 'dsgo_apps_manifest', true);
+        if (is_array($stored_manifest)) {
+            $job_ids = [];
+            foreach ($stored_manifest['scheduled']['jobs'] ?? [] as $job) {
+                if (is_array($job) && isset($job['id']) && is_string($job['id'])) {
+                    $job_ids[] = $job['id'];
+                }
+            }
+            if ($job_ids !== []) {
+                CronScheduler::unschedule_all($id, $job_ids);
+            }
+        }
         // Purge the per-app sodium-encrypted secret vault. The plugin-wide
         // uninstall.php sweep catches stragglers via wp_options LIKE, but
         // a per-app delete should drop the encrypted blob immediately
@@ -1251,6 +1264,8 @@ final class RestApi {
         if (!current_user_can('manage_options')) {
             wp_send_json_error(['code' => 'forbidden', 'message' => 'manage_options required'], 403);
         }
+        // app_id must be read before check_ajax_referer because the nonce action is keyed to the app; nonce verification follows immediately on the next line.
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce is verified by check_ajax_referer() on the next statement, which includes app_id in the action
         $app_id = isset($_POST['app_id']) ? sanitize_key(wp_unslash((string) $_POST['app_id'])) : '';
         if ($app_id === '') {
             wp_send_json_error(['code' => 'missing_app_id', 'message' => 'app_id is required'], 400);
@@ -1259,6 +1274,7 @@ final class RestApi {
 
         $alias = '';
         if ($require_alias) {
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- alias is immediately validated against a strict regex; sanitize_text_field would lowercase and mangle uppercase-only aliases
             $alias = isset($_POST['alias']) ? (string) wp_unslash((string) $_POST['alias']) : '';
             if (!preg_match('/^[A-Z][A-Z0-9_]{0,63}$/', $alias)) {
                 wp_send_json_error(['code' => 'invalid_alias', 'message' => 'alias must match ^[A-Z][A-Z0-9_]{0,63}$'], 422);
@@ -1289,6 +1305,7 @@ final class RestApi {
      */
     public static function ajax_secret_set(): void {
         $ctx = self::require_secret_ajax_context();
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- secret value must be stored verbatim; sanitize_text_field would corrupt passwords/tokens; nonce verified inside require_secret_ajax_context()
         $value = isset($_POST['value']) ? (string) wp_unslash((string) $_POST['value']) : '';
         if ($value === '') {
             wp_send_json_error(['code' => 'empty_value', 'message' => 'value must be non-empty'], 422);

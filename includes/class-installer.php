@@ -293,6 +293,24 @@ final class Installer {
             }
 
             $existing = get_page_by_path($manifest->id, OBJECT, PostType::SLUG);
+            // Capture the prior manifest BEFORE update_post_meta
+            // overwrites it. CronScheduler::reconcile diffs prev vs new
+            // to leave unchanged jobs intact (re-scheduling resets the
+            // next-fire timer, which we don't want on every save).
+            $prev_manifest = null;
+            if ($existing instanceof \WP_Post) {
+                $prev_raw = get_post_meta($existing->ID, 'dsgo_apps_manifest', true);
+                if (is_array($prev_raw)) {
+                    try {
+                        $prev_manifest = Manifest::from_array_unchecked($prev_raw);
+                    } catch (\Throwable) {
+                        // Best-effort — a malformed stored manifest just
+                        // means we reconcile against null, which results
+                        // in fresh scheduling. No regression vs the
+                        // pre-Task 15 world.
+                    }
+                }
+            }
             $post_arr = [
                 'post_type'   => PostType::SLUG,
                 'post_status' => 'publish',
@@ -366,12 +384,19 @@ final class Installer {
             SitemapProvider::invalidate_cache();
             AbilitiesPublisher::register_for_app($manifest);
             MediaPublisher::publish_for_app($manifest, $bundle_dir);
-            // TODO(Task 7+): wire CronScheduler::reconcile($manifest->id, $manifest, $prev_manifest)
-            // here so manifest-declared scheduled.jobs[] actually get
-            // wp_schedule_event'd at install/update time. Until that lands,
-            // the dispatcher init-binding has nothing to fire on.
-            // Webhook side: register_rest_route bindings via WebhookRouter
-            // also belong here once Task 11 ships.
+
+            // Cron + webhook surface activation (Task 15 of the cron+webhooks plan).
+            //
+            // CronScheduler::reconcile diffs prev vs new and only touches
+            // jobs whose schedule/time/day_of_week changed — unchanged
+            // jobs keep their next-fire timer, so re-installs of the same
+            // manifest don't reset cron clocks.
+            CronScheduler::reconcile($manifest->id, $manifest, $prev_manifest);
+            // WebhookRouter::register is a no-op when the Pro gate is
+            // closed (enforcement lives inside the router). When open,
+            // newly added endpoints become callable on the next REST
+            // request without waiting for rest_api_init's full sweep.
+            WebhookRouter::register($manifest->id, $manifest->webhook_endpoints());
 
             self::release_install_lock($manifest->id);
 

@@ -13,6 +13,14 @@ defined('ABSPATH') || exit;
 
 final class Plugin {
 
+    /**
+     * Daily cron hook for log + queue retention sweeps. Owned by this
+     * class; both CronLog and WebhookLog hang their prune calls off it
+     * via run_daily_cleanup() so the scheduled event count stays at one
+     * regardless of how many tables join the sweep.
+     */
+    public const DAILY_CLEANUP_HOOK = 'dsgo_apps_daily_cleanup';
+
     private static ?self $instance = null;
 
     public static function get_instance(): self {
@@ -108,6 +116,13 @@ final class Plugin {
         // in activate(); the hook stays registered here so the cron
         // dispatcher can resolve the callback on any boot of the site.
         add_action(Http_Proxy_Log::CRON_HOOK, [Http_Proxy_Log::class, 'purge_expired']);
+        // Daily retention sweep for the cron + webhook audit tables
+        // (Task 17 of the cron+webhooks plan). Bind here so the callback
+        // resolves on every boot; the scheduled event itself is queued
+        // in Plugin::activate(). Each table reads its own
+        // dsgo_apps_*_log_retention_days filter so operators can tune
+        // the windows independently.
+        add_action(self::DAILY_CLEANUP_HOOK, [self::class, 'run_daily_cleanup']);
         // DSGo-specific cron intervals (dsgo-5min, dsgo-15min) declared in
         // app manifests. Registered at default filter priority so they're
         // visible to any wp_schedule_event() call regardless of when in
@@ -290,6 +305,29 @@ final class Plugin {
         }
     }
 
+    /**
+     * Daily retention sweep for the cron + webhook audit tables.
+     * Bound to `dsgo_apps_daily_cleanup` and fired once per day by
+     * WP-cron. Each table's retention window is filterable
+     * independently (dsgo_apps_cron_log_retention_days,
+     * dsgo_apps_webhook_log_retention_days; both default to 14 days
+     * via the *Log::retention_days() helpers).
+     *
+     * Never throws — log-prune failure must not break the cron tick.
+     */
+    public static function run_daily_cleanup(): void {
+        try {
+            CronLog::prune(CronLog::retention_days());
+        } catch (\Throwable $e) {
+            error_log('dsgo_apps: CronLog::prune failed: ' . $e->getMessage());
+        }
+        try {
+            WebhookLog::prune(WebhookLog::retention_days());
+        } catch (\Throwable $e) {
+            error_log('dsgo_apps: WebhookLog::prune failed: ' . $e->getMessage());
+        }
+    }
+
     public static function activate(): void {
         // Ensure all dependencies are loaded — clean-process activation
         // (e.g. WP-CLI) may invoke this before plugins_loaded fires.
@@ -315,15 +353,22 @@ final class Plugin {
         }
 
         // Cron audit log table (Task 5 of the cron+webhooks plan).
-        // Daily retention purge is wired alongside other dsgo cleanup hooks
-        // in Task 17; for now we just ensure the table exists.
+        // Pruned daily via run_daily_cleanup() — see DAILY_CLEANUP_HOOK
+        // scheduling below.
         CronLog::create_table();
         // Webhook audit log + async queue tables (Task 10 of the
-        // cron+webhooks plan). Both share the cleanup hook destination
-        // with CronLog. dbDelta is idempotent so re-running activation
-        // (e.g. after wp-env destroy/start) is safe.
+        // cron+webhooks plan). dbDelta is idempotent so re-running
+        // activation (e.g. after wp-env destroy/start) is safe.
         WebhookLog::create_table();
         WebhookQueue::create_table();
+
+        // Daily retention sweep for the cron + webhook audit tables
+        // (Task 17). One scheduled event hangs every dsgo log table's
+        // prune call via run_daily_cleanup(). wp_schedule_event no-ops
+        // when the event is already queued.
+        if (!wp_next_scheduled(self::DAILY_CLEANUP_HOOK)) {
+            wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', self::DAILY_CLEANUP_HOOK);
+        }
 
         // One-shot welcome notice so admins land on the install screen instead
         // of an empty Plugins list. Cleared after first render.
@@ -361,6 +406,7 @@ final class Plugin {
         // would only match events scheduled with no args.
         wp_unschedule_hook(RestApi::USER_STORAGE_CLEANUP_HOOK);
         wp_unschedule_hook(Http_Proxy_Log::CRON_HOOK);
+        wp_unschedule_hook(self::DAILY_CLEANUP_HOOK);
         // Deactivation is rare and intentional — bypass the transient throttle
         // so every app-job cron event is actually cleared on this run.
         self::sweep_orphaned_cron_events(true);
