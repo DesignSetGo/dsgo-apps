@@ -22,19 +22,17 @@ final class AdminPublisherLoader {
     private static ?array $collected = null;
 
     public static function register(): void {
+        // ProFeatureGate is the only enforcement point: when closed, neither
+        // hook gets registered, so the publish-side bridge never wires up.
+        if (!ProFeatureGate::is_enabled('abilities_publish')) {
+            return;
+        }
         add_action('admin_head', [self::class, 'emit_config_island'], 1);
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_publisher_module']);
     }
 
     public static function emit_config_island(): void {
         if (!is_user_logged_in() || !current_user_can('edit_posts')) {
-            return;
-        }
-        // ProFeatureGate is the only enforcement point for dsgo.abilities.implement.
-        // Without this check, free sites would receive the publisher config island
-        // and the parent-bridge-publish module would forward ability invocations
-        // into app iframes without a Pro license.
-        if (!ProFeatureGate::is_enabled('abilities_publish')) {
             return;
         }
         $apps = self::collect_publishing_apps();
@@ -54,9 +52,6 @@ final class AdminPublisherLoader {
 
     public static function enqueue_publisher_module(): void {
         if (!is_user_logged_in() || !current_user_can('edit_posts')) {
-            return;
-        }
-        if (!ProFeatureGate::is_enabled('abilities_publish')) {
             return;
         }
         if (self::collect_publishing_apps() === []) {

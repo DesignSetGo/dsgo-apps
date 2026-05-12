@@ -178,20 +178,21 @@ class AdminPublisherLoaderTest extends WP_UnitTestCase {
         }
     }
 
-    public function test_emit_config_island_suppressed_when_gate_closed(): void {
+    public function test_register_does_not_bind_hooks_when_gate_closed(): void {
         remove_all_filters('dsgo_apps_pro_feature_enabled');
-        $this->install_app('pub-gate', [['name' => 'pub-gate/foo', 'label' => 'L', 'description' => 'd', 'category' => 'content']]);
-        wp_set_current_user($this->factory->user->create(['role' => 'editor']));
-        set_current_screen('edit-post');
+        // Remove any hooks that may have been registered by a previous call.
+        remove_action('admin_head', [AdminPublisherLoader::class, 'emit_config_island'], 1);
+        remove_action('admin_enqueue_scripts', [AdminPublisherLoader::class, 'enqueue_publisher_module']);
 
-        ob_start();
-        AdminPublisherLoader::emit_config_island();
-        $html = ob_get_clean();
+        AdminPublisherLoader::register();
 
-        $this->assertSame(
-            '',
-            $html,
-            'emit_config_island must not output when ProFeatureGate("abilities_publish") is closed'
+        $this->assertFalse(
+            has_action('admin_head', [AdminPublisherLoader::class, 'emit_config_island']),
+            'admin_head hook must not be registered when ProFeatureGate("abilities_publish") is closed'
+        );
+        $this->assertFalse(
+            has_action('admin_enqueue_scripts', [AdminPublisherLoader::class, 'enqueue_publisher_module']),
+            'admin_enqueue_scripts hook must not be registered when ProFeatureGate("abilities_publish") is closed'
         );
     }
 
