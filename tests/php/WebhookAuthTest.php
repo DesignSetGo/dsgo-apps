@@ -162,6 +162,25 @@ final class WebhookAuthTest extends WP_UnitTestCase {
         ));
     }
 
+    public function test_hmac_slack_missing_v0_prefix_fails(): void {
+        // Mirror GitHub's downgrade guard: a bare hex digest without the
+        // `v0=` version prefix must be rejected, so a future `v1=` scheme
+        // can't be silently accepted by length coincidence.
+        $body = 'token=abc';
+        $ts   = (string) time();
+        $bare = hash_hmac('sha256', "v0:{$ts}:{$body}", self::SECRET);
+        $result = WebhookAuth::verify(
+            $this->endpoint('hmac-sha256', 'slack'),
+            $body,
+            [
+                'x-slack-request-timestamp' => $ts,
+                'x-slack-signature'         => $bare,  // missing `v0=`
+            ],
+            self::APP_ID,
+        );
+        $this->assertInstanceOf(\WP_Error::class, $result);
+    }
+
     public function test_hmac_slack_expired_timestamp_fails(): void {
         $body = 'token=abc';
         $ts   = (string) (time() - 600);  // 10 min ago, outside 5-min window
@@ -243,20 +262,102 @@ final class WebhookAuthTest extends WP_UnitTestCase {
         $this->assertInstanceOf(\WP_Error::class, $result);
     }
 
-    // ===== Secret vault gating =====
+    /**
+     * RFC 7235 §2.1 makes auth-scheme tokens case-insensitive. Producers
+     * may legitimately send `Bearer`, `bearer`, or `BEARER`; the verifier
+     * must accept any case for the scheme name while still treating the
+     * token bytes as case-sensitive.
+     *
+     * @dataProvider bearer_scheme_cases
+     */
+    public function test_bearer_scheme_is_case_insensitive(string $scheme_token): void {
+        $this->assertTrue(WebhookAuth::verify(
+            $this->endpoint('bearer'),
+            'body',
+            ['authorization' => $scheme_token . ' ' . self::SECRET],
+            self::APP_ID,
+        ));
+    }
 
-    public function test_secret_not_set_returns_specific_error(): void {
-        // Use an alias that was never written to the vault.
+    /** @return array<string, array{0:string}> */
+    public static function bearer_scheme_cases(): array {
+        return [
+            'lowercase'  => ['bearer'],
+            'titlecase'  => ['Bearer'],
+            'uppercase'  => ['BEARER'],
+            'mixed-case' => ['BeArEr'],
+        ];
+    }
+
+    public function test_bearer_token_remains_case_sensitive(): void {
+        // The token's bytes must compare exactly even when the scheme
+        // is case-insensitive — otherwise constant-time compare is
+        // pointless. Use a secret with mixed case to prove the point.
+        Secret_Vault::set(self::APP_ID, 'CASE_TOKEN_ALIAS', 'CaseSensitive_token_123');
         $endpoint = $this->endpoint('bearer');
-        $endpoint['auth']['secret_alias'] = 'UNCONFIGURED';
+        $endpoint['auth']['secret_alias'] = 'CASE_TOKEN_ALIAS';
         $result = WebhookAuth::verify(
             $endpoint,
             'body',
-            ['authorization' => 'Bearer anything'],
+            ['authorization' => 'bearer casesensitive_token_123'],  // wrong case in token
+            self::APP_ID,
+        );
+        $this->assertInstanceOf(\WP_Error::class, $result);
+    }
+
+    // ===== Secret vault gating =====
+
+    /**
+     * The webhook_secret_not_set surfaces from a single shared code path,
+     * but every scheme must inherit the operator-visible error code so
+     * the admin's "configure missing secret" prompt fires regardless of
+     * which auth shape the manifest declared.
+     *
+     * @dataProvider every_auth_shape
+     * @param array<string, mixed> $auth
+     */
+    public function test_secret_not_set_returns_specific_error_for_every_scheme(array $auth): void {
+        $auth['secret_alias'] = 'UNCONFIGURED_FOR_THIS_TEST';
+        $result = WebhookAuth::verify(
+            ['auth' => $auth],
+            'body',
+            // Headers can be empty — the secret check fires before any
+            // signature parsing, so the request never reaches scheme-
+            // specific header lookups.
+            [],
             self::APP_ID,
         );
         $this->assertInstanceOf(\WP_Error::class, $result);
         $this->assertSame('webhook_secret_not_set', $result->get_error_code());
+    }
+
+    /** @return array<string, array{0:array<string, mixed>}> */
+    public static function every_auth_shape(): array {
+        return [
+            'hmac-sha256 / stripe'  => [['type' => 'hmac-sha256', 'scheme' => 'stripe']],
+            'hmac-sha256 / github'  => [['type' => 'hmac-sha256', 'scheme' => 'github']],
+            'hmac-sha256 / slack'   => [['type' => 'hmac-sha256', 'scheme' => 'slack']],
+            'hmac-sha256 / generic' => [['type' => 'hmac-sha256', 'scheme' => 'generic']],
+            'bearer'                => [['type' => 'bearer']],
+        ];
+    }
+
+    public function test_verify_normalizes_uppercase_header_keys(): void {
+        // The docblock contract says verify() takes lowercase-keyed
+        // headers, but a defensive normalization at entry keeps a
+        // caller passing PSR-7-style title-cased names (e.g. raw
+        // $_SERVER converted via wp_get_server_protocol-adjacent
+        // helpers) from silently degrading to webhook_auth_failed.
+        $body = '{"id":"evt"}';
+        $ts   = time();
+        $sig  = hash_hmac('sha256', "{$ts}.{$body}", self::SECRET);
+        $this->assertTrue(WebhookAuth::verify(
+            $this->endpoint('hmac-sha256', 'stripe'),
+            $body,
+            // Mixed-case header names — should still resolve.
+            ['Stripe-Signature' => "t={$ts},v1={$sig}"],
+            self::APP_ID,
+        ));
     }
 
     // ===== helpers =====
