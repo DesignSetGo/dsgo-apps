@@ -225,8 +225,11 @@ final class Plugin {
     public static function register_cron_dispatch_hooks(): void {
         // CronDispatcher::run has no license check of its own; this gate
         // is the only enforcement point. Removing it would let cron events
-        // bind and fire on unlicensed sites.
+        // bind and fire on unlicensed sites. The closed-gate branch also
+        // sweeps any orphaned cron events left behind by a previously-active
+        // license so WP-Cron stops firing into the void each interval.
         if (!ProFeatureGate::is_enabled('cron')) {
+            self::sweep_orphaned_cron_events();
             return;
         }
         if (!wp_doing_cron() && !is_admin()) {
@@ -336,6 +339,67 @@ final class Plugin {
         // would only match events scheduled with no args.
         wp_unschedule_hook(RestApi::USER_STORAGE_CLEANUP_HOOK);
         wp_unschedule_hook(Http_Proxy_Log::CRON_HOOK);
+        // Deactivation is rare and intentional — bypass the transient throttle
+        // so every app-job cron event is actually cleared on this run.
+        self::sweep_orphaned_cron_events(true);
         flush_rewrite_rules(false);
+    }
+
+    /**
+     * Remove every `dsgo_apps_cron_<app>_<job>` event that remains in the
+     * WP-Cron registry. Called when the Pro gate closes (license expiry /
+     * downgrade) and on plugin deactivation.
+     *
+     * @param bool $force When true, skip the 1-hour transient throttle. Pass
+     *                    true only from deactivate() — gate-closed boots use
+     *                    the throttle to avoid per-request metaqueries.
+     */
+    private static function sweep_orphaned_cron_events(bool $force = false): void {
+        if (!$force) {
+            if (get_transient('dsgo_apps_cron_sweep_done') === '1') {
+                return;
+            }
+            set_transient('dsgo_apps_cron_sweep_done', '1', HOUR_IN_SECONDS);
+        }
+
+        self::unschedule_all_app_cron_events();
+    }
+
+    /**
+     * Iterate every installed DSGo app, read its manifest, and unschedule any
+     * cron events declared in `scheduled.jobs[]`. Used by both the throttled
+     * gate-closed sweep and the unthrottled deactivation path.
+     */
+    private static function unschedule_all_app_cron_events(): void {
+        $app_ids = get_posts([
+            'post_type'      => PostType::SLUG,
+            'post_status'    => 'publish',
+            'posts_per_page' => -1,
+            'no_found_rows'  => true,
+            'fields'         => 'ids',
+        ]);
+        foreach ($app_ids as $post_id) {
+            $post = get_post($post_id);
+            if (!$post instanceof \WP_Post) {
+                continue;
+            }
+            $manifest_arr = get_post_meta($post_id, 'dsgo_apps_manifest', true);
+            if (!is_array($manifest_arr)) {
+                continue;
+            }
+            $jobs = $manifest_arr['scheduled']['jobs'] ?? null;
+            if (!is_array($jobs)) {
+                continue;
+            }
+            $job_ids = [];
+            foreach ($jobs as $job) {
+                if (is_array($job) && isset($job['id']) && is_string($job['id'])) {
+                    $job_ids[] = $job['id'];
+                }
+            }
+            if ($job_ids !== []) {
+                CronScheduler::unschedule_all($post->post_name, $job_ids);
+            }
+        }
     }
 }

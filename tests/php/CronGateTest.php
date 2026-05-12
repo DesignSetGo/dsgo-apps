@@ -28,6 +28,7 @@ final class CronGateTest extends WP_UnitTestCase {
 
     public function tear_down(): void {
         remove_all_filters('dsgo_apps_pro_feature_enabled');
+        delete_transient('dsgo_apps_cron_sweep_done');
         // Restore a front-end screen so other test classes aren't affected.
         set_current_screen('front');
         wp_cache_delete('dispatch_hooks_bound', 'dsgo_apps_cron');
@@ -60,6 +61,46 @@ final class CronGateTest extends WP_UnitTestCase {
             has_action($hook),
             'Cron dispatch hook should be bound when ProFeatureGate is open'
         );
+    }
+
+    public function test_register_cron_dispatch_hooks_sweeps_orphaned_events_when_gate_closes(): void {
+        // Simulate a previously-active Pro install: schedule the event directly,
+        // matching what CronScheduler::reconcile would have done.
+        $this->install_test_app_with_scheduled_job('orphan-app', 'daily-sync', 'orphan-app.sync');
+        $hook = CronScheduler::hook('orphan-app', 'daily-sync');
+        wp_schedule_event(time() + DAY_IN_SECONDS, 'daily', $hook);
+        $this->assertNotFalse(wp_next_scheduled($hook), 'pre-condition: event must be scheduled');
+
+        delete_transient('dsgo_apps_cron_sweep_done');
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+
+        Plugin::register_cron_dispatch_hooks();
+
+        $this->assertFalse(
+            wp_next_scheduled($hook),
+            'Gate-closed boot should sweep orphaned cron events'
+        );
+
+        wp_clear_scheduled_hook($hook);
+    }
+
+    public function test_sweep_is_throttled_by_transient(): void {
+        // Set the transient; sweep should be a no-op even with an orphaned event.
+        $this->install_test_app_with_scheduled_job('throttle-app', 'sync', 'throttle-app.sync');
+        $hook = CronScheduler::hook('throttle-app', 'sync');
+        wp_schedule_event(time() + DAY_IN_SECONDS, 'daily', $hook);
+        set_transient('dsgo_apps_cron_sweep_done', '1', HOUR_IN_SECONDS);
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+
+        Plugin::register_cron_dispatch_hooks();
+
+        $this->assertNotFalse(
+            wp_next_scheduled($hook),
+            'Throttle transient must prevent the sweep within the 1h window'
+        );
+
+        wp_clear_scheduled_hook($hook);
+        delete_transient('dsgo_apps_cron_sweep_done');
     }
 
     private function install_test_app_with_scheduled_job(string $slug, string $job_id, string $ability): void {
