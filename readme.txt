@@ -4,7 +4,7 @@ Tags: ai, sandbox, iframe, app
 Requires at least: 6.9
 Tested up to: 6.9.4
 Requires PHP: 8.2
-Stable tag: 0.2.1
+Stable tag: 0.3.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -25,11 +25,11 @@ The plugin never fetches code from a remote URL. Only users with the `manage_opt
 
 That's the whole loop. No build pipeline, no plugin scaffolding, no theme work.
 
-= Free version =
+= Free vs Pro =
 
-The WordPress.org version runs **one** active app per site. That's enough to cover the most common case: drop in a single AI-built page or widget and call it done. The artifact-upload flow, bridge runtime, sandbox, block embed, and Apps-as-Abilities publishing are all included here.
+The free plugin runs unlimited apps via the **Upload artifact** flow in wp-admin. Drop an `.html` or `.zip` and the app is live. The full bridge runtime, sandbox, iframe and inline modes, AI prompts via your WordPress 7.0 Connector, and block embed are all in the free plugin.
 
-If you need to run multiple apps or use advanced authoring tools, DesignSetGo offers a separate commercial add-on outside WordPress.org. Details are available at https://designsetgo.dev/pricing/.
+DesignSetGo Apps Pro adds CLI deploy, Riff (the in-admin AI builder), Apps-as-Abilities publishing, scheduled jobs, webhook endpoints, dynamic routes, a GitHub Action for CI deploy, and white-label (Agency tier). Details at https://designsetgo.dev/pricing/.
 
 = Two isolation modes =
 
@@ -41,7 +41,7 @@ Both modes use the same bridge wire format. Apps written against the `@designset
 = Two ways to install an app =
 
 * **Drop in a bundle (the default)** - zip up the static build, or just upload the raw `.html` from any AI artifact. The plugin handles the rest.
-* **Vibe-code in your IDE, deploy from the terminal** - the optional `@designsetgo/cli` package (`npx designsetgo apps deploy`) authenticates as a `manage_options` admin via a one-time application password, packages the current working directory, and pushes it through the same install endpoint. Lite users remain subject to the 1-app cap.
+* **Vibe-code in your IDE, deploy from the terminal** - the optional `@designsetgo/cli` package (`npx designsetgo apps deploy`) authenticates as a `manage_options` admin via a one-time application password, packages the current working directory, and pushes it through the install REST endpoint. CLI deploys are a Pro feature; the free plugin keeps the wp-admin upload importer for everyone.
 
 = What apps can do through the bridge =
 
@@ -59,7 +59,7 @@ The CLI prints the requested permissions before each install so the admin sees w
 
 When an app calls `dsgo.ai.prompt()` or invokes an AI-backed ability, the call routes through the WordPress 7.0 AI Client to whichever Connector you configured at **Settings -> Connectors**. **You hold the provider relationship; DSGo never sees the key, stores the key, or charges for inference.** The plugin works on WordPress 6.9 too - apps that use the AI surface degrade gracefully when no Connector is configured.
 
-Apps can also publish abilities the site's AI agent, and any other plugin using the WP 7.0 Abilities API, can invoke. This "Apps-as-Abilities" model turns every installed app into a callable tool the rest of the site's AI surface knows about.
+Apps can also publish abilities the site's AI agent, and any other plugin using the WP 7.0 Abilities API, can invoke. This "Apps-as-Abilities" model turns every installed app into a callable tool the rest of the site's AI surface knows about. Abilities consumption (`dsgo.abilities.list/invoke`) is free; abilities publishing via `abilities.publishes` in the manifest requires Pro.
 
 = What's shipped =
 
@@ -67,30 +67,53 @@ Apps can also publish abilities the site's AI agent, and any other plugin using 
 * AI-artifact upload importer for HTML files and static `.zip` bundles
 * Manual zip upload for bundles built with a `dsgo-app.json` manifest
 * TypeScript bridge client (`@designsetgo/app-client`)
-* CLI (`@designsetgo/cli`) with `init`, `login`, `deploy`, `list`
 * WP REST endpoints for install, list, uninstall, and bridge proxy
 * AI surface through the site's WordPress 7.0 AI Client and Connectors
 * Abilities consumption through `dsgo.abilities.list/invoke()`
-* Apps-as-Abilities publishing through `abilities.publishes`
 * Gutenberg block for embedding installed apps inside posts and pages
-* Dynamic routes backed by live data sources (`wp:posts`, `wp:pages`, `wp:cpt:*`, `wc:products`)
 * Sitemap provider for inline-mode routes
+* CLI (`@designsetgo/cli`) with `init`, `login`, `deploy`, `list` (Pro)
+* Riff — in-admin AI builder (Pro)
+* Apps-as-Abilities publishing through `abilities.publishes` (Pro)
+* Dynamic routes backed by live data sources (`wp:posts`, `wp:pages`, `wp:cpt:*`, `wc:products`) (Pro)
+* Scheduled jobs and webhook endpoints (Pro)
+* GitHub Action for CI deploy (Pro)
 
 == Installation ==
 
 1. Upload the plugin folder to `/wp-content/plugins/`.
 2. Activate **DesignSetGo Apps** through the **Plugins** screen in WordPress.
-3. Visit **DSGo Apps** in the admin menu to install your first bundle. Drop in an AI artifact `.html` or upload a built `.zip`. Or run `npx designsetgo apps deploy` from a project directory.
+3. Visit **DSGo Apps** in the admin menu to install your first bundle. Drop in an AI artifact `.html` or upload a built `.zip`. Pro users can also run `npx designsetgo apps deploy` from a project directory.
 
 == Frequently Asked Questions ==
 
-= How many apps can I run on the free version? =
+= What's free vs Pro? =
 
-One. The Lite plugin lets you run a single active app per site. Trash the existing app to install a different one.
+The free plugin runs unlimited apps via the **Upload artifact** flow in
+wp-admin — drop an `.html` or `.zip` and the app is live. The full bridge
+runtime, sandbox, iframe + inline modes, AI prompts via your WordPress 7.0
+Connector, and block embed are all in the free plugin.
 
-= What's the difference between the free version and the separate add-on? =
+DesignSetGo Apps Pro adds:
 
-The free version is the runtime: sandbox, bridge, artifact upload, block embed, and abilities publishing, capped at 1 active app per site. DesignSetGo also offers a separate commercial add-on for people who need to lift that cap or use advanced authoring workflows.
+* **CLI deploy** — `npx designsetgo apps deploy` from a project directory
+* **Riff** — the in-admin AI builder
+* **Apps-as-Abilities** — apps publish abilities that the site's AI agent can invoke
+* **Scheduled jobs, webhook endpoints, dynamic routes** — server-side app capabilities
+* **GitHub Action** for CI deploy
+* **White-label** (Agency tier)
+
+Pro is distributed at https://designsetgo.dev/pricing with a 14-day free
+trial on every plan.
+
+= What happens if my app declares Pro features and I'm on the free plugin? =
+
+The install always succeeds. The runtime simply doesn't activate the
+Pro features — your app's static routes and standard bridge methods
+still work; the scheduled job won't run, the webhook endpoint won't
+register, the ability won't publish, dynamic routes will 404. The
+apps-list shows which features need a license, so the upgrade decision
+is informed.
 
 = Where do app bundles live on disk? =
 
@@ -134,15 +157,38 @@ Site owners are responsible for reviewing the privacy policies and terms of any 
 
 == Upgrade Notice ==
 
+= 0.3.0 =
+The 1-app cap is removed. The free plugin now hosts unlimited apps. Pro
+gates the CLI, Riff, and server-side runtime features instead.
+
 = 0.2.1 =
 
-Lite is now capped at 1 active app per site. Adds a "Cap reached" admin notice. No data migration and no breaking changes.
+Lite was capped at 1 active app per site. Upgraded to 0.3.0 removes that cap.
 
 = 0.1.0 =
 
 Initial public release.
 
 == Changelog ==
+
+= 0.3.0 =
+
+* **Free tier reorganized.** The 1-app cap is removed; the free plugin
+  now runs unlimited apps. Pro adds CLI deploy, Riff, Apps-as-Abilities
+  publishing, scheduled jobs, webhook endpoints, dynamic routes, the
+  GitHub Action, and white-label.
+* New `ProFeatureGate` API: Pro-gated features check
+  `apply_filters('dsgo_apps_pro_feature_enabled', false, $feature)`.
+  Pro returns true when a license is active.
+* `dsgo_apps_lite_app_cap` filter is now a back-compat no-op (default
+  null). Removing in 0.4.0.
+* Install-time `lite_cap_reached` error code retired.
+* CLI install endpoint returns `cli_requires_pro` (HTTP 402) when a
+  request is authenticated via Application Password without an active
+  Pro license. Cookie-authed installs from wp-admin are unaffected.
+* Apps-list rows now show a "Pro features inactive" badge per app when
+  the manifest declares cron, webhooks, abilities.publishes, or dynamic
+  routes without an active license.
 
 = 0.2.1 =
 
