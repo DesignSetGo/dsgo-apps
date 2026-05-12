@@ -83,6 +83,7 @@ final class WebhookQueue {
      */
     public static function insert(array $row): int {
         global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- custom queue table; $wpdb->insert is the correct WP API for write-path queue inserts; no caching layer applies to append-only writes
         $ok = $wpdb->insert(
             self::table_name(),
             [
@@ -96,12 +97,15 @@ final class WebhookQueue {
             ['%s', '%s', '%s', '%s', '%s', '%s'],
         );
         if ($ok === false) {
-            error_log(sprintf(
-                'dsgo_apps: WebhookQueue::insert failed (app=%s endpoint=%s): %s',
-                $row['app_id'] ?? '?',
-                $row['endpoint_id'] ?? '?',
-                $wpdb->last_error,
-            ));
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- WP_DEBUG gated; intentional for production debugging of webhook queue insert failures
+                error_log(sprintf(
+                    'dsgo_apps: WebhookQueue::insert failed (app=%s endpoint=%s): %s',
+                    $row['app_id'] ?? '?',
+                    $row['endpoint_id'] ?? '?',
+                    $wpdb->last_error,
+                ));
+            }
             return 0;
         }
         return (int) $wpdb->insert_id;
@@ -116,9 +120,10 @@ final class WebhookQueue {
     public static function get(int $id): ?array {
         global $wpdb;
         $table = self::table_name();
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom queue table; $table built from $wpdb->prefix (not user input); queue dequeue: single-row fetch by primary key; caching a mutable queue row would serve stale state
         $row = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $table WHERE id = %d",
+            'SELECT * FROM %i WHERE id = %d',
+            $table,
             $id,
         ), ARRAY_A);
         return is_array($row) ? $row : null;
@@ -131,14 +136,16 @@ final class WebhookQueue {
     public static function increment_attempts(int $id): int {
         global $wpdb;
         $table = self::table_name();
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom queue table; $table built from $wpdb->prefix (not user input); queue write: atomic attempt counter increment; no caching applies to mutable queue state
         $wpdb->query($wpdb->prepare(
-            "UPDATE $table SET attempts = attempts + 1 WHERE id = %d",
+            'UPDATE %i SET attempts = attempts + 1 WHERE id = %d',
+            $table,
             $id,
         ));
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom queue table; $table built from $wpdb->prefix (not user input); queue read: re-read attempts after increment; must not serve cached pre-increment value
         return (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT attempts FROM $table WHERE id = %d",
+            'SELECT attempts FROM %i WHERE id = %d',
+            $table,
             $id,
         ));
     }
@@ -150,6 +157,7 @@ final class WebhookQueue {
      */
     public static function mark_failed(int $id, string $error_msg): void {
         global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- custom queue table; $wpdb->update is the correct WP API for write-path queue status updates; no caching layer applies to mutable queue state
         $wpdb->update(
             self::table_name(),
             [
@@ -168,6 +176,7 @@ final class WebhookQueue {
      */
     public static function delete(int $id): void {
         global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- custom queue table; $wpdb->delete is the correct WP API for removing processed queue rows; no caching layer applies to this cleanup path
         $wpdb->delete(self::table_name(), ['id' => $id], ['%d']);
     }
 }

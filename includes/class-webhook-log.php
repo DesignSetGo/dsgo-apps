@@ -83,6 +83,7 @@ final class WebhookLog {
      */
     public static function insert(array $row): void {
         global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- custom log table; $wpdb->insert is the correct WP API for write-path log inserts; no caching layer applies to append-only writes
         $ok = $wpdb->insert(
             self::table_name(),
             [
@@ -102,12 +103,15 @@ final class WebhookLog {
             // Audit gaps are silent by nature — log a breadcrumb but
             // don't throw. Webhook delivery must never be masked by a
             // log-write failure.
-            error_log(sprintf(
-                'dsgo_apps: WebhookLog::insert failed (app=%s endpoint=%s): %s',
-                $row['app_id'] ?? '?',
-                $row['endpoint_id'] ?? '?',
-                $wpdb->last_error,
-            ));
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- WP_DEBUG gated; intentional for production debugging of webhook log write failures
+                error_log(sprintf(
+                    'dsgo_apps: WebhookLog::insert failed (app=%s endpoint=%s): %s',
+                    $row['app_id'] ?? '?',
+                    $row['endpoint_id'] ?? '?',
+                    $wpdb->last_error,
+                ));
+            }
         }
     }
 
@@ -124,18 +128,20 @@ final class WebhookLog {
         $offset = max(0, (int) ($filters['offset']   ?? 0));
 
         if (!empty($filters['endpoint_id']) && is_string($filters['endpoint_id'])) {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom log table; $table built from $wpdb->prefix (not user input); log read: cache invalidation cost outweighs caching benefit for bounded per-endpoint history queries
             $rows = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM $table WHERE app_id = %s AND endpoint_id = %s ORDER BY received_at DESC LIMIT %d OFFSET %d",
+                'SELECT * FROM %i WHERE app_id = %s AND endpoint_id = %s ORDER BY received_at DESC LIMIT %d OFFSET %d',
+                $table,
                 $app_id,
                 $filters['endpoint_id'],
                 $limit,
                 $offset,
             ), ARRAY_A);
         } else {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom log table; $table built from $wpdb->prefix (not user input); log read: cache invalidation cost outweighs caching benefit for bounded per-app history queries
             $rows = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM $table WHERE app_id = %s ORDER BY received_at DESC LIMIT %d OFFSET %d",
+                'SELECT * FROM %i WHERE app_id = %s ORDER BY received_at DESC LIMIT %d OFFSET %d',
+                $table,
                 $app_id,
                 $limit,
                 $offset,
@@ -154,9 +160,10 @@ final class WebhookLog {
         if ($days < 1) $days = 1;
         $cutoff = gmdate('Y-m-d H:i:s', time() - $days * DAY_IN_SECONDS);
         $table  = self::table_name();
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom log table; $table built from $wpdb->prefix (not user input); log write: no caching applies to batch DELETE retention purges
         $count = $wpdb->query($wpdb->prepare(
-            "DELETE FROM $table WHERE received_at < %s LIMIT %d",
+            'DELETE FROM %i WHERE received_at < %s LIMIT %d',
+            $table,
             $cutoff,
             self::PRUNE_BATCH_LIMIT,
         ));
