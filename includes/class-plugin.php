@@ -220,6 +220,9 @@ final class Plugin {
      * invalidated on install / update / delete.
      */
     public static function register_cron_dispatch_hooks(): void {
+        // CronDispatcher::run has no license check of its own; this gate
+        // is the only enforcement point. Removing it would let cron events
+        // bind and fire on unlicensed sites.
         if (!ProFeatureGate::is_enabled('cron')) {
             return;
         }
