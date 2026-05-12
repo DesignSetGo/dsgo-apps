@@ -19,6 +19,8 @@
 
 declare(strict_types=1);
 
+defined('ABSPATH') || exit;
+
 /** @var array{
  *   app_id:string,
  *   app_name:string,
@@ -80,6 +82,34 @@ $rest_base = rest_url('dsgo/v1/webhooks/' . $ctx['app_id'] . '/');
                         value="<?php echo esc_attr($callback_url); ?>"
                         onclick="this.select()"
                     >
+                </td>
+            </tr>
+            <tr class="dsgo-webhook-test-row">
+                <td colspan="5">
+                    <details class="dsgo-webhook-test">
+                        <summary><?php esc_html_e('Send a test payload', 'designsetgo-apps'); ?></summary>
+                        <form class="dsgo-webhook-test-form" data-endpoint-id="<?php echo esc_attr((string) $endpoint['id']); ?>">
+                            <label for="dsgo-test-body-<?php echo esc_attr((string) $endpoint['id']); ?>">
+                                <?php esc_html_e('Body (JSON or raw text)', 'designsetgo-apps'); ?>
+                            </label>
+                            <textarea
+                                id="dsgo-test-body-<?php echo esc_attr((string) $endpoint['id']); ?>"
+                                class="dsgo-webhook-test-body"
+                                rows="4"
+                                cols="60"
+                            >{"event":"test"}</textarea>
+                            <p class="description">
+                                <?php esc_html_e(
+                                    'The handler signs this body with your configured secret and dispatches it through the full pipeline. The endpoint must already have its secret set on the Secrets tab.',
+                                    'designsetgo-apps',
+                                ); ?>
+                            </p>
+                            <button type="submit" class="button">
+                                <?php esc_html_e('Send test payload', 'designsetgo-apps'); ?>
+                            </button>
+                            <span class="dsgo-webhook-test-result" hidden></span>
+                        </form>
+                    </details>
                 </td>
             </tr>
         <?php endforeach; ?>

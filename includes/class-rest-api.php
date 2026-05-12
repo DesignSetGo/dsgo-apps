@@ -266,9 +266,11 @@ final class RestApi {
      * fire init but not necessarily admin_init.
      */
     public static function register_admin_ajax(): void {
-        add_action('wp_ajax_dsgo_apps_secret_set',   [self::class, 'ajax_secret_set']);
-        add_action('wp_ajax_dsgo_apps_secret_clear', [self::class, 'ajax_secret_clear']);
-        add_action('wp_ajax_dsgo_apps_http_test',    [self::class, 'ajax_http_test']);
+        add_action('wp_ajax_dsgo_apps_secret_set',         [self::class, 'ajax_secret_set']);
+        add_action('wp_ajax_dsgo_apps_secret_clear',       [self::class, 'ajax_secret_clear']);
+        add_action('wp_ajax_dsgo_apps_http_test',          [self::class, 'ajax_http_test']);
+        add_action('wp_ajax_dsgo_apps_cron_run_now',       [self::class, 'ajax_cron_run_now']);
+        add_action('wp_ajax_dsgo_apps_webhook_send_test',  [self::class, 'ajax_webhook_send_test']);
     }
 
     public static function mark_app_password_auth(): void {
@@ -1390,6 +1392,204 @@ final class RestApi {
             return Manifest::from_array_unchecked($raw);
         } catch (\Throwable $e) {
             return null;
+        }
+    }
+
+    /**
+     * Per-app nonce action for the Cron + Webhooks admin tabs. Keyed
+     * by app id so a leaked nonce can't be replayed against a sibling
+     * app. Separate from the Secrets-tab nonce so the two surfaces'
+     * blast radii stay independent.
+     */
+    private static function cron_webhooks_nonce_action(string $app_id): string {
+        return 'dsgo_apps_cron_webhooks_nonce_' . $app_id;
+    }
+
+    /**
+     * Common gate for the Cron + Webhooks admin-ajax handlers:
+     *  - manage_options
+     *  - per-app nonce
+     *  - app exists and has a parseable manifest
+     *
+     * Returns the resolved (app_id, Manifest) tuple, or wp_send_json_errors
+     * + dies. Mirrors require_secret_ajax_context but writes its own
+     * nonce action so the two admin surfaces can't share tokens.
+     *
+     * @return array{app_id:string, manifest:Manifest}|null
+     */
+    private static function require_cron_webhooks_ajax_context(): ?array {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['code' => 'forbidden', 'message' => 'manage_options required'], 403);
+        }
+        // app_id must be read before check_ajax_referer because the nonce action is keyed to the app; nonce verification follows immediately.
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified on the next statement
+        $app_id = isset($_POST['app_id']) ? sanitize_key(wp_unslash((string) $_POST['app_id'])) : '';
+        if ($app_id === '') {
+            wp_send_json_error(['code' => 'missing_app_id', 'message' => 'app_id is required'], 400);
+        }
+        check_ajax_referer(self::cron_webhooks_nonce_action($app_id), 'nonce');
+
+        $post = get_page_by_path($app_id, OBJECT, PostType::SLUG);
+        if (!$post instanceof \WP_Post) {
+            wp_send_json_error(['code' => 'not_found', 'message' => 'app not found'], 404);
+        }
+        $raw = get_post_meta($post->ID, 'dsgo_apps_manifest', true);
+        if (!is_array($raw)) {
+            wp_send_json_error(['code' => 'not_found', 'message' => 'app manifest missing'], 404);
+        }
+        try {
+            $manifest = Manifest::from_array_unchecked($raw);
+        } catch (\Throwable $e) {
+            wp_send_json_error(['code' => 'invalid_manifest', 'message' => $e->getMessage()], 500);
+        }
+        return ['app_id' => $app_id, 'manifest' => $manifest];
+    }
+
+    /**
+     * Read-side accessor used by the cron/webhooks tab templates to
+     * mint a fresh nonce for the admin-ajax surface. Lives here so the
+     * nonce-action helper has a single definition.
+     */
+    public static function cron_webhooks_nonce(string $app_id): string {
+        return wp_create_nonce(self::cron_webhooks_nonce_action($app_id));
+    }
+
+    /**
+     * POST admin-ajax `dsgo_apps_cron_run_now` — fire a scheduled
+     * job immediately, regardless of its WP-cron schedule. Useful for
+     * operators verifying a newly installed cron without waiting for
+     * the next tick.
+     *
+     * Resolves the job_id against the manifest's `scheduled.jobs[]`,
+     * then calls CronDispatcher::run() inline. The dispatcher writes
+     * its own audit log row; we return that row so the JS can render
+     * the outcome inline without a second round-trip.
+     */
+    public static function ajax_cron_run_now(): void {
+        $ctx = self::require_cron_webhooks_ajax_context();
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared to regex below
+        $job_id = isset($_POST['job_id']) ? (string) wp_unslash((string) $_POST['job_id']) : '';
+        if (!preg_match('/^[a-z][a-z0-9-]{0,63}$/', $job_id)) {
+            wp_send_json_error(['code' => 'invalid_job_id', 'message' => 'job_id must match ^[a-z][a-z0-9-]{0,63}$'], 422);
+        }
+        $job = null;
+        foreach ($ctx['manifest']->scheduled_jobs() as $entry) {
+            if (($entry['id'] ?? null) === $job_id) {
+                $job = $entry;
+                break;
+            }
+        }
+        if ($job === null) {
+            wp_send_json_error(['code' => 'job_not_found', 'message' => 'no job with that id'], 404);
+        }
+
+        CronDispatcher::run($ctx['app_id'], $job_id, (string) $job['ability']);
+
+        // The dispatcher just wrote one CronLog row — read it back so
+        // the JS can show the outcome inline.
+        $rows = CronLog::query($ctx['app_id'], ['job_id' => $job_id, 'per_page' => 1]);
+        wp_send_json_success([
+            'ok'  => true,
+            'log' => $rows[0] ?? null,
+        ]);
+    }
+
+    /**
+     * POST admin-ajax `dsgo_apps_webhook_send_test` — fabricate a
+     * signed test payload and run it through the full WebhookHandler
+     * pipeline so operators can confirm an endpoint is wired
+     * correctly without leaving wp-admin.
+     *
+     * The handler resolves the endpoint config from the manifest,
+     * pulls the stored secret from the per-app vault, and computes
+     * the correct headers for the declared auth scheme. The fully-
+     * signed request is then dispatched through WebhookHandler::handle
+     * so every step the production receiver runs (rate limit, auth,
+     * idempotency, dispatch, log) is exercised. The handler's
+     * WP_REST_Response (status + body) is returned to the JS verbatim.
+     */
+    public static function ajax_webhook_send_test(): void {
+        $ctx = self::require_cron_webhooks_ajax_context();
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared to regex below
+        $endpoint_id = isset($_POST['endpoint_id']) ? (string) wp_unslash((string) $_POST['endpoint_id']) : '';
+        if (!preg_match('/^[a-z][a-z0-9-]{0,63}$/', $endpoint_id)) {
+            wp_send_json_error(['code' => 'invalid_endpoint_id', 'message' => 'endpoint_id must match ^[a-z][a-z0-9-]{0,63}$'], 422);
+        }
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- body is the verbatim payload bytes; sanitize_text_field would corrupt JSON
+        $body = isset($_POST['body']) ? (string) wp_unslash((string) $_POST['body']) : '';
+
+        $endpoint = null;
+        foreach ($ctx['manifest']->webhook_endpoints() as $entry) {
+            if (($entry['id'] ?? null) === $endpoint_id) {
+                $endpoint = $entry;
+                break;
+            }
+        }
+        if ($endpoint === null) {
+            wp_send_json_error(['code' => 'endpoint_not_found', 'message' => 'no endpoint with that id'], 404);
+        }
+
+        // Look up the configured secret. If it isn't set, return the
+        // same error code the production pipeline would surface so the
+        // operator gets a consistent signal.
+        $auth   = $endpoint['auth'] ?? [];
+        $alias  = (string) ($auth['secret_alias'] ?? '');
+        $secret = $alias !== '' ? Secret_Vault::get($ctx['app_id'], $alias) : null;
+        if ($secret === null) {
+            wp_send_json_error([
+                'code'    => 'webhook_secret_not_set',
+                'message' => 'Webhook secret is not configured. Set it in the Secrets tab.',
+            ], 503);
+        }
+
+        // Compute the signed headers for the declared scheme.
+        $headers = self::sign_test_webhook_headers($auth, $body, $secret);
+
+        $req = new \WP_REST_Request('POST', '/dsgo/v1/webhooks/' . $ctx['app_id'] . '/' . $endpoint_id);
+        $req->set_body($body);
+        $req->set_header('content-type', 'application/json');
+        foreach ($headers as $name => $value) {
+            $req->set_header($name, $value);
+        }
+
+        $response = WebhookHandler::handle($req, $ctx['app_id'], $endpoint_id);
+        wp_send_json_success([
+            'ok'     => $response->get_status() >= 200 && $response->get_status() < 300,
+            'status' => $response->get_status(),
+            'body'   => $response->get_data(),
+        ]);
+    }
+
+    /**
+     * Compute the headers a real producer would send for the declared
+     * auth scheme. Used by the test-payload handler so the dispatch
+     * exercises the production auth verifier rather than bypassing it.
+     *
+     * @param array<string, mixed> $auth
+     * @return array<string, string>
+     */
+    private static function sign_test_webhook_headers(array $auth, string $body, string $secret): array {
+        $type   = (string) ($auth['type']   ?? '');
+        $scheme = (string) ($auth['scheme'] ?? '');
+        $ts     = time();
+        switch ($type === 'hmac-sha256' ? $scheme : $type) {
+            case 'stripe':
+                $sig = hash_hmac('sha256', "{$ts}.{$body}", $secret);
+                return ['stripe-signature' => "t={$ts},v1={$sig}"];
+            case 'github':
+                return ['x-hub-signature-256' => 'sha256=' . hash_hmac('sha256', $body, $secret)];
+            case 'slack':
+                $sig = 'v0=' . hash_hmac('sha256', "v0:{$ts}:{$body}", $secret);
+                return [
+                    'x-slack-request-timestamp' => (string) $ts,
+                    'x-slack-signature'         => $sig,
+                ];
+            case 'generic':
+                return ['x-webhook-signature' => hash_hmac('sha256', $body, $secret)];
+            case 'bearer':
+                return ['authorization' => 'Bearer ' . $secret];
+            default:
+                return [];
         }
     }
 

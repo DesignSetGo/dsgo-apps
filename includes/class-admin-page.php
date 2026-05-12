@@ -561,6 +561,22 @@ npx designsetgo apps deploy --build</code></pre>
      * The "Run now" + JS interactivity lands in a follow-up commit.
      */
     private static function render_cron_tab(Manifest $manifest): void {
+        // The cron + webhooks admin-ajax surface uses its own per-app
+        // nonce action; the JS reads the token off the localized
+        // dsgoCronWebhooks global. Both tabs share the same token.
+        wp_enqueue_script(
+            'dsgo-apps-cron-tab',
+            plugins_url('assets/admin/cron-tab.js', DSGO_APPS_PATH . 'designsetgo-apps.php'),
+            [],
+            DSGO_APPS_VERSION,
+            true,
+        );
+        wp_localize_script('dsgo-apps-cron-tab', 'dsgoCronWebhooks', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'appId'   => $manifest->id,
+            'nonce'   => RestApi::cron_webhooks_nonce($manifest->id),
+        ]);
+
         // phpcs:disable WordPress.PHP.DontExtract
         $ctx = [
             'app_id'   => $manifest->id,
@@ -582,6 +598,19 @@ npx designsetgo apps deploy --build</code></pre>
      * The "Send test payload" form + JS lands in a follow-up commit.
      */
     private static function render_webhooks_tab(Manifest $manifest): void {
+        wp_enqueue_script(
+            'dsgo-apps-webhooks-tab',
+            plugins_url('assets/admin/webhooks-tab.js', DSGO_APPS_PATH . 'designsetgo-apps.php'),
+            [],
+            DSGO_APPS_VERSION,
+            true,
+        );
+        wp_localize_script('dsgo-apps-webhooks-tab', 'dsgoCronWebhooks', [
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'appId'   => $manifest->id,
+            'nonce'   => RestApi::cron_webhooks_nonce($manifest->id),
+        ]);
+
         // phpcs:disable WordPress.PHP.DontExtract
         $ctx = [
             'app_id'    => $manifest->id,

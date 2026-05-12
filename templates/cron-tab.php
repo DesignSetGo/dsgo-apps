@@ -17,6 +17,8 @@
 
 declare(strict_types=1);
 
+defined('ABSPATH') || exit;
+
 /** @var array{
  *   app_id:string,
  *   app_name:string,
@@ -42,6 +44,7 @@ $ctx = $ctx;
                 <th scope="col"><?php esc_html_e('Ability', 'designsetgo-apps'); ?></th>
                 <th scope="col"><?php esc_html_e('Schedule', 'designsetgo-apps'); ?></th>
                 <th scope="col"><?php esc_html_e('Next fire', 'designsetgo-apps'); ?></th>
+                <th scope="col"><?php esc_html_e('Actions', 'designsetgo-apps'); ?></th>
             </tr>
         </thead>
         <tbody>
@@ -64,6 +67,18 @@ $ctx = $ctx;
                 <td><code><?php echo esc_html((string) $job['ability']); ?></code></td>
                 <td><?php echo esc_html($schedule); ?></td>
                 <td><?php echo esc_html($next_label); ?></td>
+                <td>
+                    <button
+                        type="button"
+                        class="button dsgo-cron-run-now"
+                        data-job-id="<?php echo esc_attr((string) $job['id']); ?>"
+                    >
+                        <?php esc_html_e('Run now', 'designsetgo-apps'); ?>
+                    </button>
+                </td>
+            </tr>
+            <tr class="dsgo-cron-run-result" data-for="<?php echo esc_attr((string) $job['id']); ?>" hidden>
+                <td colspan="5"></td>
             </tr>
         <?php endforeach; ?>
         </tbody>
