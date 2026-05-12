@@ -1992,6 +1992,27 @@ final readonly class Manifest {
         if ($this->http_test_endpoint !== null) {
             $out['http'] = ['test_endpoint' => $this->http_test_endpoint];
         }
+        // Emit `scheduled` and `webhooks` from raw so the admin-page badge
+        // helper (inactive_pro_features_for_manifest) can read them from the
+        // stored manifest without accessing the original JSON. Both blocks are
+        // only present when the manifest actually declares them, so the emitted
+        // keys are absent for apps that don't use cron or webhooks — exactly
+        // matching the raw shape the badge helper expects.
+        $scheduled_jobs = $this->raw['scheduled']['jobs'] ?? null;
+        if (is_array($scheduled_jobs) && $scheduled_jobs !== []) {
+            $out['scheduled'] = ['jobs' => $scheduled_jobs];
+        }
+        $webhook_endpoints = $this->raw['webhooks']['endpoints'] ?? null;
+        if (is_array($webhook_endpoints) && $webhook_endpoints !== []) {
+            $out['webhooks'] = ['endpoints' => $webhook_endpoints];
+        }
+        // Also emit permissions.run when set — needed so a hydrated manifest
+        // round-trips cleanly through from_array_unchecked and the run bucket
+        // is preserved across update installs.
+        $permissions_run = $this->raw['permissions']['run'] ?? null;
+        if (is_array($permissions_run) && $permissions_run !== []) {
+            $out['permissions']['run'] = $permissions_run;
+        }
         // TODO(v1.x): permissions.justifications is read at validate-time
         // (validate_justifications, ~1316) but is NOT round-tripped here —
         // hydrated manifests come back without the author's per-bucket

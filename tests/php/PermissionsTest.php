@@ -202,19 +202,20 @@ class PermissionsTest extends WP_UnitTestCase {
     }
 
     public function test_active_for_documents_round_trip_gap_for_supplementary_buckets(): void {
-        // WriteContent, ExternalServices, SendMessages, RunAutomatically all
-        // activate from supplementary blocks (permissions.write/http/send,
-        // scheduled.jobs, webhooks.endpoints) that are NOT serialized by
-        // to_array() today. Hydrating drops them. This test pins the
-        // documented gap so a future change to to_array() that closes it
-        // surfaces here as a "this test is now over-strict" signal.
+        // WriteContent, ExternalServices, SendMessages activate from
+        // supplementary blocks (permissions.write/http/send) that are NOT
+        // serialized by to_array(). Hydrating drops them — documented gap.
+        //
+        // RunAutomatically activates from scheduled.jobs + webhooks.endpoints.
+        // to_array() NOW serializes both blocks into the stored array, so
+        // RunAutomatically SURVIVES the round-trip and is no longer a gap.
         //
         // NOTE: We construct the fresh Manifest directly (bypassing validate)
         // because today's validator rejects permissions.write non-empty.
         // When the writes spec ships and lifts that rejection, this test
         // should be revisited — at that point the writes spec is responsible
         // for ALSO updating to_array() to serialize permissions.write, and
-        // this test should split (writes survives; the others still gap).
+        // the write_content assertion below should flip to assertContains.
         //
         // Commerce is intentionally OMITTED from this test: the Commerce
         // bucket can activate either via Permission::Commerce in
@@ -248,11 +249,13 @@ class PermissionsTest extends WP_UnitTestCase {
         $this->assertContains('send_messages',     $fresh_buckets);
         $this->assertContains('run_automatically', $fresh_buckets);
 
-        // Hydrated: all four supplementary buckets drop. Documented gap.
+        // Hydrated: permissions.write/http/send still gap — those three buckets drop.
         $this->assertNotContains('write_content',     $hydrated_buckets);
         $this->assertNotContains('external_services', $hydrated_buckets);
         $this->assertNotContains('send_messages',     $hydrated_buckets);
-        $this->assertNotContains('run_automatically', $hydrated_buckets);
+        // run_automatically now survives: to_array() serializes scheduled.jobs
+        // and webhooks.endpoints, so hydration restores the RunAutomatically bucket.
+        $this->assertContains('run_automatically', $hydrated_buckets);
     }
 
     public function test_active_for_raw_is_round_trip_safe_when_caller_keeps_raw(): void {
