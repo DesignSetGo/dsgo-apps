@@ -99,6 +99,7 @@ final class CronDispatcher {
         // workers need this so a slow ability doesn't trip max_execution.
         $timeout = self::resolve_timeout($app_post_id, $ability_name);
         if (function_exists('set_time_limit')) {
+            // phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- cron dispatch must extend the PHP timeout; default 30s would kill long-running app abilities
             set_time_limit($timeout + 10);
         }
 

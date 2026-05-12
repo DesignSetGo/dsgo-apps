@@ -332,6 +332,9 @@ final class MediaPublisher {
     }
 
     private static function log_skip(string $app_id, string $relative, string $reason): void {
-        error_log(sprintf('[dsgo-apps] media.publish skip app=%s path=%s reason=%s', $app_id, $relative, $reason));
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- WP_DEBUG gated; intentional for production debugging of media sideload skips
+            error_log(sprintf('[dsgo-apps] media.publish skip app=%s path=%s reason=%s', $app_id, $relative, $reason));
+        }
     }
 }

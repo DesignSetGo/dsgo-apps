@@ -97,12 +97,15 @@ final class CronLog {
             // history isn't invisible to operators. We deliberately do
             // NOT throw: the caller is mid-cron-tick and we never want
             // log-write failures to mask the underlying job outcome.
-            error_log(sprintf(
-                'dsgo_apps: CronLog::insert failed (app=%s job=%s): %s',
-                $row['app_id'] ?? '?',
-                $row['job_id'] ?? '?',
-                $wpdb->last_error,
-            ));
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- WP_DEBUG gated; intentional for production debugging of cron log write failures
+                error_log(sprintf(
+                    'dsgo_apps: CronLog::insert failed (app=%s job=%s): %s',
+                    $row['app_id'] ?? '?',
+                    $row['job_id'] ?? '?',
+                    $wpdb->last_error,
+                ));
+            }
         }
     }
 
