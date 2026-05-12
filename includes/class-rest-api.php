@@ -19,6 +19,13 @@ final class RestApi {
     public const AI_RATE_LIMIT_PER_HOUR = 60;
 
     /**
+     * True when the current REST request authenticated via Application Password
+     * (the auth method @designsetgo/cli uses). Set by the hook registered in
+     * register() before any route handler runs.
+     */
+    private static bool $authed_via_app_password = false;
+
+    /**
      * Capabilities the /can endpoint will probe. Restricting to a known list
      * avoids leaking results for arbitrary third-party caps and prevents the
      * post-meta cap resolver from running on attacker-supplied strings.
@@ -37,6 +44,13 @@ final class RestApi {
     ];
 
     public static function register(): void {
+        // Capture whether the current REST request authenticated via Application
+        // Password (the auth method @designsetgo/cli uses). The hook fires once
+        // per request before the route handler runs, so the flag is set by the
+        // time the install callback executes. The gate inside the install
+        // handler is the only enforcement point for the cli_deploy feature.
+        \add_action('application_password_did_authenticate', [self::class, 'mark_app_password_auth']);
+
         register_rest_route(self::NAMESPACE, '/apps', [
             [
                 'methods'             => 'POST',
@@ -220,6 +234,19 @@ final class RestApi {
         add_action('wp_ajax_dsgo_apps_http_test',    [self::class, 'ajax_http_test']);
     }
 
+    public static function mark_app_password_auth(): void {
+        self::$authed_via_app_password = true;
+    }
+
+    public static function is_app_password_request(): bool {
+        return self::$authed_via_app_password;
+    }
+
+    /** Reset the per-request AppPassword flag. Used by tests to prevent flag bleed between cases. */
+    public static function reset_app_password_flag(): void {
+        self::$authed_via_app_password = false;
+    }
+
     public static function list_apps(\WP_REST_Request $req): \WP_REST_Response {
         $page     = max(1, (int) ($req->get_param('page') ?? 1));
         $per_page = (int) ($req->get_param('per_page') ?? 100);
@@ -308,6 +335,20 @@ final class RestApi {
     }
 
     public static function create_app(\WP_REST_Request $req): \WP_REST_Response {
+        // CLI deploys gate on cli_deploy. Cookie-authed installs (the wp-admin
+        // upload importer) skip the gate; AppPassword-authed installs (the CLI)
+        // must be on Pro. This gate is the only enforcement point for cli_deploy.
+        if (self::is_app_password_request() && !ProFeatureGate::is_enabled('cli_deploy')) {
+            return new \WP_REST_Response([
+                'code'    => 'cli_requires_pro',
+                'message' => __('CLI deploys require a DesignSetGo Apps Pro license. The wp-admin upload importer is free and unlimited.', 'designsetgo-apps'),
+                'data'    => [
+                    'status'      => 402,
+                    'pricing_url' => 'https://designsetgo.dev/pricing',
+                ],
+            ], 402);
+        }
+
         $files = $req->get_file_params();
         if (empty($files['bundle']) || !is_array($files['bundle'])) {
             return new \WP_REST_Response(['code' => 'missing_file', 'message' => 'expected multipart "bundle" field'], 400);
