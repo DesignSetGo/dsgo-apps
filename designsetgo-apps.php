@@ -3,7 +3,7 @@
  * Plugin Name:       DesignSetGo Apps
  * Plugin URI:        https://designsetgo.dev
  * Description:       Drop in any AI-built static bundle and run it as a sandboxed app on your WordPress site at /apps/{slug}, wired to your posts, pages, and users via a permissioned bridge.
- * Version:           0.3.0
+ * Version:           1.0.0
  * Requires at least: 6.9
  * Tested up to:      6.9
  * Requires PHP:      8.2
@@ -47,7 +47,7 @@ if (version_compare((string) $wp_version, '6.9', '<')) {
     return;
 }
 
-define('DSGO_APPS_VERSION', '0.2.1');
+define('DSGO_APPS_VERSION', '1.0.0');
 define('DSGO_APPS_FILE', __FILE__);
 define('DSGO_APPS_PATH', plugin_dir_path(__FILE__));
 define('DSGO_APPS_URL', plugin_dir_url(__FILE__));

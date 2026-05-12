@@ -4,7 +4,7 @@ Tags: ai, sandbox, iframe, app
 Requires at least: 6.9
 Tested up to: 6.9
 Requires PHP: 8.2
-Stable tag: 0.3.0
+Stable tag: 1.0.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -157,6 +157,10 @@ Site owners are responsible for reviewing the privacy policies and terms of any 
 
 == Upgrade Notice ==
 
+= 1.0.0 =
+First stable release. No data migration required; no breaking changes
+from 0.3.x.
+
 = 0.3.0 =
 The 1-app cap is removed. The free plugin now hosts unlimited apps. Pro
 gates the CLI, Riff, and server-side runtime features instead.
@@ -170,6 +174,18 @@ Lite was capped at 1 active app per site. Upgraded to 0.3.0 removes that cap.
 Initial public release.
 
 == Changelog ==
+
+= 1.0.0 =
+* **1.0 stable.** Free plugin is now WordPress.org-submission-ready: passes
+  Plugin Check with zero errors in shipping files, feature-gated freemium
+  model (no quantity caps, no artificial restrictions), unlimited apps in
+  the free tier.
+* Plugin Check cleanups: text-domain alignment, ABSPATH guards on every
+  shipping PHP file, parse_url → wp_parse_url, unlink → wp_delete_file,
+  $_GET sanitization, custom-table query annotations, error_log gated
+  behind WP_DEBUG, exception-message escape annotations.
+* No breaking changes from 0.3.0; bundle format, bridge protocol, manifest
+  schema, and CLI contract all unchanged.
 
 = 0.3.0 =
 
