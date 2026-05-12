@@ -81,7 +81,9 @@ final class Plugin {
         add_action('init', [Settings::class, 'register']);
         AdminPage::register();
         add_action('admin_notices', [self::class, 'maybe_render_activation_notice']);
-        AdminPublisherLoader::register();
+        // Deferred to init@9 so Pro's plugins_loaded@20 filter is already
+        // registered before the gate check inside register() runs.
+        add_action('init', [AdminPublisherLoader::class, 'register'], 9);
         Privacy::register();
         add_action('rest_api_init', [RestApi::class, 'register']);
         add_action('rest_api_init', [BlockStyles::class, 'register']);

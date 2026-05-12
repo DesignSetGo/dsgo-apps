@@ -213,6 +213,42 @@ class AdminPublisherLoaderTest extends WP_UnitTestCase {
         );
     }
 
+    /**
+     * Documents the boot-order contract: register() must be called AFTER Pro's
+     * dsgo_apps_pro_feature_enabled filter is registered (plugins_loaded@20).
+     * In production this is guaranteed by deferring register() to init@9 in
+     * Plugin::register_hooks(). This unit test simulates that post-boot state
+     * directly: Pro's filter is added first, then register() is called, and we
+     * assert both admin hooks bind. If someone moves the register() call back
+     * to plugins_loaded@10 — before Pro loads — this test still passes in unit
+     * tests (because there's no real plugin load sequence here) but the inline
+     * comment above and the production code's add_action('init', …, 9) serve
+     * as the normative specification.
+     */
+    public function test_register_binds_hooks_when_called_after_pro_filter_registered(): void {
+        // Simulate the post-boot state: Pro's filter is registered first (as
+        // happens in real load order: plugins_loaded@20), then register() runs
+        // (at init@9).
+        add_filter('dsgo_apps_pro_feature_enabled', static function (bool $en, string $f): bool {
+            return $f === 'abilities_publish' ? true : $en;
+        }, 10, 2);
+
+        // Clear any previously bound hooks (test isolation).
+        remove_action('admin_head', [AdminPublisherLoader::class, 'emit_config_island'], 1);
+        remove_action('admin_enqueue_scripts', [AdminPublisherLoader::class, 'enqueue_publisher_module']);
+
+        AdminPublisherLoader::register();
+
+        $this->assertNotFalse(
+            has_action('admin_head', [AdminPublisherLoader::class, 'emit_config_island']),
+            'admin_head hook must be registered when ProFeatureGate("abilities_publish") is open'
+        );
+        $this->assertNotFalse(
+            has_action('admin_enqueue_scripts', [AdminPublisherLoader::class, 'enqueue_publisher_module']),
+            'admin_enqueue_scripts hook must be registered when ProFeatureGate("abilities_publish") is open'
+        );
+    }
+
     private function install_app(string $id, array $publishes, string $isolation = 'iframe', string $mount_mode = 'prefixed'): void {
         $post_id = $this->factory->post->create([
             'post_type' => PostType::SLUG,
