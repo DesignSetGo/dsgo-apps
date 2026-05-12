@@ -32,9 +32,12 @@ final class CronLogTest extends WP_UnitTestCase {
         CronLog::create_table();
         global $wpdb;
         $name = $wpdb->prefix . 'dsgo_apps_cron_log';
+        // WP_UnitTestCase rewrites CREATE TABLE to CREATE TEMPORARY TABLE for
+        // per-test isolation; MySQL's SHOW TABLES does not list TEMPORARY
+        // tables, so the existence check has to use DESCRIBE (which does).
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL
-        $found = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $name));
-        $this->assertSame($name, $found);
+        $columns = $wpdb->get_results("DESCRIBE `$name`");
+        $this->assertNotEmpty($columns, "table $name must exist after create_table()");
     }
 
     public function test_insert_ok_row(): void {
