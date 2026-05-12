@@ -203,7 +203,7 @@ final class MediaPublisher {
     private static function sideload_to_uploads(string $abs, string $relative): ?array {
         $tmp = wp_tempnam(basename($relative));
         if (!@copy($abs, $tmp)) {
-            if (is_file($tmp)) @unlink($tmp);
+            if (is_file($tmp)) wp_delete_file($tmp);
             return null;
         }
         $file_array = [
@@ -221,7 +221,7 @@ final class MediaPublisher {
             remove_filter('upload_mimes', $filter, 99);
         }
         if (!is_array($handled) || isset($handled['error'])) {
-            if (is_file($tmp)) @unlink($tmp);
+            if (is_file($tmp)) wp_delete_file($tmp);
             return null;
         }
         return [

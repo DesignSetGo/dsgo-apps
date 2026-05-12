@@ -1341,7 +1341,7 @@ final readonly class Manifest {
                 'http_too_many_hosts: must not exceed 16 hosts per app',
             );
         }
-        $self_host = parse_url(home_url(), PHP_URL_HOST);
+        $self_host = wp_parse_url(home_url(), PHP_URL_HOST);
         $out = [];
         foreach ($raw as $host) {
             if (!is_string($host)) {

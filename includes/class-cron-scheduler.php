@@ -38,11 +38,11 @@ final class CronScheduler {
     public static function register_custom_schedules(array $schedules): array {
         $schedules['dsgo-15min'] = [
             'interval' => 900,
-            'display'  => __('Every 15 minutes (DesignSetGo Apps)', 'dsgo-apps'),
+            'display'  => __('Every 15 minutes (DesignSetGo Apps)', 'designsetgo-apps'),
         ];
         $schedules['dsgo-5min'] = [
             'interval' => 300,
-            'display'  => __('Every 5 minutes (DesignSetGo Apps)', 'dsgo-apps'),
+            'display'  => __('Every 5 minutes (DesignSetGo Apps)', 'designsetgo-apps'),
         ];
         return $schedules;
     }
