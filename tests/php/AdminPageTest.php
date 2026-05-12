@@ -102,6 +102,30 @@ class AdminPageTest extends WP_UnitTestCase {
         ]));
     }
 
+    public function test_dynamic_routes_badge_skips_bundle_json_sources(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        $manifest = [
+            'routes' => [['path' => '/items', 'dataset' => ['source' => 'data/items.json']]],
+        ];
+        $this->assertSame([], AdminPage::inactive_pro_features_for_manifest($manifest));
+    }
+
+    public function test_dynamic_routes_badge_triggers_on_wp_sources(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        $manifest = [
+            'routes' => [['path' => '/posts/:slug', 'dataset' => ['source' => 'wp:posts']]],
+        ];
+        $this->assertSame(['dynamic_routes'], AdminPage::inactive_pro_features_for_manifest($manifest));
+    }
+
+    public function test_dynamic_routes_badge_triggers_on_wc_sources(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        $manifest = [
+            'routes' => [['path' => '/p/:slug', 'dataset' => ['source' => 'wc:products']]],
+        ];
+        $this->assertSame(['dynamic_routes'], AdminPage::inactive_pro_features_for_manifest($manifest));
+    }
+
     public function test_reading_notice_renders_when_root_app_is_set(): void {
         wp_set_current_user($this->admin_id);
         $post_id = $this->factory->post->create([

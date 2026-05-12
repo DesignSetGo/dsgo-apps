@@ -514,7 +514,16 @@ npx designsetgo apps deploy --build</code></pre>
 
     private static function manifest_has_dynamic_route(array $manifest_arr): bool {
         foreach (($manifest_arr['routes'] ?? []) as $route) {
-            if (!empty($route['dataset']['source'])) {
+            $source = $route['dataset']['source'] ?? null;
+            if (!is_string($source) || $source === '') {
+                continue;
+            }
+            if (str_starts_with($source, 'wp:') || str_starts_with($source, 'wc:')) {
+                return true;
+            }
+            // Third-party resolver registered for this source?
+            $resolver = \apply_filters('dsgo_apps_dataset_resolver', null, $source);
+            if (\is_callable($resolver)) {
                 return true;
             }
         }
