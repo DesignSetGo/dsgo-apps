@@ -55,6 +55,7 @@ final class Plugin {
         require_once $base . 'class-webhook-queue.php';
         require_once $base . 'class-async-webhook-handler.php';
         require_once $base . 'class-webhook-handler.php';
+        require_once $base . 'class-webhook-router.php';
         require_once $base . 'class-privacy.php';
         require_once $base . 'class-post-type.php';
         require_once $base . 'class-settings.php';
@@ -94,6 +95,10 @@ final class Plugin {
         Privacy::register();
         add_action('rest_api_init', [RestApi::class, 'register']);
         add_action('rest_api_init', [BlockStyles::class, 'register']);
+        // Webhook endpoint routes — Pro-gated inside the router. One
+        // POST route per manifest-declared webhooks.endpoints[] entry.
+        // Each route delegates to WebhookHandler::handle.
+        add_action('rest_api_init', [WebhookRouter::class, 'register_all']);
         // admin-ajax handlers for the Secrets tab — gated on manage_options
         // + per-app nonce inside each callback. Registered on init so they
         // resolve regardless of whether REST is being served on this request.
