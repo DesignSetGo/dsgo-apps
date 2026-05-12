@@ -55,7 +55,7 @@ export default function Edit({ attributes, setAttributes }: EditProps): JSX.Elem
           {error && <Notice status="error">Could not load apps: {error}</Notice>}
           {apps !== null && blockApps.length === 0 && (
             <Notice status="info">
-              No block-mode apps installed. <a href="/wp-admin/edit.php?post_type=dsgo_app">Install one →</a>
+              No block-mode apps installed. <a href="/wp-admin/admin.php?page=designsetgo-apps">Install one →</a>
             </Notice>
           )}
           {blockApps.length > 0 && (

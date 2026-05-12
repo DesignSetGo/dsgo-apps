@@ -190,6 +190,55 @@
     font-size: 14px;
 }
 
+/* FIRST-RUN CHOOSER ───────────────────────────────────────────── */
+
+.dsgo-first-run {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: -4px 0 24px;
+}
+.dsgo-first-run__card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+    padding: 18px;
+    border: 1px solid var(--dsgo-rule);
+    border-radius: var(--dsgo-radius-sm);
+    background: var(--dsgo-bg);
+}
+.dsgo-first-run__card--primary {
+    border-color: rgba(31, 91, 74, 0.32);
+    background: rgba(31, 91, 74, 0.06);
+}
+.dsgo-first-run__eyebrow {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dsgo-mute);
+}
+.dsgo-first-run__card h3 {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.25;
+    color: var(--dsgo-ink);
+}
+.dsgo-first-run__card p:not(.dsgo-first-run__eyebrow) {
+    flex: 1 1 auto;
+    margin: 0;
+    color: var(--dsgo-ink-soft);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+@media (max-width: 860px) {
+    .dsgo-first-run { grid-template-columns: 1fr; }
+}
+
 /* DROPZONE ──────────────────────────────────────────────────────────── */
 
 .dsgo-dropzone {
@@ -282,6 +331,50 @@
 .dsgo-status.is-error .dsgo-status__fill { background: var(--dsgo-danger); }
 .dsgo-status.is-error .dsgo-status__text  { color: var(--dsgo-danger); }
 .dsgo-status.is-success .dsgo-status__fill { background: var(--dsgo-accent); }
+
+.dsgo-success {
+    margin-top: 18px;
+    padding: 18px;
+    border: 1px solid rgba(31, 91, 74, 0.3);
+    border-radius: var(--dsgo-radius-sm);
+    background: rgba(31, 91, 74, 0.06);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: center;
+}
+.dsgo-success__eyebrow {
+    margin: 0 0 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dsgo-accent);
+}
+.dsgo-success__title {
+    margin: 0 0 4px;
+    font-size: 16px;
+    line-height: 1.25;
+    color: var(--dsgo-ink);
+}
+.dsgo-success__url {
+    margin: 0;
+    color: var(--dsgo-ink-soft);
+    font-family: var(--dsgo-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    word-break: break-all;
+}
+.dsgo-success__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+@media (max-width: 760px) {
+    .dsgo-success { grid-template-columns: 1fr; }
+    .dsgo-success__actions { justify-content: flex-start; }
+}
 
 /* ALT PATH (CLI) ─────────────────────────────────────────────────────── */
 

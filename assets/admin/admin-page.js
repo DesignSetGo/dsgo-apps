@@ -26,6 +26,7 @@
     var listSubtitle = root.querySelector('[data-dsgo-list-subtitle]');
     var rowTemplate = document.querySelector('[data-dsgo-row-template]');
     var consentTemplate = document.querySelector('[data-dsgo-consent-template]');
+    var successTemplate = document.querySelector('[data-dsgo-success-template]');
     var installPanel = root.querySelector('[data-dsgo-install-panel]');
     var installToggle = root.querySelector('[data-dsgo-install-toggle]');
 
@@ -48,6 +49,8 @@
     var apps = [];
     /** Currently open consent panel DOM node, or null. */
     var openConsent = null;
+    /** Currently visible post-install success panel DOM node, or null. */
+    var openSuccess = null;
 
     function clearChildren(node) {
         while (node.firstChild) node.removeChild(node.firstChild);
@@ -236,6 +239,13 @@
             openConsent.parentNode.removeChild(openConsent);
         }
         openConsent = null;
+    }
+
+    function closeSuccess() {
+        if (openSuccess && openSuccess.parentNode) {
+            openSuccess.parentNode.removeChild(openSuccess);
+        }
+        openSuccess = null;
     }
 
     function buildConsent(opts) {
@@ -469,6 +479,54 @@
         statusFill.style.width = Math.min(100, Math.max(0, pct)) + '%';
     }
 
+    function renderSuccessActions(body, fallbackName) {
+        if (!successTemplate || !status || !status.parentNode) return;
+        var appId = body && body.id ? body.id : '';
+        var appUrl = body && body.url ? body.url : '';
+        if (!appId || !appUrl) return;
+
+        closeSuccess();
+        if (installPanel) installPanel.classList.add('is-open');
+        if (installToggle) installToggle.setAttribute('aria-expanded', 'true');
+        var panel = successTemplate.content.firstElementChild.cloneNode(true);
+        panel.querySelector('[data-dsgo-success-title]').textContent = sprintf(
+            __('%s is ready.', 'designsetgo-apps'),
+            body.name || appId || fallbackName,
+        );
+        panel.querySelector('[data-dsgo-success-url]').textContent = appUrl;
+
+        var open = panel.querySelector('[data-dsgo-success-open]');
+        open.href = appUrl;
+
+        var embed = panel.querySelector('[data-dsgo-success-embed]');
+        embed.href = cfg.newPostUrl || '/wp-admin/post-new.php';
+
+        var home = panel.querySelector('[data-dsgo-success-home]');
+        home.addEventListener('click', function () { setSiteHome(appId, home); });
+
+        var copy = panel.querySelector('[data-dsgo-success-copy]');
+        var copyDefault = copy.textContent;
+        copy.addEventListener('click', function () {
+            var done = function (ok) {
+                copy.textContent = ok
+                    ? __('Copied', 'designsetgo-apps')
+                    : __('Copy failed', 'designsetgo-apps');
+                window.setTimeout(function () { copy.textContent = copyDefault; }, 1800);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(appUrl).then(
+                    function () { done(true); },
+                    function () { done(false); },
+                );
+            } else {
+                done(false);
+            }
+        });
+
+        status.parentNode.insertBefore(panel, status.nextSibling);
+        openSuccess = panel;
+    }
+
     var installInFlight = false;
     function upload(file) {
         if (!file) return;
@@ -635,6 +693,7 @@
                     sprintf(__('Installed %s. Live at %s', 'designsetgo-apps'), body.id || file.name, body.url || ''),
                     'success',
                 );
+                renderSuccessActions(body, file.name);
                 refresh();
                 window.setTimeout(function () { setProgress(0); status.hidden = true; }, 4000);
             } else {
@@ -721,6 +780,25 @@
     tabs.forEach(function (t) {
         t.addEventListener('click', function () {
             switchTab(t.getAttribute('data-dsgo-tab'));
+        });
+    });
+
+    root.querySelectorAll('[data-dsgo-quick-action]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var action = btn.getAttribute('data-dsgo-quick-action');
+            if (action === 'starter') return;
+            if (action === 'artifact') {
+                switchTab('html');
+                if (htmlDropzone) htmlDropzone.focus();
+                return;
+            }
+            if (action === 'ai') {
+                var aiDetails = root.querySelector('[data-dsgo-ai-details]');
+                if (aiDetails) {
+                    aiDetails.open = true;
+                    aiDetails.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
         });
     });
 
@@ -890,6 +968,7 @@
                         sprintf(__('Installed %s. Live at %s', 'designsetgo-apps'), body.id || id, body.url || ''),
                         'success',
                     );
+                    renderSuccessActions(body, id);
                     refresh();
                     selectHtmlFile(null);
                     if (idInput) idInput.value = '';
@@ -937,6 +1016,7 @@
                         sprintf(__('Installed %s. Live at %s', 'designsetgo-apps'), res.body.id || 'dsgo-starter', res.body.url || ''),
                         'success',
                     );
+                    renderSuccessActions(res.body, 'dsgo-starter');
                     refresh();
                     window.setTimeout(function () { setProgress(0); status.hidden = true; }, 4000);
                 } else {

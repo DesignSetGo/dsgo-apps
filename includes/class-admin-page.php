@@ -136,6 +136,7 @@ final class AdminPage {
             'maxFileCount'     => Bundle::MAX_FILE_COUNT,
             'docsUrl'          => 'https://designsetgo.dev/docs',
             'settingsUrl'      => admin_url('admin.php?page=designsetgo-apps-settings'),
+            'newPostUrl'       => admin_url('post-new.php'),
             'pricingUrl'       => (string) apply_filters('dsgo_apps_pro_pricing_url', 'https://designsetgo.dev/pricing'),
             'aiContext'        => [
                 'permissions'        => AiContextPack::all_permissions(),
@@ -222,24 +223,51 @@ final class AdminPage {
                          data-dsgo-install-panel aria-labelledby="dsgo-install-heading">
                     <header class="dsgo-card__header">
                         <h2 id="dsgo-install-heading" class="dsgo-card__title"><?php esc_html_e('Install an app', 'designsetgo-apps'); ?></h2>
-                        <p class="dsgo-card__subtitle" data-dsgo-card-subtitle><?php esc_html_e('Upload a packaged bundle (.zip) containing a dsgo-app.json manifest.', 'designsetgo-apps'); ?></p>
+                        <p class="dsgo-card__subtitle" data-dsgo-card-subtitle><?php esc_html_e('Try the starter, upload an AI artifact, or bring a packaged bundle from your editor.', 'designsetgo-apps'); ?></p>
                     </header>
+
+                    <div class="dsgo-first-run" aria-label="<?php esc_attr_e('First app options', 'designsetgo-apps'); ?>">
+                        <article class="dsgo-first-run__card dsgo-first-run__card--primary">
+                            <p class="dsgo-first-run__eyebrow"><?php esc_html_e('Fastest first win', 'designsetgo-apps'); ?></p>
+                            <h3><?php esc_html_e('Try the starter app', 'designsetgo-apps'); ?></h3>
+                            <p><?php esc_html_e('Install a guided multi-page tour with live bridge examples. No file, terminal, or AI prompt needed.', 'designsetgo-apps'); ?></p>
+                            <button type="button" class="button button-primary" data-dsgo-quick-action="starter" data-dsgo-starter-install>
+                                <?php esc_html_e('Install starter app', 'designsetgo-apps'); ?>
+                            </button>
+                        </article>
+                        <article class="dsgo-first-run__card">
+                            <p class="dsgo-first-run__eyebrow"><?php esc_html_e('Have an AI page?', 'designsetgo-apps'); ?></p>
+                            <h3><?php esc_html_e('Upload an artifact', 'designsetgo-apps'); ?></h3>
+                            <p><?php esc_html_e('Drop a saved Claude, ChatGPT, v0, or static HTML/zip export and DSGo wraps it safely.', 'designsetgo-apps'); ?></p>
+                            <button type="button" class="button" data-dsgo-quick-action="artifact">
+                                <?php esc_html_e('Choose artifact', 'designsetgo-apps'); ?>
+                            </button>
+                        </article>
+                        <article class="dsgo-first-run__card">
+                            <p class="dsgo-first-run__eyebrow"><?php esc_html_e('Need something custom?', 'designsetgo-apps'); ?></p>
+                            <h3><?php esc_html_e('Build with AI', 'designsetgo-apps'); ?></h3>
+                            <p><?php esc_html_e('Generate a bridge-aware prompt for your AI chat, then upload the HTML it creates.', 'designsetgo-apps'); ?></p>
+                            <button type="button" class="button" data-dsgo-quick-action="ai">
+                                <?php esc_html_e('Open prompt builder', 'designsetgo-apps'); ?>
+                            </button>
+                        </article>
+                    </div>
 
                     <div class="dsgo-tabs" role="tablist" aria-label="<?php esc_attr_e('Install method', 'designsetgo-apps'); ?>">
                         <button type="button" class="dsgo-tab is-active" role="tab"
-                                aria-selected="true" aria-controls="dsgo-panel-upload"
-                                id="dsgo-tab-upload" data-dsgo-tab="upload">
-                            <?php esc_html_e('Upload bundle', 'designsetgo-apps'); ?>
-                        </button>
-                        <button type="button" class="dsgo-tab" role="tab"
-                                aria-selected="false" aria-controls="dsgo-panel-html"
+                                aria-selected="true" aria-controls="dsgo-panel-html"
                                 id="dsgo-tab-html" data-dsgo-tab="html">
                             <?php esc_html_e('Upload artifact', 'designsetgo-apps'); ?>
+                        </button>
+                        <button type="button" class="dsgo-tab" role="tab"
+                                aria-selected="false" aria-controls="dsgo-panel-upload"
+                                id="dsgo-tab-upload" data-dsgo-tab="upload">
+                            <?php esc_html_e('Upload bundle', 'designsetgo-apps'); ?>
                         </button>
                     </div>
 
                     <div id="dsgo-panel-upload" role="tabpanel" aria-labelledby="dsgo-tab-upload"
-                         class="dsgo-panel" data-dsgo-panel="upload">
+                         class="dsgo-panel" data-dsgo-panel="upload" hidden>
                         <div class="dsgo-dropzone" data-dsgo-dropzone tabindex="0" role="button"
                              aria-label="<?php esc_attr_e('Choose a bundle zip to install', 'designsetgo-apps'); ?>">
                             <div class="dsgo-dropzone__icon" aria-hidden="true">
@@ -261,7 +289,7 @@ final class AdminPage {
                     </div>
 
                     <div id="dsgo-panel-html" role="tabpanel" aria-labelledby="dsgo-tab-html"
-                         class="dsgo-panel" data-dsgo-panel="html" hidden>
+                         class="dsgo-panel" data-dsgo-panel="html">
                         <p class="dsgo-panel__lede">
                             <?php
                             echo wp_kses(
@@ -377,23 +405,6 @@ final class AdminPage {
                         </div>
                     </details>
 
-                    <details class="dsgo-altpath" data-dsgo-starter-details>
-                        <summary><?php esc_html_e('Or install the bundled starter', 'designsetgo-apps'); ?></summary>
-                        <p class="dsgo-altpath__note">
-                            <?php
-                            echo wp_kses(
-                                __('A hand-crafted multi-page demo (<code>dsgo-starter</code>) with bridge examples. Installs in one click &mdash; no terminal, no build step. Re-installing replaces the existing copy.', 'designsetgo-apps'),
-                                ['code' => []],
-                            );
-                            ?>
-                        </p>
-                        <div class="dsgo-actions">
-                            <button type="button" class="button button-primary" data-dsgo-starter-install>
-                                <?php esc_html_e('Install starter app', 'designsetgo-apps'); ?>
-                            </button>
-                        </div>
-                    </details>
-
                     <details class="dsgo-altpath">
                         <summary><?php esc_html_e('Or vibe-code it in your favorite IDE', 'designsetgo-apps'); ?></summary>
                         <p class="dsgo-altpath__note">
@@ -453,6 +464,22 @@ npx designsetgo apps deploy --build</code></pre>
                 <div class="dsgo-consent__actions">
                     <button type="button" class="dsgo-consent__cancel" data-dsgo-consent-cancel><?php esc_html_e('Cancel', 'designsetgo-apps'); ?></button>
                     <button type="button" class="dsgo-consent__confirm" data-dsgo-consent-confirm></button>
+                </div>
+            </div>
+        </template>
+
+        <template data-dsgo-success-template>
+            <div class="dsgo-success" role="status" aria-live="polite">
+                <div>
+                    <p class="dsgo-success__eyebrow"><?php esc_html_e('Installed', 'designsetgo-apps'); ?></p>
+                    <h3 class="dsgo-success__title" data-dsgo-success-title></h3>
+                    <p class="dsgo-success__url" data-dsgo-success-url></p>
+                </div>
+                <div class="dsgo-success__actions">
+                    <a class="button button-primary" data-dsgo-success-open target="_blank" rel="noopener noreferrer"><?php esc_html_e('Open app', 'designsetgo-apps'); ?></a>
+                    <a class="button" data-dsgo-success-embed><?php esc_html_e('Embed in a post', 'designsetgo-apps'); ?></a>
+                    <button type="button" class="button" data-dsgo-success-home><?php esc_html_e('Set as site home', 'designsetgo-apps'); ?></button>
+                    <button type="button" class="button" data-dsgo-success-copy><?php esc_html_e('Copy URL', 'designsetgo-apps'); ?></button>
                 </div>
             </div>
         </template>

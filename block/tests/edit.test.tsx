@@ -63,6 +63,10 @@ describe('edit.tsx', () => {
     await waitFor(() => {
       expect(screen.getByText(/no.*block-mode.*apps installed/i)).toBeInTheDocument();
     });
+    expect(screen.getByRole('link', { name: /install one/i })).toHaveAttribute(
+      'href',
+      '/wp-admin/admin.php?page=designsetgo-apps',
+    );
   });
 
   it('lists only block-capable apps in the picker', async () => {

@@ -58,6 +58,41 @@ class AdminPageTest extends WP_UnitTestCase {
         wp_dequeue_script('dsgo-admin-page');
     }
 
+    public function test_empty_admin_page_leads_with_artifact_and_starter_paths(): void {
+        wp_set_current_user($this->admin_id);
+        ob_start();
+        AdminPage::render();
+        $html = (string) ob_get_clean();
+
+        $this->assertStringContainsString('data-dsgo-quick-action="starter"', $html);
+        $this->assertStringContainsString('data-dsgo-quick-action="artifact"', $html);
+        $this->assertStringContainsString('data-dsgo-tab="html"', $html);
+        $this->assertStringContainsString('data-dsgo-tab="upload"', $html);
+        $this->assertStringContainsString('id="dsgo-panel-html"', $html);
+        $this->assertStringContainsString('id="dsgo-panel-upload"', $html);
+        $this->assertLessThan(
+            strpos($html, 'data-dsgo-tab="upload"'),
+            strpos($html, 'data-dsgo-tab="html"'),
+            'artifact upload should be the first install tab',
+        );
+        $this->assertStringContainsString('aria-selected="true" aria-controls="dsgo-panel-html"', $html);
+        $this->assertStringContainsString('class="dsgo-panel" data-dsgo-panel="html"', $html);
+        $this->assertStringContainsString('class="dsgo-panel" data-dsgo-panel="upload" hidden', $html);
+    }
+
+    public function test_admin_page_renders_post_install_success_actions_template(): void {
+        wp_set_current_user($this->admin_id);
+        ob_start();
+        AdminPage::render();
+        $html = (string) ob_get_clean();
+
+        $this->assertStringContainsString('data-dsgo-success-template', $html);
+        $this->assertStringContainsString('data-dsgo-success-open', $html);
+        $this->assertStringContainsString('data-dsgo-success-embed', $html);
+        $this->assertStringContainsString('data-dsgo-success-home', $html);
+        $this->assertStringContainsString('data-dsgo-success-copy', $html);
+    }
+
     public function test_reading_notice_skipped_for_non_admin(): void {
         wp_set_current_user($this->editor_id);
         ob_start();
