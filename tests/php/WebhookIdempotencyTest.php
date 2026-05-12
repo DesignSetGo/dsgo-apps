@@ -65,10 +65,29 @@ final class WebhookIdempotencyTest extends WP_UnitTestCase {
     }
 
     public function test_record_is_idempotent_for_the_same_event(): void {
-        // Recording twice is a no-op — the second record() must not
-        // throw or reset the TTL clock in a way that masks issues.
+        // Recording twice is a no-op semantically — the second record()
+        // refreshes the TTL so a stubbornly-retrying producer keeps
+        // the dedupe window alive without re-invoking the ability.
         WebhookIdempotency::record('myapp', 'stripe-events', 'evt_double');
         WebhookIdempotency::record('myapp', 'stripe-events', 'evt_double');
         $this->assertTrue(WebhookIdempotency::check('myapp', 'stripe-events', 'evt_double'));
+    }
+
+    public function test_empty_event_id_check_returns_false(): void {
+        // sha256('') is a fixed digest. Without the empty-id guard,
+        // every missing-id delivery would dedupe against every other
+        // missing-id delivery — turning an upstream omission into a
+        // silent cross-event collision. The handler is responsible for
+        // rejecting missing ids; this class just refuses to participate.
+        $this->assertFalse(WebhookIdempotency::check('myapp', 'stripe-events', ''));
+    }
+
+    public function test_empty_event_id_record_does_not_seed_cache(): void {
+        // record('') must not write a transient — otherwise check('')
+        // for a different (app, endpoint) tuple could collide via the
+        // shared empty-string sha256.
+        WebhookIdempotency::record('myapp', 'stripe-events', '');
+        $this->assertFalse(WebhookIdempotency::check('myapp', 'stripe-events', ''));
+        $this->assertFalse(WebhookIdempotency::check('other', 'stripe-events', ''));
     }
 }

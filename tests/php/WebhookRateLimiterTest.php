@@ -25,19 +25,19 @@ final class WebhookRateLimiterTest extends WP_UnitTestCase {
 
     public function test_allows_request_under_limit(): void {
         $this->assertTrue(
-            WebhookRateLimiter::check_and_increment('myapp', 'stripe-events', 60),
+            WebhookRateLimiter::try_acquire('myapp', 'stripe-events', 60),
         );
     }
 
     public function test_allows_exactly_n_requests_then_rejects(): void {
         for ($i = 1; $i <= 5; $i++) {
             $this->assertTrue(
-                WebhookRateLimiter::check_and_increment('myapp', 'stripe-events', 5),
+                WebhookRateLimiter::try_acquire('myapp', 'stripe-events', 5),
                 "request #$i within the limit should be allowed",
             );
         }
         $this->assertFalse(
-            WebhookRateLimiter::check_and_increment('myapp', 'stripe-events', 5),
+            WebhookRateLimiter::try_acquire('myapp', 'stripe-events', 5),
             'request beyond the limit must be rejected',
         );
     }
@@ -47,14 +47,14 @@ final class WebhookRateLimiterTest extends WP_UnitTestCase {
         // endpoint id and the same limit must still be allowed.
         for ($i = 0; $i < 3; $i++) {
             $this->assertTrue(
-                WebhookRateLimiter::check_and_increment('alpha', 'stripe-events', 3),
+                WebhookRateLimiter::try_acquire('alpha', 'stripe-events', 3),
             );
         }
         $this->assertFalse(
-            WebhookRateLimiter::check_and_increment('alpha', 'stripe-events', 3),
+            WebhookRateLimiter::try_acquire('alpha', 'stripe-events', 3),
         );
         $this->assertTrue(
-            WebhookRateLimiter::check_and_increment('beta', 'stripe-events', 3),
+            WebhookRateLimiter::try_acquire('beta', 'stripe-events', 3),
             'beta should not inherit alpha\'s exhausted counter',
         );
     }
@@ -63,14 +63,14 @@ final class WebhookRateLimiterTest extends WP_UnitTestCase {
         // Same app, two endpoints share the budget independently.
         for ($i = 0; $i < 2; $i++) {
             $this->assertTrue(
-                WebhookRateLimiter::check_and_increment('myapp', 'stripe-events', 2),
+                WebhookRateLimiter::try_acquire('myapp', 'stripe-events', 2),
             );
         }
         $this->assertFalse(
-            WebhookRateLimiter::check_and_increment('myapp', 'stripe-events', 2),
+            WebhookRateLimiter::try_acquire('myapp', 'stripe-events', 2),
         );
         $this->assertTrue(
-            WebhookRateLimiter::check_and_increment('myapp', 'github-events', 2),
+            WebhookRateLimiter::try_acquire('myapp', 'github-events', 2),
             'github-events endpoint should have its own counter',
         );
     }
@@ -80,7 +80,7 @@ final class WebhookRateLimiterTest extends WP_UnitTestCase {
         // request rather than allow one through (count starts at 0
         // and the check is "if (count >= limit) reject").
         $this->assertFalse(
-            WebhookRateLimiter::check_and_increment('myapp', 'stripe-events', 0),
+            WebhookRateLimiter::try_acquire('myapp', 'stripe-events', 0),
         );
     }
 }
