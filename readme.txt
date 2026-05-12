@@ -18,7 +18,7 @@ The plugin never fetches code from a remote URL. Only users with the `manage_opt
 
 = The 60-second flow =
 
-1. Open your AI builder of choice and ask it to build the thing: a calculator, a quiz, a product configurator, a custom landing page, an internal dashboard, or a mini-site.
+1. Open your AI builder of choice and ask it to build the thing: a calculator, a quiz, a product configurator, a custom landing page, an internal dashboard, or a multi-page site.
 2. Download the artifact or static bundle.
 3. In WP-admin, go to **DSGo Apps** -> **Upload artifact**, drop the `.html` or `.zip`, give it an ID.
 4. The plugin wraps it in a manifest, sandboxes it, and hands you a live URL.
