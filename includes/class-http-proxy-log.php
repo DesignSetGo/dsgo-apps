@@ -88,6 +88,7 @@ final class Http_Proxy_Log {
         if (strlen($path) > self::PATH_MAX) {
             $path = substr($path, 0, self::PATH_MAX);
         }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- custom log table; $wpdb->insert is the correct WP API for write-path log inserts; no caching layer applies to append-only writes
         $wpdb->insert(
             self::table_name(),
             [
@@ -115,9 +116,10 @@ final class Http_Proxy_Log {
         if ($days < 1) $days = 1;
         $cutoff = gmdate('Y-m-d H:i:s', time() - ($days * DAY_IN_SECONDS));
         $table  = self::table_name();
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom log table; $table built from $wpdb->prefix (not user input); log write: no caching applies to batch DELETE retention purges
         $wpdb->query($wpdb->prepare(
-            "DELETE FROM $table WHERE created_at < %s LIMIT %d",
+            'DELETE FROM %i WHERE created_at < %s LIMIT %d',
+            $table,
             $cutoff,
             self::PURGE_BATCH_LIMIT,
         ));
