@@ -1305,7 +1305,7 @@ final class RestApi {
      */
     public static function ajax_secret_set(): void {
         $ctx = self::require_secret_ajax_context();
-        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- secret value must be stored verbatim; sanitize_text_field would corrupt passwords/tokens; nonce verified inside require_secret_ajax_context()
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- nonce verified inside require_secret_ajax_context() via check_ajax_referer(); secret value stored verbatim so sanitize_text_field does not corrupt passwords/tokens
         $value = isset($_POST['value']) ? (string) wp_unslash((string) $_POST['value']) : '';
         if ($value === '') {
             wp_send_json_error(['code' => 'empty_value', 'message' => 'value must be non-empty'], 422);
