@@ -49,17 +49,6 @@ class DataSourcesTest extends WP_UnitTestCase {
         $this->assertNull(DataSources::resolve('data/items.json'));
     }
 
-    public function test_resolve_works_when_gate_open(): void {
-        add_filter('dsgo_apps_pro_feature_enabled', static function (bool $en, string $feature): bool {
-            return $feature === 'dynamic_routes' ? true : $en;
-        }, 10, 2);
-        self::factory()->post->create(['post_title' => 'Gate Open', 'post_status' => 'publish']);
-        $result = DataSources::resolve('wp:posts');
-        $this->assertIsArray($result);
-        $this->assertArrayNotHasKey('error', $result);
-        $this->assertNotEmpty($result);
-    }
-
     // --- wp:posts -----------------------------------------------------------
 
     public function test_wp_posts_returns_published_posts_with_shaped_fields(): void {

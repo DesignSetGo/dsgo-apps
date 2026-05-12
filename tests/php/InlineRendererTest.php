@@ -10,6 +10,11 @@ use WP_UnitTestCase;
 
 class InlineRendererTest extends WP_UnitTestCase {
 
+    public function tear_down(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        parent::tear_down();
+    }
+
     public function test_resolves_root_route(): void {
         $manifest = Manifest::validate($this->minimal_inline_manifest());
         $resolved = InlineRenderer::resolve_route($manifest, '/');
@@ -535,7 +540,7 @@ class InlineRendererTest extends WP_UnitTestCase {
     // --- ProFeatureGate: dynamic_routes -----------------------------------
 
     public function test_render_dynamic_route_returns_null_when_gate_closed(): void {
-        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        // Gate is closed by default (no filter registered); tear_down cleans up.
         $bundle_dir = sys_get_temp_dir() . '/dsgo-dyngate-' . uniqid();
         mkdir($bundle_dir, 0755, true);
         file_put_contents($bundle_dir . '/post.html', '<!doctype html><html><body>{{slug}}</body></html>');
@@ -551,7 +556,6 @@ class InlineRendererTest extends WP_UnitTestCase {
         // Gate closed — must 404 (null return), not render a half-broken page.
         $result = InlineRenderer::render_dynamic_route($bundle_dir, $manifest, $route, ['slug' => 'hello'], $context, 'N');
         $this->assertNull($result, 'dynamic route must return null (404) when dynamic_routes gate is closed');
-        remove_all_filters('dsgo_apps_pro_feature_enabled');
     }
 
     public function test_render_dynamic_route_renders_when_gate_open(): void {
@@ -575,7 +579,6 @@ class InlineRendererTest extends WP_UnitTestCase {
         $result = InlineRenderer::render_dynamic_route($bundle_dir, $manifest, $route, ['slug' => 'hello-post'], $context, 'N');
         $this->assertNotNull($result, 'dynamic route must render when dynamic_routes gate is open');
         $this->assertStringContainsString('hello-post', $result);
-        remove_all_filters('dsgo_apps_pro_feature_enabled');
     }
 
     private function publishing_inline_manifest(): array {
