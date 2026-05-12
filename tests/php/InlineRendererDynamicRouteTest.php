@@ -9,6 +9,22 @@ use WP_UnitTestCase;
 
 class InlineRendererDynamicRouteTest extends WP_UnitTestCase {
 
+    public function set_up(): void {
+        parent::set_up();
+        // Open the dynamic_routes gate for all tests in this suite so existing
+        // dataset and render tests exercise the live-source path without
+        // hitting the Pro gate. Gate-closed behaviour is tested in
+        // DataSourcesTest and InlineRendererTest.
+        add_filter('dsgo_apps_pro_feature_enabled', static function (bool $en, string $feature): bool {
+            return $feature === 'dynamic_routes' ? true : $en;
+        }, 10, 2);
+    }
+
+    public function tear_down(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        parent::tear_down();
+    }
+
     public function test_resolve_route_literal_wins_over_dynamic(): void {
         $manifest = Manifest::validate($this->manifest_with_dynamic([
             ['path' => '/customers/list', 'file' => 'list.html'],

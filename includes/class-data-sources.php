@@ -20,13 +20,15 @@ final class DataSources {
      * the string isn't a recognized live-source scheme (the caller falls back
      * to bundle-file resolution). Returns [] when the scheme is recognized
      * but the host can't satisfy it (e.g. wc:products without WooCommerce).
+     * Returns ['error' => 'feature_inactive', 'feature' => 'dynamic_routes']
+     * when a resolver exists but the Pro gate is closed.
      *
      * The optional Manifest is used to attach a `content_styles` sibling to
      * post rows when the manifest opts in via `content.blockStyles` /
      * `content.themeStyles`. Pass null when the caller doesn't need styles
      * (e.g. sitemap URL generation).
      *
-     * @return array<int, array<string, mixed>>|null
+     * @return array<int|string, mixed>|null
      */
     public static function resolve(string $source, ?Manifest $manifest = null): ?array {
         $resolver = self::built_in_resolver($source, $manifest);
@@ -43,6 +45,16 @@ final class DataSources {
 
         if (!is_callable($resolver)) {
             return null;
+        }
+
+        // ProFeatureGate is the only enforcement point for dynamic-route
+        // resolution. Free sites accept the manifest field but the resolver
+        // refuses to materialize live data. The check is deferred until after
+        // resolver discovery so that sources with no resolver (unrecognized
+        // schemes, bundle-relative JSON paths) still return null and fall
+        // through to the bundle-file loader in InlineRenderer::load_dataset.
+        if (!ProFeatureGate::is_enabled('dynamic_routes')) {
+            return ['error' => 'feature_inactive', 'feature' => 'dynamic_routes'];
         }
 
         $rows = $resolver();

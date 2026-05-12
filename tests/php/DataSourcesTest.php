@@ -8,9 +8,56 @@ use WP_UnitTestCase;
 
 class DataSourcesTest extends WP_UnitTestCase {
 
+    public function set_up(): void {
+        parent::set_up();
+        // Open the dynamic_routes gate for all tests in this suite. Tests that
+        // specifically verify gate-closed behaviour call remove_all_filters() first.
+        add_filter('dsgo_apps_pro_feature_enabled', static function (bool $en, string $feature): bool {
+            return $feature === 'dynamic_routes' ? true : $en;
+        }, 10, 2);
+    }
+
     public function tear_down(): void {
         remove_all_filters('dsgo_apps_dataset_resolver');
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
         parent::tear_down();
+    }
+
+    // --- ProFeatureGate (dynamic_routes) -----------------------------------
+
+    public function test_resolve_returns_feature_inactive_when_gate_closed(): void {
+        // Gate is closed by default (no filter registered).
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        $result = DataSources::resolve('wp:posts');
+        $this->assertIsArray($result);
+        $this->assertSame('feature_inactive', $result['error'] ?? null);
+        $this->assertSame('dynamic_routes', $result['feature'] ?? null);
+    }
+
+    public function test_resolve_returns_feature_inactive_for_all_live_sources_when_gate_closed(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        foreach (['wp:posts', 'wp:pages', 'wp:cpt:project', 'wc:products'] as $source) {
+            $result = DataSources::resolve($source);
+            $this->assertIsArray($result, "source={$source}");
+            $this->assertSame('feature_inactive', $result['error'] ?? null, "source={$source}");
+        }
+    }
+
+    public function test_resolve_returns_null_for_unknown_source_even_when_gate_closed(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        $this->assertNull(DataSources::resolve('mystery:thing'));
+        $this->assertNull(DataSources::resolve('data/items.json'));
+    }
+
+    public function test_resolve_works_when_gate_open(): void {
+        add_filter('dsgo_apps_pro_feature_enabled', static function (bool $en, string $feature): bool {
+            return $feature === 'dynamic_routes' ? true : $en;
+        }, 10, 2);
+        self::factory()->post->create(['post_title' => 'Gate Open', 'post_status' => 'publish']);
+        $result = DataSources::resolve('wp:posts');
+        $this->assertIsArray($result);
+        $this->assertArrayNotHasKey('error', $result);
+        $this->assertNotEmpty($result);
     }
 
     // --- wp:posts -----------------------------------------------------------

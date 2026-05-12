@@ -532,6 +532,52 @@ class InlineRendererTest extends WP_UnitTestCase {
         $this->assertSame('no-store, private', $result['headers']['Cache-Control'] ?? null);
     }
 
+    // --- ProFeatureGate: dynamic_routes -----------------------------------
+
+    public function test_render_dynamic_route_returns_null_when_gate_closed(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-dyngate-' . uniqid();
+        mkdir($bundle_dir, 0755, true);
+        file_put_contents($bundle_dir . '/post.html', '<!doctype html><html><body>{{slug}}</body></html>');
+        $arr = $this->minimal_inline_manifest();
+        $arr['routes'] = [
+            ['path' => '/', 'file' => 'index.html'],
+            ['path' => '/post/:slug', 'file' => 'post.html', 'dataset' => ['source' => 'wp:posts', 'id_field' => 'slug']],
+        ];
+        $manifest = \DSGo_Apps\Manifest::validate($arr);
+        $route = $manifest->routes[1];
+        $context = ['appId' => $manifest->id, 'mode' => 'inline', 'routePath' => '/post/:slug',
+                    'routeParams' => (object) ['slug' => 'hello'], 'locale' => 'en-US'];
+        // Gate closed — must 404 (null return), not render a half-broken page.
+        $result = InlineRenderer::render_dynamic_route($bundle_dir, $manifest, $route, ['slug' => 'hello'], $context, 'N');
+        $this->assertNull($result, 'dynamic route must return null (404) when dynamic_routes gate is closed');
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+    }
+
+    public function test_render_dynamic_route_renders_when_gate_open(): void {
+        add_filter('dsgo_apps_pro_feature_enabled', static function (bool $en, string $feature): bool {
+            return $feature === 'dynamic_routes' ? true : $en;
+        }, 10, 2);
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-dynopen-' . uniqid();
+        mkdir($bundle_dir, 0755, true);
+        file_put_contents($bundle_dir . '/post.html', '<!doctype html><html><body>{{slug}}</body></html>');
+        // Seed a real post so the resolver returns rows.
+        self::factory()->post->create(['post_name' => 'hello-post', 'post_status' => 'publish']);
+        $arr = $this->minimal_inline_manifest();
+        $arr['routes'] = [
+            ['path' => '/', 'file' => 'index.html'],
+            ['path' => '/post/:slug', 'file' => 'post.html', 'dataset' => ['source' => 'wp:posts', 'id_field' => 'slug']],
+        ];
+        $manifest = \DSGo_Apps\Manifest::validate($arr);
+        $route = $manifest->routes[1];
+        $context = ['appId' => $manifest->id, 'mode' => 'inline', 'routePath' => '/post/:slug',
+                    'routeParams' => (object) ['slug' => 'hello-post'], 'locale' => 'en-US'];
+        $result = InlineRenderer::render_dynamic_route($bundle_dir, $manifest, $route, ['slug' => 'hello-post'], $context, 'N');
+        $this->assertNotNull($result, 'dynamic route must render when dynamic_routes gate is open');
+        $this->assertStringContainsString('hello-post', $result);
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+    }
+
     private function publishing_inline_manifest(): array {
         $arr = $this->minimal_inline_manifest();
         $arr['abilities'] = ['publishes' => [[

@@ -1324,6 +1324,12 @@ final class InlineRenderer {
                 }
             }
             $live = DataSources::resolve($source, $manifest);
+            // feature_inactive means the Pro gate is closed; treat as 404 so
+            // free sites don't render a half-broken dynamic route. Never cache
+            // the gate result — it changes when a license is activated.
+            if (is_array($live) && ($live['error'] ?? null) === 'feature_inactive') {
+                return [];
+            }
             if ($live !== null) {
                 if ($cache_ttl > 0) {
                     set_transient($live_key, $live, $cache_ttl);
