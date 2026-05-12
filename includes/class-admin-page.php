@@ -24,53 +24,6 @@ final class AdminPage {
         add_action('admin_menu', [self::class, 'register_menu']);
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_assets']);
         add_action('admin_notices', [self::class, 'maybe_render_reading_notice']);
-        add_action('admin_notices', [self::class, 'maybe_render_cap_notice']);
-    }
-
-    /**
-     * Render an "at the Lite cap" notice on the apps-list admin page when
-     * the cap is in force and the site has reached it. Pro lifts the cap
-     * via the `dsgo_apps_lite_app_cap` filter; when lifted, this notice
-     * never renders (Installer::lite_app_cap returns null).
-     */
-    public static function maybe_render_cap_notice(): void {
-        if (!current_user_can('manage_options')) return;
-        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-        if (!$screen || $screen->id !== 'toplevel_page_' . self::MENU_SLUG) return;
-
-        $cap = Installer::lite_app_cap();
-        if ($cap === null) return;
-        if (Installer::count_published_apps() < $cap) return;
-
-        // Filterable so a companion add-on can point to its own learn-more page.
-        $learn_more_url = (string) apply_filters(
-            'dsgo_apps_pro_learn_more_url',
-            'https://designsetgo.dev/pricing/'
-        );
-        ?>
-        <div class="notice notice-info">
-            <p>
-                <strong>
-                    <?php
-                    /* translators: %d: number of allowed active apps */
-                    echo esc_html(sprintf(
-                        _n(
-                            'You\'ve reached the Free version\'s limit of %d active app.',
-                            'You\'ve reached the Free version\'s limit of %d active apps.',
-                            $cap,
-                            'designsetgo-apps'
-                        ),
-                        $cap,
-                    ));
-                    ?>
-                </strong>
-                <?php esc_html_e('Remove an existing app to install another. A separate add-on can lift the cap and add advanced authoring tools.', 'designsetgo-apps'); ?>
-                <a href="<?php echo esc_url($learn_more_url); ?>" target="_blank" rel="noopener noreferrer">
-                    <?php esc_html_e('Learn more', 'designsetgo-apps'); ?>
-                </a>
-            </p>
-        </div>
-        <?php
     }
 
     /**
@@ -232,10 +185,6 @@ final class AdminPage {
                  * @param array{page:string} $context
                  */
                 do_action('dsgo_apps_admin_actions', ['page' => 'apps-list']);
-
-                // Small "What's in Pro?" card. Self-suppresses when the cap
-                // filter has been lifted (i.e. Pro is active).
-                ProUpsell::render_apps_list_pro_card();
                 ?>
             </header>
 

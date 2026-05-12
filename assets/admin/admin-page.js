@@ -813,8 +813,6 @@
                 return __('That zip already contains a dsgo-app.json — use the “Upload bundle” tab instead.', 'designsetgo-apps');
             case 'missing_entry_html':
                 return __('That zip needs a .html file at its root (e.g. index.html or home.html).', 'designsetgo-apps');
-            case 'lite_cap_reached':
-                return __('The free version allows one active app per site. Remove the existing app to install another. A separate add-on can lift the cap and add advanced authoring tools.', 'designsetgo-apps');
             default:
                 return fallback || __('Import failed.', 'designsetgo-apps');
         }
