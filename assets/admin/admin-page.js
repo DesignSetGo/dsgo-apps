@@ -954,5 +954,134 @@
         });
     }
 
+    // ─── AI prompt: live recomposition from permission checkboxes ──────
+    //
+    // Mirrors AiContextPack::compose() in PHP. Keep this in sync — both
+    // sides reference the same section keys from DSGoAdmin.aiContext.sections.
+
+    var aiPermContainer = root.querySelector('[data-dsgo-ai-perms]');
+    var aiPromptText = root.querySelector('[data-dsgo-ai-text]');
+    var aiCtx = cfg.aiContext || null;
+
+    function getSelectedPermissions() {
+        if (!aiPermContainer || !aiCtx) return [];
+        var boxes = aiPermContainer.querySelectorAll('[data-dsgo-ai-perm]');
+        var all = aiCtx.permissions || [];
+        var selected = {};
+        for (var i = 0; i < boxes.length; i++) {
+            if (boxes[i].checked) selected[boxes[i].value] = true;
+        }
+        // Preserve canonical ordering from aiCtx.permissions so the
+        // generated manifest's permissions.read is stable.
+        var out = [];
+        for (var j = 0; j < all.length; j++) {
+            if (selected[all[j]]) out.push(all[j]);
+        }
+        return out;
+    }
+
+    function composeAiPrompt(perms) {
+        if (!aiCtx || !aiCtx.sections) return aiPromptText.value;
+        var s = aiCtx.sections;
+        var parts = [];
+
+        parts.push(s.header);
+        if (perms.indexOf('abilities') !== -1 && s.abilitiesListing) {
+            parts.push(s.abilitiesListing);
+        }
+        parts.push(s.deliverable);
+        parts.push(s.bridgePrimer);
+
+        // Methods table: header + rows for selected perms + always-on rows.
+        var methodRows = [s.methodsTableHeader];
+        for (var i = 0; i < perms.length; i++) {
+            var row = s.methodsByPerm && s.methodsByPerm[perms[i]];
+            if (row) methodRows.push(row);
+        }
+        if (s.methodsAlways) methodRows.push(s.methodsAlways);
+        parts.push(methodRows.join('\n'));
+
+        // Optional shape sub-sections.
+        for (var k = 0; k < perms.length; k++) {
+            var shape = s.shapesByPerm && s.shapesByPerm[perms[k]];
+            if (shape) parts.push(shape);
+        }
+
+        parts.push(s.permissionsSection);
+        parts.push(s.errorCodes);
+        parts.push(s.manifestIntro);
+        parts.push(renderManifestBlock(perms));
+        parts.push(s.manifestOutro);
+
+        return parts.join('\n\n');
+    }
+
+    function renderManifestBlock(perms) {
+        return [
+            '```json',
+            '{',
+            '  "manifest_version": 1,',
+            '  "id": "my-app",',
+            '  "name": "My App",',
+            '  "version": "0.1.0",',
+            '  "entry": "index.html",',
+            '  "isolation": "iframe",',
+            '  "display": { "modes": ["page"], "default": "page" },',
+            '  "permissions": { "read": ' + JSON.stringify(perms) + ', "write": [] }',
+            '}',
+            '```'
+        ].join('\n');
+    }
+
+    function recomposeAiPrompt() {
+        if (!aiPromptText || !aiCtx) return;
+        aiPromptText.value = composeAiPrompt(getSelectedPermissions());
+    }
+
+    if (aiPermContainer) {
+        aiPermContainer.addEventListener('change', function (e) {
+            if (e.target && e.target.matches('[data-dsgo-ai-perm]')) {
+                recomposeAiPrompt();
+            }
+        });
+    }
+
+    // ─── AI prompt copy-to-clipboard ────────────────────────────────────
+
+    var aiCopyButton = root.querySelector('[data-dsgo-ai-copy]');
+    if (aiCopyButton && aiPromptText) {
+        var aiCopyDefault = aiCopyButton.textContent;
+        aiCopyButton.addEventListener('click', function () {
+            var text = aiPromptText.value || '';
+            var done = function (ok) {
+                aiCopyButton.textContent = ok
+                    ? __('Copied ✓', 'designsetgo-apps')
+                    : __('Copy failed — select & copy', 'designsetgo-apps');
+                if (!ok) {
+                    aiPromptText.focus();
+                    aiPromptText.select();
+                }
+                window.setTimeout(function () {
+                    aiCopyButton.textContent = aiCopyDefault;
+                }, 2200);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(
+                    function () { done(true); },
+                    function () { done(false); }
+                );
+            } else {
+                try {
+                    aiPromptText.focus();
+                    aiPromptText.select();
+                    var ok = document.execCommand && document.execCommand('copy');
+                    done(!!ok);
+                } catch (e) {
+                    done(false);
+                }
+            }
+        });
+    }
+
     refresh();
 })();

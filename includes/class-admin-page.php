@@ -82,7 +82,7 @@ final class AdminPage {
             self::MENU_SLUG,
             [self::class, 'render'],
             self::menu_icon_data_uri(),
-            26,
+            29,
         );
         add_submenu_page(
             self::MENU_SLUG,
@@ -137,6 +137,11 @@ final class AdminPage {
             'docsUrl'          => 'https://designsetgo.dev/docs',
             'settingsUrl'      => admin_url('admin.php?page=designsetgo-apps-settings'),
             'pricingUrl'       => (string) apply_filters('dsgo_apps_pro_pricing_url', 'https://designsetgo.dev/pricing'),
+            'aiContext'        => [
+                'permissions'        => AiContextPack::all_permissions(),
+                'defaultPermissions' => AiContextPack::default_permissions(),
+                'sections'           => AiContextPack::sections_for_client(),
+            ],
         ]);
     }
 
@@ -174,7 +179,7 @@ final class AdminPage {
                     <?php esc_html_e('Apps', 'designsetgo-apps'); ?>
                 </h1>
                 <p class="dsgo-admin__lede">
-                    <?php esc_html_e('Sandboxed mini-apps with a permissioned bridge to your site’s data. Drop in a bundle, or deploy from your terminal.', 'designsetgo-apps'); ?>
+                    <?php esc_html_e('Run sandboxed apps on your WordPress site, from single-block widgets to full multi-page experiences, wired to your posts, pages, users, and abilities through a permissioned bridge. Drop in a bundle, or deploy from your terminal.', 'designsetgo-apps'); ?>
                 </p>
                 <?php
                 /**
@@ -310,6 +315,67 @@ final class AdminPage {
                         <div class="dsgo-status__bar"><div class="dsgo-status__fill" data-dsgo-progress></div></div>
                         <p class="dsgo-status__text" data-dsgo-status-text></p>
                     </div>
+
+                    <details class="dsgo-altpath dsgo-altpath--ai" data-dsgo-ai-details>
+                        <summary><?php esc_html_e('Or build one with Claude, ChatGPT, or any AI chat', 'designsetgo-apps'); ?></summary>
+                        <p class="dsgo-altpath__note">
+                            <?php
+                            echo wp_kses(
+                                __('Copy the prompt below into <strong>Claude</strong>, <strong>ChatGPT</strong>, or any AI chat. It briefs the model on this site\'s bridge API, available abilities, and connector &mdash; so the artifact it produces actually works when you upload it.', 'designsetgo-apps'),
+                                ['strong' => []],
+                            );
+                            ?>
+                        </p>
+                        <div class="dsgo-ai-prompt">
+                            <fieldset class="dsgo-ai-perms" data-dsgo-ai-perms>
+                                <legend class="dsgo-ai-perms__legend">
+                                    <?php esc_html_e('Capabilities the app should use', 'designsetgo-apps'); ?>
+                                    <span class="dsgo-ai-perms__hint"><?php esc_html_e('checked items get their bridge methods + docs added to the prompt', 'designsetgo-apps'); ?></span>
+                                </legend>
+                                <div class="dsgo-ai-perms__grid">
+                                    <?php
+                                    $perm_labels = AiContextPack::permission_labels();
+                                    $defaults    = AiContextPack::default_permissions();
+                                    foreach (AiContextPack::all_permissions() as $perm):
+                                        $is_default = in_array($perm, $defaults, true);
+                                        $info       = $perm_labels[$perm] ?? ['label' => $perm, 'help' => ''];
+                                    ?>
+                                        <label class="dsgo-ai-perms__option">
+                                            <input type="checkbox"
+                                                   data-dsgo-ai-perm
+                                                   value="<?php echo esc_attr($perm); ?>"
+                                                   <?php checked($is_default); ?>>
+                                            <span class="dsgo-ai-perms__name"><?php echo esc_html($info['label']); ?></span>
+                                            <span class="dsgo-ai-perms__help"><?php echo esc_html($info['help']); ?></span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                                <p class="dsgo-ai-perms__note">
+                                    <?php esc_html_e('Storage (storage.app, storage.user), bridge.ping, and resize requests need no permission and are always included.', 'designsetgo-apps'); ?>
+                                </p>
+                            </fieldset>
+                            <div class="dsgo-ai-prompt__head">
+                                <span class="dsgo-ai-prompt__label"><?php esc_html_e('AI prompt — copy & paste', 'designsetgo-apps'); ?></span>
+                                <button type="button" class="button dsgo-ai-prompt__copy" data-dsgo-ai-copy
+                                        aria-live="polite">
+                                    <?php esc_html_e('Copy prompt', 'designsetgo-apps'); ?>
+                                </button>
+                            </div>
+                            <textarea class="dsgo-ai-prompt__text" data-dsgo-ai-text readonly rows="14"
+                                      aria-label="<?php esc_attr_e('AI prompt text', 'designsetgo-apps'); ?>"><?php echo esc_textarea(AiContextPack::render_prompt()); ?></textarea>
+                            <div class="dsgo-ai-prompt__actions">
+                                <a class="button button-primary" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">
+                                    <?php esc_html_e('Open Claude →', 'designsetgo-apps'); ?>
+                                </a>
+                                <a class="button" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">
+                                    <?php esc_html_e('Open ChatGPT →', 'designsetgo-apps'); ?>
+                                </a>
+                            </div>
+                            <p class="dsgo-ai-prompt__hint">
+                                <?php esc_html_e('Tell the AI what you want to build. It will produce a single .html file. Save it, then drag it onto the Upload artifact tab above.', 'designsetgo-apps'); ?>
+                            </p>
+                        </div>
+                    </details>
 
                     <details class="dsgo-altpath" data-dsgo-starter-details>
                         <summary><?php esc_html_e('Or install the bundled starter', 'designsetgo-apps'); ?></summary>

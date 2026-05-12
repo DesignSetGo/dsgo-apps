@@ -330,6 +330,147 @@
     line-height: 1.55;
 }
 
+/* AI PROMPT (Build with Claude / ChatGPT) ─────────────────────────────── */
+
+.dsgo-ai-prompt {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.dsgo-ai-perms {
+    margin: 0;
+    padding: 14px 16px;
+    border: 1px solid var(--dsgo-rule-soft);
+    border-radius: var(--dsgo-radius-sm);
+    background: #fbf9f3;
+}
+.dsgo-ai-perms__legend {
+    padding: 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--dsgo-ink-soft);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+}
+.dsgo-ai-perms__hint {
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--dsgo-mute);
+}
+.dsgo-ai-perms__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+.dsgo-ai-perms__option {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 8px;
+    row-gap: 2px;
+    align-items: start;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+.dsgo-ai-perms__option:hover {
+    background: #f5efe3;
+}
+.dsgo-ai-perms__option:has(input:checked) {
+    background: #f5efe3;
+    border-color: var(--dsgo-rule-soft);
+}
+.dsgo-ai-perms__option input[type="checkbox"] {
+    margin: 3px 0 0;
+    grid-row: 1 / span 2;
+}
+.dsgo-ai-perms__name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dsgo-ink);
+    line-height: 1.3;
+}
+.dsgo-ai-perms__help {
+    font-size: 12px;
+    color: var(--dsgo-mute);
+    line-height: 1.45;
+    grid-column: 2;
+}
+.dsgo-ai-perms__note {
+    margin: 12px 0 0;
+    font-size: 12px;
+    color: var(--dsgo-mute);
+    line-height: 1.55;
+}
+.dsgo-ai-prompt__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.dsgo-ai-prompt__label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--dsgo-ink-soft);
+}
+.dsgo-admin textarea.dsgo-ai-prompt__text {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 220px;
+    max-height: 360px;
+    padding: 14px 16px;
+    background-color: var(--dsgo-ink);
+    background-image: none;
+    color: #f5efe3;
+    border: 1px solid var(--dsgo-ink);
+    border-radius: var(--dsgo-radius-sm);
+    box-shadow: none;
+    font-family: var(--dsgo-mono);
+    font-size: 12px;
+    line-height: 1.65;
+    resize: vertical;
+    white-space: pre;
+    overflow: auto;
+    tab-size: 2;
+    -webkit-text-fill-color: #f5efe3;
+}
+.dsgo-admin textarea.dsgo-ai-prompt__text:focus {
+    background-color: var(--dsgo-ink);
+    color: #f5efe3;
+    -webkit-text-fill-color: #f5efe3;
+    border-color: var(--dsgo-accent);
+    outline: 2px solid var(--dsgo-accent);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+.dsgo-ai-prompt__copy {
+    min-width: 120px;
+}
+.dsgo-ai-prompt__actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.dsgo-ai-prompt__hint {
+    margin: 0;
+    font-size: 12px;
+    color: var(--dsgo-mute);
+    line-height: 1.55;
+}
+
 /* APP LIST ───────────────────────────────────────────────────────────── */
 
 .dsgo-applist {

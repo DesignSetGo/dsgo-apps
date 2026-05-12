@@ -79,6 +79,8 @@ final class Plugin {
         require_once $base . 'class-rest-api.php';
         require_once $base . 'class-sitemap-provider.php';
         require_once $base . 'class-admin-page.php';
+        require_once $base . 'class-ai-context-pack.php';
+        require_once $base . 'class-llms-txt-integration.php';
     }
 
     private function register_hooks(): void {
@@ -96,6 +98,7 @@ final class Plugin {
         });
         add_action('init', [Settings::class, 'register']);
         AdminPage::register();
+        LlmsTxtIntegration::register();
         add_action('admin_notices', [self::class, 'maybe_render_activation_notice']);
         // Deferred to init@9 so Pro's plugins_loaded@20 filter is already
         // registered before the gate check inside register() runs.
