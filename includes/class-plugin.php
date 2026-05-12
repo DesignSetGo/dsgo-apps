@@ -220,6 +220,9 @@ final class Plugin {
      * invalidated on install / update / delete.
      */
     public static function register_cron_dispatch_hooks(): void {
+        if (!ProFeatureGate::is_enabled('cron')) {
+            return;
+        }
         if (!wp_doing_cron() && !is_admin()) {
             return;
         }
