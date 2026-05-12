@@ -1,0 +1,43 @@
+# .distignore — files excluded when building the WordPress.org distribution zip
+# for the free `designsetgo-apps` plugin.
+#
+# Patterns are rsync --exclude-from rules, applied during the staging step of
+# .github/workflows/deploy-wordpress-org.yml. They are *not* anchored unless
+# prefixed with a leading slash, matching the previous inline behavior.
+
+# Version control / CI metadata
+.git*
+
+# Tests
+tests
+phpunit.xml
+phpunit.xml.dist
+.phpunit.result.cache
+
+# Composer dev manifests (vendor/ ships; composer install --no-dev runs first)
+composer.json
+composer.lock
+
+# Monorepo docs — readme.txt is the only doc shipped to .org
+*.md
+
+# Block source — only the built block.json + build/ artifacts ship
+block/src
+block/node_modules
+block/package.json
+block/package-lock.json
+block/tsconfig.json
+block/jest.config.js
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Source maps — never ship to production
+*.js.map
+*.css.map
+
+# Self
+.distignore
