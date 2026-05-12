@@ -32,6 +32,14 @@ const BRIDGE_ERROR_CODES = [
     'http_rate_limited',
     'http_network_error',
     'sodium_unavailable',
+    // Apps-as-abilities: companion-plugin resolution at registration time.
+    // Surfaced when AbilitiesPublisher::registration_args hits the
+    // !class_exists branch — the published ability is registered with
+    // a sentinel callback that returns this code, so any caller
+    // (cron, webhook, dsgo.abilities.invoke) gets a structured signal
+    // that the companion plugin is missing rather than a generic
+    // ability error.
+    'execute_php_class_not_loadable',
 ];
 
 /**
