@@ -165,6 +165,23 @@ final class Secret_Vault {
      * that drops one of those salts from the wp_salt() derivation. Do NOT
      * "simplify" this away.
      */
+    /**
+     * Public accessor for the site-wide sodium secretbox key.
+     *
+     * Used by the async webhook queue (Task 11 of the cron+webhooks
+     * plan) to encrypt buffered request bodies + headers at rest.
+     * The key is per-site (mixed from wp_salt + AUTH_KEY), so a
+     * DB-only theft can't decrypt elsewhere — same posture as the
+     * per-app secret vault.
+     *
+     * Static accessor mirrors derive_key()'s contract: the cached
+     * key bytes change only when AUTH_KEY rotates or wp_salt rotates;
+     * downstream callers can safely call this once per request.
+     */
+    public static function encryption_key(): string {
+        return self::derive_key();
+    }
+
     private static function derive_key(): string {
         $material = wp_salt('auth');
         if (defined('AUTH_KEY') && is_string(AUTH_KEY)) {

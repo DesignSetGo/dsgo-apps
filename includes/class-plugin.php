@@ -53,6 +53,7 @@ final class Plugin {
         require_once $base . 'class-webhook-rate-limiter.php';
         require_once $base . 'class-webhook-log.php';
         require_once $base . 'class-webhook-queue.php';
+        require_once $base . 'class-async-webhook-handler.php';
         require_once $base . 'class-privacy.php';
         require_once $base . 'class-post-type.php';
         require_once $base . 'class-settings.php';
@@ -113,6 +114,11 @@ final class Plugin {
         // when WP-cron fires `dsgo_apps_cron_<app>_<job>`, the dispatcher
         // looks up the ability and logs the outcome.
         add_action('init', [self::class, 'register_cron_dispatch_hooks'], 9);
+        // Async webhook dispatch — WebhookHandler enqueues rows + schedules
+        // a single-event hook against this action with the row id; the
+        // handler decrypts, invokes the ability, and either deletes the
+        // row (success) or reschedules / marks failed.
+        add_action(AsyncWebhookHandler::ASYNC_HOOK, [AsyncWebhookHandler::class, 'run'], 10, 1);
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch'], 5);
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch_root'], 7);
         add_action('template_redirect', [IframeLoader::class, 'maybe_dispatch_root'], 8);
