@@ -48,6 +48,7 @@ final class Plugin {
         require_once $base . 'class-cron-scheduler.php';
         require_once $base . 'class-cron-log.php';
         require_once $base . 'class-cron-dispatcher.php';
+        require_once $base . 'class-webhook-auth.php';
         require_once $base . 'class-privacy.php';
         require_once $base . 'class-post-type.php';
         require_once $base . 'class-settings.php';
