@@ -56,7 +56,15 @@ use WP_UnitTestCase;
  */
 final class AbilitiesPublisherExecutePhpTest extends WP_UnitTestCase {
 
+    public function set_up(): void {
+        parent::set_up();
+        // Tests in this class exercise execute_php registration logic, which
+        // only runs when the gate is open. Open it so the PHP path is reachable.
+        add_filter('dsgo_apps_pro_feature_enabled', '__return_true');
+    }
+
     public function tear_down(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
         foreach (['sample', 'broken', 'missing-class'] as $id) {
             AbilitiesPublisher::unregister_for_app($id);
             delete_option('dsgo_apps_owned_abilities_' . $id);

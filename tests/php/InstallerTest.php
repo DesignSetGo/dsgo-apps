@@ -471,6 +471,7 @@ class InstallerTest extends WP_UnitTestCase {
     }
 
     public function test_install_registers_published_abilities(): void {
+        add_filter('dsgo_apps_pro_feature_enabled', '__return_true');
         $zip = $this->build_zip_with_publishes('publish-test', [
             ['name' => 'publish-test/foo', 'label' => 'Foo', 'description' => 'd', 'category' => 'content'],
         ]);
@@ -478,9 +479,11 @@ class InstallerTest extends WP_UnitTestCase {
 
         $this->assertTrue(wp_has_ability('publish-test/foo'));
         \DSGo_Apps\AbilitiesPublisher::unregister_for_app('publish-test');  // cleanup
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
     }
 
     public function test_install_reinstall_diffs_published_abilities(): void {
+        add_filter('dsgo_apps_pro_feature_enabled', '__return_true');
         $zip1 = $this->build_zip_with_publishes('publish-diff', [
             ['name' => 'publish-diff/old', 'label' => 'Old', 'description' => 'd', 'category' => 'content'],
         ]);
@@ -494,6 +497,7 @@ class InstallerTest extends WP_UnitTestCase {
         $this->assertFalse(wp_has_ability('publish-diff/old'));
         $this->assertTrue(wp_has_ability('publish-diff/new'));
         \DSGo_Apps\AbilitiesPublisher::unregister_for_app('publish-diff');
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
     }
 
     public function test_install_publishes_manifest_declared_images_to_media_library(): void {

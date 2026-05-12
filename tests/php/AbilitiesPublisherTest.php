@@ -9,8 +9,16 @@ use WP_UnitTestCase;
 
 class AbilitiesPublisherTest extends WP_UnitTestCase {
 
+    public function set_up(): void {
+        parent::set_up();
+        // Existing tests register abilities and assert they were published — open
+        // the gate so they aren't silently skipped by the ProFeatureGate check.
+        add_filter('dsgo_apps_pro_feature_enabled', '__return_true');
+    }
+
     public function tear_down(): void {
-        foreach (['sample', 'app-a', 'app-b'] as $id) {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        foreach (['sample', 'app-a', 'app-b', 'alpha-pub', 'beta-pub'] as $id) {
             AbilitiesPublisher::unregister_for_app($id);
             delete_option('dsgo_apps_owned_abilities_' . $id);
         }
@@ -110,5 +118,39 @@ class AbilitiesPublisherTest extends WP_UnitTestCase {
         $result = wp_get_ability('sample/alpha')->execute(null);
         $this->assertInstanceOf(\WP_Error::class, $result);
         $this->assertSame('client_only_ability', $result->get_error_code());
+    }
+
+    public function test_register_for_app_does_not_publish_when_gate_closed(): void {
+        if (!function_exists('wp_has_ability')) {
+            $this->markTestSkipped('wp_register_ability not available');
+        }
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        $manifest = $this->manifest_with_publishes('alpha-pub', [
+            ['name' => 'alpha-pub/greet', 'label' => 'Greet', 'description' => 'd', 'category' => 'content'],
+        ]);
+
+        AbilitiesPublisher::register_for_app($manifest);
+
+        $this->assertFalse(
+            wp_has_ability('alpha-pub/greet'),
+            'register_for_app must not publish abilities when ProFeatureGate is closed'
+        );
+    }
+
+    public function test_register_for_app_publishes_when_gate_open(): void {
+        if (!function_exists('wp_register_ability')) {
+            $this->markTestSkipped('wp_register_ability not available');
+        }
+        // Gate is already open via set_up; explicitly assert it works.
+        $manifest = $this->manifest_with_publishes('beta-pub', [
+            ['name' => 'beta-pub/greet', 'label' => 'Greet', 'description' => 'd', 'category' => 'content'],
+        ]);
+
+        AbilitiesPublisher::register_for_app($manifest);
+
+        $this->assertTrue(
+            wp_has_ability('beta-pub/greet'),
+            'register_for_app must publish abilities when ProFeatureGate is open'
+        );
     }
 }

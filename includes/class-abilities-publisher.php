@@ -51,6 +51,12 @@ final class AbilitiesPublisher {
         if (!function_exists('wp_register_ability')) {
             return;
         }
+        // ProFeatureGate is the only enforcement point for abilities publishing.
+        // Removing this check would let free sites register WP abilities and
+        // accept dsgo.abilities.implement calls without a Pro license.
+        if (!ProFeatureGate::is_enabled('abilities_publish')) {
+            return;
+        }
         $previously_owned = self::owned_names($manifest->id);
         $new_owned    = [];
         $new_inactive = [];

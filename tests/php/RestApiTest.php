@@ -792,6 +792,7 @@ class RestApiTest extends WP_UnitTestCase {
     }
 
     public function test_delete_app_unregisters_published_abilities(): void {
+        add_filter('dsgo_apps_pro_feature_enabled', '__return_true');
         $this->install_test_app_for_abilities('publish-delete', ['read' => []]);
         update_post_meta(
             get_page_by_path('publish-delete', OBJECT, \DSGo_Apps\PostType::SLUG)->ID,
@@ -821,6 +822,7 @@ class RestApiTest extends WP_UnitTestCase {
         $this->assertSame(200, $resp->get_status());
 
         $this->assertFalse(wp_has_ability('publish-delete/x'));
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
     }
 
     /**

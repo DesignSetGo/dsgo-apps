@@ -30,6 +30,13 @@ final class AdminPublisherLoader {
         if (!is_user_logged_in() || !current_user_can('edit_posts')) {
             return;
         }
+        // ProFeatureGate is the only enforcement point for dsgo.abilities.implement.
+        // Without this check, free sites would receive the publisher config island
+        // and the parent-bridge-publish module would forward ability invocations
+        // into app iframes without a Pro license.
+        if (!ProFeatureGate::is_enabled('abilities_publish')) {
+            return;
+        }
         $apps = self::collect_publishing_apps();
         if ($apps === []) {
             return;
@@ -47,6 +54,9 @@ final class AdminPublisherLoader {
 
     public static function enqueue_publisher_module(): void {
         if (!is_user_logged_in() || !current_user_can('edit_posts')) {
+            return;
+        }
+        if (!ProFeatureGate::is_enabled('abilities_publish')) {
             return;
         }
         if (self::collect_publishing_apps() === []) {

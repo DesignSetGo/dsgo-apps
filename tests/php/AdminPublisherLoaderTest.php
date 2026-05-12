@@ -11,6 +11,9 @@ class AdminPublisherLoaderTest extends WP_UnitTestCase {
 
     public function set_up(): void {
         parent::set_up();
+        // Existing tests assert the island is emitted — open the gate so they
+        // are not silently suppressed by the ProFeatureGate check.
+        add_filter('dsgo_apps_pro_feature_enabled', '__return_true');
         // Ensure cache resets between tests so each one sees its own posts.
         $reflection = new \ReflectionClass(AdminPublisherLoader::class);
         if ($reflection->hasProperty('collected')) {
@@ -21,9 +24,17 @@ class AdminPublisherLoaderTest extends WP_UnitTestCase {
     }
 
     public function tear_down(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
         $posts = get_posts(['post_type' => PostType::SLUG, 'numberposts' => -1, 'post_status' => 'any']);
         foreach ($posts as $p) {
             wp_delete_post($p->ID, true);
+        }
+        // Reset cache again so gate-closed tests don't bleed into others.
+        $reflection = new \ReflectionClass(AdminPublisherLoader::class);
+        if ($reflection->hasProperty('collected')) {
+            $prop = $reflection->getProperty('collected');
+            $prop->setAccessible(true);
+            $prop->setValue(null, null);
         }
         parent::tear_down();
     }
@@ -165,6 +176,40 @@ class AdminPublisherLoaderTest extends WP_UnitTestCase {
             update_option('dsgo_apps_url_prefix', 'apps');
             \DSGo_Apps\Settings::refresh_root_app_id();
         }
+    }
+
+    public function test_emit_config_island_suppressed_when_gate_closed(): void {
+        remove_all_filters('dsgo_apps_pro_feature_enabled');
+        $this->install_app('pub-gate', [['name' => 'pub-gate/foo', 'label' => 'L', 'description' => 'd', 'category' => 'content']]);
+        wp_set_current_user($this->factory->user->create(['role' => 'editor']));
+        set_current_screen('edit-post');
+
+        ob_start();
+        AdminPublisherLoader::emit_config_island();
+        $html = ob_get_clean();
+
+        $this->assertSame(
+            '',
+            $html,
+            'emit_config_island must not output when ProFeatureGate("abilities_publish") is closed'
+        );
+    }
+
+    public function test_emit_config_island_present_when_gate_open(): void {
+        // Gate is already open via set_up; assert the island is emitted.
+        $this->install_app('pub-gate2', [['name' => 'pub-gate2/bar', 'label' => 'L', 'description' => 'd', 'category' => 'content']]);
+        wp_set_current_user($this->factory->user->create(['role' => 'editor']));
+        set_current_screen('edit-post');
+
+        ob_start();
+        AdminPublisherLoader::emit_config_island();
+        $html = ob_get_clean();
+
+        $this->assertStringContainsString(
+            'id="dsgo-publisher-config"',
+            $html,
+            'emit_config_island must output the island when ProFeatureGate("abilities_publish") is open'
+        );
     }
 
     private function install_app(string $id, array $publishes, string $isolation = 'iframe', string $mount_mode = 'prefixed'): void {
