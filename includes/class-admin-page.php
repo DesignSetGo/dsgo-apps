@@ -433,7 +433,17 @@ npx designsetgo apps deploy --build</code></pre>
             </h1>
 
             <nav class="dsgo-app-page__tabs" role="tablist">
-                <?php self::render_per_app_tab_link($app_id, 'secrets', __('Secrets', 'designsetgo-apps'), $tab); ?>
+                <?php
+                self::render_per_app_tab_link($app_id, 'secrets', __('Secrets', 'designsetgo-apps'), $tab);
+                // Cron + Webhooks tabs only appear when the manifest
+                // actually declares them — empty tabs are noise.
+                if ($manifest->scheduled_jobs() !== []) {
+                    self::render_per_app_tab_link($app_id, 'cron', __('Cron', 'designsetgo-apps'), $tab);
+                }
+                if ($manifest->webhook_endpoints() !== []) {
+                    self::render_per_app_tab_link($app_id, 'webhooks', __('Webhooks', 'designsetgo-apps'), $tab);
+                }
+                ?>
             </nav>
 
             <div class="dsgo-app-page__panel">
@@ -441,6 +451,12 @@ npx designsetgo apps deploy --build</code></pre>
                 switch ($tab) {
                     case 'secrets':
                         self::render_secrets_tab($manifest);
+                        break;
+                    case 'cron':
+                        self::render_cron_tab($manifest);
+                        break;
+                    case 'webhooks':
+                        self::render_webhooks_tab($manifest);
                         break;
                     default:
                         echo '<p>' . esc_html__('Unknown tab.', 'designsetgo-apps') . '</p>';
@@ -535,6 +551,49 @@ npx designsetgo apps deploy --build</code></pre>
      * (declared aliases from manifest + currently-set aliases from the vault
      * + the per-app nonce + the optional test endpoint).
      */
+    /**
+     * Render the Cron tab body. Shown when the manifest declares at
+     * least one scheduled job. Two sections:
+     *   - per-job table: id, ability, schedule, next-fire time (from
+     *     wp_next_scheduled), execute_php presence.
+     *   - paginated CronLog entries: most-recent first.
+     *
+     * The "Run now" + JS interactivity lands in a follow-up commit.
+     */
+    private static function render_cron_tab(Manifest $manifest): void {
+        // phpcs:disable WordPress.PHP.DontExtract
+        $ctx = [
+            'app_id'   => $manifest->id,
+            'app_name' => $manifest->name,
+            'jobs'     => $manifest->scheduled_jobs(),
+            'log_rows' => CronLog::query($manifest->id, ['per_page' => 50]),
+        ];
+        // phpcs:enable WordPress.PHP.DontExtract
+        require DSGO_APPS_PATH . 'templates/cron-tab.php';
+    }
+
+    /**
+     * Render the Webhooks tab body. Shown when the manifest declares
+     * at least one webhook endpoint. Two sections:
+     *   - per-endpoint table: id, ability, auth scheme, async flag,
+     *     callback URL (so operators can copy-paste into Stripe/GitHub).
+     *   - paginated WebhookLog entries: most-recent first.
+     *
+     * The "Send test payload" form + JS lands in a follow-up commit.
+     */
+    private static function render_webhooks_tab(Manifest $manifest): void {
+        // phpcs:disable WordPress.PHP.DontExtract
+        $ctx = [
+            'app_id'    => $manifest->id,
+            'app_name'  => $manifest->name,
+            'endpoints' => $manifest->webhook_endpoints(),
+            'log_rows'  => WebhookLog::query($manifest->id, ['per_page' => 50]),
+            'pro_gate'  => ProFeatureGate::is_enabled('webhooks'),
+        ];
+        // phpcs:enable WordPress.PHP.DontExtract
+        require DSGO_APPS_PATH . 'templates/webhooks-tab.php';
+    }
+
     private static function render_secrets_tab(Manifest $manifest): void {
         $set_aliases = Secret_Vault::is_available()
             ? Secret_Vault::list_set_aliases($manifest->id)
