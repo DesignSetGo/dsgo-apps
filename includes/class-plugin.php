@@ -51,6 +51,8 @@ final class Plugin {
         require_once $base . 'class-webhook-auth.php';
         require_once $base . 'class-webhook-idempotency.php';
         require_once $base . 'class-webhook-rate-limiter.php';
+        require_once $base . 'class-webhook-log.php';
+        require_once $base . 'class-webhook-queue.php';
         require_once $base . 'class-privacy.php';
         require_once $base . 'class-post-type.php';
         require_once $base . 'class-settings.php';
@@ -302,8 +304,14 @@ final class Plugin {
 
         // Cron audit log table (Task 5 of the cron+webhooks plan).
         // Daily retention purge is wired alongside other dsgo cleanup hooks
-        // in Task 18; for now we just ensure the table exists.
+        // in Task 17; for now we just ensure the table exists.
         CronLog::create_table();
+        // Webhook audit log + async queue tables (Task 10 of the
+        // cron+webhooks plan). Both share the cleanup hook destination
+        // with CronLog. dbDelta is idempotent so re-running activation
+        // (e.g. after wp-env destroy/start) is safe.
+        WebhookLog::create_table();
+        WebhookQueue::create_table();
 
         // One-shot welcome notice so admins land on the install screen instead
         // of an empty Plugins list. Cleared after first render.
