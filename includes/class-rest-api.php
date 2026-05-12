@@ -384,7 +384,7 @@ final class RestApi {
                 'message' => __('CLI deploys require a DesignSetGo Apps Pro license. The wp-admin upload importer is free and unlimited.', 'designsetgo-apps'),
                 'data'    => [
                     'status'      => 402,
-                    'pricing_url' => 'https://designsetgo.dev/pricing',
+                    'pricing_url' => apply_filters('dsgo_apps_pro_pricing_url', 'https://designsetgo.dev/pricing'),
                 ],
             ], 402);
         }
