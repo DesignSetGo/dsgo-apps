@@ -213,12 +213,13 @@ final class AbilitiesPublisher {
                 // author bug — the manifest names a method that
                 // doesn't exist — and the install must fail rather
                 // than register a permanently-broken ability.
+                // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- $class/$method are manifest-declared PHP identifiers validated by class_exists/method_exists; exception message is not rendered to output
                 throw new ManifestError(
                     sprintf('abilities.publishes[%s].execute_php', $entry['name']),
                     sprintf(
                         'execute_php_method_not_found: %s::%s does not exist on the loaded class',
-                        $class,
-                        $method,
+                        esc_html($class),
+                        esc_html($method),
                     ),
                 );
             } else {

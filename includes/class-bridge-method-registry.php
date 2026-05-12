@@ -45,6 +45,7 @@ final class Bridge_Method_Registry {
         }
         $path = self::data_path();
         if (!is_readable($path)) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- $path is a server-side filesystem path from self::data_path(), not user input; exception is caught by the REST layer, never rendered directly
             throw new \RuntimeException(sprintf(
                 'bridge-methods.json missing at %s — every bridge method must have a registry entry',
                 $path,

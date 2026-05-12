@@ -45,6 +45,7 @@ final class Secret_Vault {
     public static function set(string $app_id, string $alias, string $value): void {
         self::require_sodium();
         if (strlen($value) > self::MAX_VALUE_BYTES) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- $alias is a regex-validated [A-Z][A-Z0-9_]{0,63} identifier; exception is caught by the REST layer, not rendered to output
             throw new \RuntimeException(sprintf(
                 'Secret value for %s exceeds %d-byte limit',
                 $alias,
@@ -72,6 +73,7 @@ final class Secret_Vault {
             sodium_memzero($key);
         }
         if (!is_array($readback) || ($readback[$alias] ?? null) !== $encoded) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- $app_id is an internal post ID, $alias is a regex-validated identifier; exception is caught by the REST layer, not rendered to output
             throw new \RuntimeException(sprintf(
                 'Secret_Vault::set(%s, %s) failed to persist — check DB write permissions and wp_options table state',
                 $app_id,
