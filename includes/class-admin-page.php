@@ -112,7 +112,7 @@ final class AdminPage {
         // Per-app Secrets tab assets — only enqueue when the URL says we're
         // about to render that tab, so the apps-list page stays lean.
         $is_secrets_tab = isset($_GET['app_id'])   // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-            && (string) ($_GET['tab'] ?? '') === 'secrets';
+            && sanitize_key(wp_unslash($_GET['tab'] ?? '')) === 'secrets';
         if ($is_secrets_tab) {
             $secrets_css      = plugins_url('assets/admin/secrets-tab.css', DSGO_APPS_FILE);
             $secrets_js       = plugins_url('assets/admin/secrets-tab.js', DSGO_APPS_FILE);
