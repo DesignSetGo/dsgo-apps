@@ -96,7 +96,22 @@
             return makeErr(req.id, 'unknown_method', req.method);
         }
         if (required !== null && !manifest.permissions.read.includes(required)) {
-            return makeErr(req.id, 'permission_denied', `app does not have "${required}" permission`);
+            return {
+                type: 'dsgo:response',
+                id: req.id,
+                ok: false,
+                error: {
+                    code: 'permission_denied',
+                    message: `app does not have "${required}" permission`,
+                    // Distinguish manifest-level denials (the app never declared this
+                    // permission) from runtime denials (server-side abilities/commerce
+                    // policy refused this visitor). Internal probes like the commerce
+                    // surface's abilities-first lookup use this to fall back to REST
+                    // when the manifest doesn't grant `abilities`, instead of failing
+                    // a call the developer thought only needed `commerce`.
+                    details: { reason: 'manifest_permission_missing', permission: required },
+                },
+            };
         }
         if (req.method === 'bridge.ping') {
             return makeOk(req.id, { ok: true, bridge_version: 1, server_time: new Date().toISOString() });
