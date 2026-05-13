@@ -1,7 +1,7 @@
 {
   "$schema": "https://schemas.wp.org/trunk/block.json",
   "apiVersion": 3,
-  "name": "dsgo-apps/embed",
+  "name": "designsetgo-apps/embed",
   "title": "DesignSetGo App",
   "category": "embed",
   "icon": "screenoptions",

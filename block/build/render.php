@@ -1,6 +1,6 @@
 <?php
 /**
- * Server-side render callback for the dsgo-apps/embed block.
+ * Server-side render callback for the designsetgo-apps/embed block.
  *
  * Block-mode embeds render directly into the parent post's DOM. The iframe
  * loads the bundle URL with `sandbox="allow-scripts"` (opaque origin), and
@@ -16,19 +16,15 @@
 
 declare(strict_types=1);
 
-defined('ABSPATH') || exit;
+$app_id      = isset($attributes['appId']) ? sanitize_key((string) $attributes['appId']) : '';
+$height      = isset($attributes['height']) ? max(100, min(2000, (int) $attributes['height'])) : 480;
+$auto_resize = !empty($attributes['autoResize']);
+$align_raw   = $attributes['align'] ?? '';
+$align_class = is_string($align_raw) && $align_raw !== '' ? 'align' . sanitize_html_class($align_raw) : '';
 
-$dsgo_app_id      = isset($attributes['appId']) ? sanitize_key((string) $attributes['appId']) : '';
-$dsgo_height      = isset($attributes['height']) ? max(100, min(2000, (int) $attributes['height'])) : 480;
-$dsgo_auto_resize = !empty($attributes['autoResize']);
-$dsgo_align_raw   = $attributes['align'] ?? '';
-$dsgo_align_class = is_string($dsgo_align_raw) && $dsgo_align_raw !== '' ? 'align' . sanitize_html_class($dsgo_align_raw) : '';
-
-if ($dsgo_app_id === '') {
-    // Output is a static iframe wrapper rendered by IframeLoader; height is int, align_class is sanitize_html_class().
-    echo \DSGo_Apps\IframeLoader::render_block_placeholder('No app selected.', $dsgo_height, $dsgo_align_class); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+if ($app_id === '') {
+    echo \DSGo_Apps\IframeLoader::render_block_placeholder('No app selected.', $height, $align_class);
     return;
 }
 
-// Output is a static iframe wrapper rendered by IframeLoader; all dynamic parts are pre-escaped or numeric.
-echo \DSGo_Apps\IframeLoader::render_block_embed($dsgo_app_id, $dsgo_height, $dsgo_auto_resize, $dsgo_align_class); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+echo \DSGo_Apps\IframeLoader::render_block_embed($app_id, $height, $auto_resize, $align_class);
