@@ -497,8 +497,9 @@ final class Installer {
         if ($count > Bundle::MAX_FILE_COUNT) {
             throw new InstallerError('too_many_files', sprintf('bundle has %d files (max %d)', $count, Bundle::MAX_FILE_COUNT));
         }
-        if ($total > Bundle::MAX_TOTAL_BYTES) {
-            throw new InstallerError('bundle_too_large', sprintf('bundle is %d bytes (max %d)', $total, Bundle::MAX_TOTAL_BYTES));
+        $max = Bundle::max_total_bytes();
+        if ($total > $max) {
+            throw new InstallerError('bundle_too_large', sprintf('bundle is %d bytes (max %d)', $total, $max));
         }
     }
 

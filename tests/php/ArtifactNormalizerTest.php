@@ -100,7 +100,7 @@ class ArtifactNormalizerTest extends WP_UnitTestCase {
     }
 
     public function test_rejects_body_over_size_cap(): void {
-        $oversize = str_repeat('x', Bundle::MAX_TOTAL_BYTES + 1);
+        $oversize = str_repeat('x', Bundle::max_total_bytes() + 1);
         try {
             ArtifactNormalizer::pack_html($oversize, 'sample-app', null, null);
             $this->fail('expected ArtifactNormalizerError');

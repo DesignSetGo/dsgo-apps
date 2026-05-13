@@ -132,7 +132,7 @@ final class AdminPage {
             'siteName'         => (string) get_bloginfo('name'),
             'siteUrl'          => home_url('/'),
             'urlPrefix'        => Settings::get_url_prefix(),
-            'maxUploadBytes'   => Bundle::MAX_TOTAL_BYTES,
+            'maxUploadBytes'   => Bundle::max_total_bytes(),
             'maxFileCount'     => Bundle::MAX_FILE_COUNT,
             'docsUrl'          => 'https://designsetgo.dev/docs',
             'settingsUrl'      => admin_url('admin.php?page=designsetgo-apps-settings'),

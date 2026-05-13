@@ -40,8 +40,28 @@ final class Bundle {
         // Documents / web manifests / misc text
         'pdf','webmanifest','txt','md','map',
     ];
-    public const MAX_TOTAL_BYTES = 25 * 1024 * 1024;
     public const MAX_FILE_COUNT = 500;
+
+    /**
+     * Floor used when WP's upload-size detection returns 0 (rare, mostly
+     * weird SAPI configurations). Anything above this is governed by the
+     * site's actual upload_max_filesize / post_max_size.
+     */
+    public const MIN_TOTAL_BYTES_FALLBACK = 5 * 1024 * 1024;
+
+    /**
+     * Max accepted bundle size in bytes. Tracks `wp_max_upload_size()` so the
+     * cap is always whatever the site's PHP can actually accept (the min of
+     * upload_max_filesize, post_max_size, and the upload_size_limit filter).
+     *
+     * Apps that need a tighter ceiling (e.g. compliance environments) can
+     * lower this via the `upload_size_limit` filter — every WP upload path,
+     * including DSGo, will pick that up.
+     */
+    public static function max_total_bytes(): int {
+        $wp = function_exists('wp_max_upload_size') ? (int) wp_max_upload_size() : 0;
+        return $wp > 0 ? $wp : self::MIN_TOTAL_BYTES_FALLBACK;
+    }
 
     public static function dir_for(string $app_id): string {
         $upload = wp_upload_dir();

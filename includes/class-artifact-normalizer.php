@@ -62,10 +62,11 @@ final class ArtifactNormalizer {
         if ($body === '') {
             throw new ArtifactNormalizerError('empty_html', 'HTML body is empty');
         }
-        if (strlen($body) > Bundle::MAX_TOTAL_BYTES) {
+        $max_bytes = Bundle::max_total_bytes();
+        if (strlen($body) > $max_bytes) {
             throw new ArtifactNormalizerError(
                 'artifact_too_large',
-                sprintf('HTML body too large (%d bytes > %d)', strlen($body), Bundle::MAX_TOTAL_BYTES),
+                sprintf('HTML body too large (%d bytes > %d)', strlen($body), $max_bytes),
             );
         }
         if (!mb_check_encoding($body, 'UTF-8')) {
@@ -160,6 +161,7 @@ final class ArtifactNormalizer {
                 );
             }
 
+            $max_bytes = Bundle::max_total_bytes();
             $entry_candidates = [];
             $kept_entries     = [];
             $total_bytes      = 0;
@@ -183,10 +185,10 @@ final class ArtifactNormalizer {
                 }
                 $kept_entries[] = $name_in_zip;
                 $total_bytes   += (int) $stat['size'];
-                if ($total_bytes > Bundle::MAX_TOTAL_BYTES) {
+                if ($total_bytes > $max_bytes) {
                     throw new ArtifactNormalizerError(
                         'artifact_too_large',
-                        sprintf('bundle exceeds %d bytes uncompressed', Bundle::MAX_TOTAL_BYTES),
+                        sprintf('bundle exceeds %d bytes uncompressed', $max_bytes),
                     );
                 }
                 if (count($kept_entries) > Bundle::MAX_FILE_COUNT) {
