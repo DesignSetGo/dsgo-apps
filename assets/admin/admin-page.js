@@ -136,11 +136,13 @@
         var homeBtn = node.querySelector('[data-dsgo-home]');
         if (app.is_site_home) {
             homeBtn.textContent = __('Step down', 'designsetgo-apps');
+            /* translators: %s: app name */
             homeBtn.setAttribute('aria-label', sprintf(__('Step %s down from site home', 'designsetgo-apps'), app.name || app.id));
             homeBtn.classList.add('dsgo-applist__home--demote');
             homeBtn.addEventListener('click', function () { openStepDownConsent(app, node); });
         } else if (app.home_eligible) {
             homeBtn.textContent = __('Set home', 'designsetgo-apps');
+            /* translators: %s: app name */
             homeBtn.setAttribute('aria-label', sprintf(__('Make %s your site home', 'designsetgo-apps'), app.name || app.id));
             homeBtn.addEventListener('click', function () { openPromoteConsent(app, node); });
         } else {
@@ -148,6 +150,7 @@
         }
 
         var del = node.querySelector('[data-dsgo-delete]');
+        /* translators: %s: app name */
         del.setAttribute('aria-label', sprintf(__('Uninstall %s', 'designsetgo-apps'), app.name || app.id));
         del.addEventListener('click', function () { confirmDelete(app); });
 
@@ -159,6 +162,7 @@
             secretsLink.className = 'button button-secondary dsgo-applist__secrets';
             secretsLink.textContent = __('Secrets', 'designsetgo-apps');
             secretsLink.setAttribute('aria-label',
+                /* translators: %s: app name */
                 sprintf(__('Manage secrets for %s', 'designsetgo-apps'), app.name || app.id));
             var url = window.location.pathname
                 + '?page=designsetgo-apps&app_id=' + encodeURIComponent(app.id)
@@ -222,6 +226,7 @@
                 clearChildren(listEl);
                 var msg = document.createElement('li');
                 msg.className = 'dsgo-applist__empty';
+                /* translators: %s: error message from the REST request */
                 msg.textContent = sprintf(__('Could not load apps: %s', 'designsetgo-apps'), err.message);
                 listEl.appendChild(msg);
                 listSubtitle.textContent = __('Failed to load.', 'designsetgo-apps');
@@ -437,6 +442,7 @@
         }).catch(function (err) {
             btn.disabled = false;
             btn.textContent = prevText;
+            /* translators: %s: error message from the REST request */
             window.alert(sprintf(__('Could not update site home: %s', 'designsetgo-apps'), err.message));
         });
     }
@@ -445,8 +451,10 @@
 
     function confirmDelete(app) {
         var name = app.name || app.id;
+        /* translators: %s: app name */
         var msg = app.is_site_home
             ? sprintf(__('Uninstall "%s"? It is currently your site home — your root URL will return to WordPress\'s default front page.', 'designsetgo-apps'), name)
+            /* translators: %s: app name */
             : sprintf(__('Uninstall "%s"? This removes the bundle and any per-user storage.', 'designsetgo-apps'), name);
         if (!window.confirm(msg)) return;
         fetch(cfg.restRoot + 'apps/' + encodeURIComponent(app.id), {
@@ -461,6 +469,7 @@
             }
             refresh();
         }).catch(function (err) {
+            /* translators: %s: error message from the REST request */
             window.alert(sprintf(__('Delete failed: %s', 'designsetgo-apps'), err.message));
         });
     }
@@ -490,6 +499,7 @@
         if (installToggle) installToggle.setAttribute('aria-expanded', 'true');
         var panel = successTemplate.content.firstElementChild.cloneNode(true);
         panel.querySelector('[data-dsgo-success-title]').textContent = sprintf(
+            /* translators: %s: app name */
             __('%s is ready.', 'designsetgo-apps'),
             body.name || appId || fallbackName,
         );
@@ -536,6 +546,7 @@
         }
         if (file.size > cfg.maxUploadBytes) {
             showStatus(
+                /* translators: %d: maximum upload size in megabytes */
                 sprintf(__('Bundle is too large (max %d MB).', 'designsetgo-apps'), Math.round(cfg.maxUploadBytes / (1024 * 1024))),
                 'error',
             );
@@ -558,6 +569,7 @@
 
     function previewAndInstall(file) {
         dropzone.classList.add('is-uploading');
+        /* translators: %s: bundle filename being validated */
         showStatus(sprintf(__('Validating %s…', 'designsetgo-apps'), file.name));
         setProgress(8);
 
@@ -648,6 +660,7 @@
     }
 
     function finalizeInstall(file, preview) {
+        /* translators: %s: bundle filename being installed */
         showStatus(sprintf(__('Installing %s…', 'designsetgo-apps'), file.name));
         setProgress(80);
 
@@ -683,6 +696,7 @@
                 // the apps-list view doesn't make that gap visible.
                 if (body.needs_secrets && body.secrets_url) {
                     showStatus(
+                        /* translators: %s: app id or bundle filename */
                         sprintf(__('Installed %s. Set required credentials to continue.', 'designsetgo-apps'), body.id || file.name),
                         'success',
                     );
@@ -690,7 +704,8 @@
                     return;
                 }
                 showStatus(
-                    sprintf(__('Installed %s. Live at %s', 'designsetgo-apps'), body.id || file.name, body.url || ''),
+                    /* translators: 1: app id or bundle filename, 2: app URL */
+                    sprintf(__('Installed %1$s. Live at %2$s', 'designsetgo-apps'), body.id || file.name, body.url || ''),
                     'success',
                 );
                 renderSuccessActions(body, file.name);
@@ -938,6 +953,7 @@
             }
 
             htmlSubmit.disabled = true;
+            /* translators: %s: HTML filename being uploaded */
             showStatus(sprintf(__('Uploading %s…', 'designsetgo-apps'), selectedHtmlFile.name));
             setProgress(15);
 
@@ -1026,6 +1042,7 @@
             }).catch(function (err) {
                 starterButton.disabled = false;
                 showStatus(
+                    /* translators: %s: error message from the import request */
                     sprintf(__('Install failed: %s', 'designsetgo-apps'), err && err.message ? err.message : String(err)),
                     'error',
                 );

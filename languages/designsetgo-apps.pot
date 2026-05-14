@@ -1,12 +1,1166 @@
 # Copyright (C) 2026 DesignSetGo
-# This file is distributed under the GPL-2.0-or-later license.
+# This file is distributed under the GPL-2.0-or-later.
 msgid ""
 msgstr ""
-"Project-Id-Version: DesignSetGo Apps 0.1.0\n"
-"Report-Msgid-Bugs-To: https://github.com/designsetgo/designsetgo-apps/issues\n"
-"POT-Creation-Date: 2026-05-08T00:00:00+00:00\n"
+"Project-Id-Version: DesignSetGo Apps 1.0.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/designsetgo-apps\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: WP-CLI 2.x\n"
+"POT-Creation-Date: 2026-05-14T02:56:44+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: designsetgo-apps\n"
+
+#. Plugin Name of the plugin
+#: designsetgo-apps.php
+#: includes/class-privacy.php:31
+#: includes/class-privacy.php:43
+msgid "DesignSetGo Apps"
+msgstr ""
+
+#. Plugin URI of the plugin
+#: designsetgo-apps.php
+msgid "https://designsetgo.dev"
+msgstr ""
+
+#. Description of the plugin
+#: designsetgo-apps.php
+msgid "Drop in any AI-built static bundle and run it as a sandboxed app on your WordPress site at /apps/{slug}, wired to your posts, pages, and users via a permissioned bridge."
+msgstr ""
+
+#. Author of the plugin
+#: designsetgo-apps.php
+#: includes/class-admin-page.php:177
+#: includes/class-settings.php:241
+msgid "DesignSetGo"
+msgstr ""
+
+#. Author URI of the plugin
+#: designsetgo-apps.php
+msgid "https://designsetgo.dev/author/"
+msgstr ""
+
+#. translators: %s: current PHP version
+#: designsetgo-apps.php:28
+#, php-format
+msgid "DesignSetGo Apps requires PHP 8.2 or higher. You are running %s."
+msgstr ""
+
+#. translators: %s: current WordPress version
+#: designsetgo-apps.php:42
+#, php-format
+msgid "DesignSetGo Apps requires WordPress 6.9 or higher. You are running %s."
+msgstr ""
+
+#: designsetgo-apps.php:170
+msgid "DesignSetGo Apps: Freemius SDK is missing (composer dependencies not installed). Apps will continue to run, but the in-admin Pricing/Upgrade page is unavailable."
+msgstr ""
+
+#. translators: %s: class name
+#: includes/class-abilities-publisher.php:201
+#, php-format
+msgid "Companion plugin not installed: class %s is not loadable."
+msgstr ""
+
+#. translators: %s: ability name
+#: includes/class-abilities-publisher.php:247
+#, php-format
+msgid "Ability \"%s\" is published by a DesignSetGo app and can only be invoked from a browser context. Use @wordpress/abilities executeAbility() in JS, not server-side wp_ai_client_prompt()."
+msgstr ""
+
+#: includes/class-admin-page.php:48
+msgid "Your site home is a DSGo App."
+msgstr ""
+
+#. translators: 1: app name, 2: manage URL
+#: includes/class-admin-page.php:53
+#, php-format
+msgid "\"%1$s\" is rendering at the site root. The \"Your homepage displays\" choice below applies only after you <a href=\"%2$s\">step the app down</a>."
+msgstr ""
+
+#: includes/class-admin-page.php:79
+#: includes/class-admin-page.php:80
+#: includes/class-dsgo-abilities.php:468
+msgid "DSGo Apps"
+msgstr ""
+
+#: includes/class-admin-page.php:89
+#: includes/class-admin-page.php:90
+#: includes/class-admin-page.php:180
+#: includes/class-admin-page.php:521
+#: includes/class-post-type.php:21
+msgid "Apps"
+msgstr ""
+
+#: includes/class-admin-page.php:183
+msgid "Run sandboxed apps on your WordPress site, from single-block widgets to full multi-page experiences, wired to your posts, pages, users, and abilities through a permissioned bridge. Drop in a bundle, or deploy from your terminal."
+msgstr ""
+
+#: includes/class-admin-page.php:202
+msgid "Installed apps"
+msgstr ""
+
+#: includes/class-admin-page.php:203
+msgid "Loading…"
+msgstr ""
+
+#: includes/class-admin-page.php:213
+msgid "Install another app"
+msgstr ""
+
+#: includes/class-admin-page.php:225
+msgid "Install an app"
+msgstr ""
+
+#: includes/class-admin-page.php:226
+msgid "Try the starter, upload an AI artifact, or bring a packaged bundle from your editor."
+msgstr ""
+
+#: includes/class-admin-page.php:229
+msgid "First app options"
+msgstr ""
+
+#: includes/class-admin-page.php:231
+msgid "Fastest first win"
+msgstr ""
+
+#: includes/class-admin-page.php:232
+msgid "Try the starter app"
+msgstr ""
+
+#: includes/class-admin-page.php:233
+msgid "Install a guided multi-page tour with live bridge examples. No file, terminal, or AI prompt needed."
+msgstr ""
+
+#: includes/class-admin-page.php:235
+msgid "Install starter app"
+msgstr ""
+
+#: includes/class-admin-page.php:239
+msgid "Have an AI page?"
+msgstr ""
+
+#: includes/class-admin-page.php:240
+msgid "Upload an artifact"
+msgstr ""
+
+#: includes/class-admin-page.php:241
+msgid "Drop a saved Claude, ChatGPT, v0, or static HTML/zip export and DSGo wraps it safely."
+msgstr ""
+
+#: includes/class-admin-page.php:243
+msgid "Choose artifact"
+msgstr ""
+
+#: includes/class-admin-page.php:247
+msgid "Need something custom?"
+msgstr ""
+
+#: includes/class-admin-page.php:248
+msgid "Build with AI"
+msgstr ""
+
+#: includes/class-admin-page.php:249
+msgid "Generate a bridge-aware prompt for your AI chat, then upload the HTML it creates."
+msgstr ""
+
+#: includes/class-admin-page.php:251
+msgid "Open prompt builder"
+msgstr ""
+
+#: includes/class-admin-page.php:256
+msgid "Install method"
+msgstr ""
+
+#: includes/class-admin-page.php:260
+msgid "Upload artifact"
+msgstr ""
+
+#: includes/class-admin-page.php:265
+msgid "Upload bundle"
+msgstr ""
+
+#: includes/class-admin-page.php:272
+msgid "Choose a bundle zip to install"
+msgstr ""
+
+#: includes/class-admin-page.php:281
+msgid "Drop a bundle here"
+msgstr ""
+
+#: includes/class-admin-page.php:283
+#: includes/class-admin-page.php:313
+msgid "or"
+msgstr ""
+
+#: includes/class-admin-page.php:284
+#: includes/class-admin-page.php:314
+msgid "choose a file"
+msgstr ""
+
+#: includes/class-admin-page.php:296
+msgid "Drop a single <code>.html</code> file (a Claude Artifact, a single-file game, or any standalone page) or a <code>.zip</code> of a static export (a Claude Design bundle, a built static site without a manifest) and we’ll wrap it in a sandboxed app."
+msgstr ""
+
+#: includes/class-admin-page.php:303
+msgid "Choose an HTML or zip file to install"
+msgstr ""
+
+#: includes/class-admin-page.php:311
+msgid "Drop an HTML or zip file here"
+msgstr ""
+
+#: includes/class-admin-page.php:322
+msgid "App ID"
+msgstr ""
+
+#: includes/class-admin-page.php:325
+msgid "Lowercase letters, numbers, hyphens. 3–64 chars."
+msgstr ""
+
+#: includes/class-admin-page.php:328
+msgid "Display name"
+msgstr ""
+
+#: includes/class-admin-page.php:331
+msgid "Shown in the apps list and tab title."
+msgstr ""
+
+#: includes/class-admin-page.php:337
+msgid "Install artifact"
+msgstr ""
+
+#: includes/class-admin-page.php:348
+msgid "Or build one with Claude, ChatGPT, or any AI chat"
+msgstr ""
+
+#: includes/class-admin-page.php:352
+msgid "Copy the prompt below into <strong>Claude</strong>, <strong>ChatGPT</strong>, or any AI chat. It briefs the model on this site's bridge API, available abilities, and connector &mdash; so the artifact it produces actually works when you upload it."
+msgstr ""
+
+#: includes/class-admin-page.php:360
+msgid "Capabilities the app should use"
+msgstr ""
+
+#: includes/class-admin-page.php:361
+msgid "checked items get their bridge methods + docs added to the prompt"
+msgstr ""
+
+#: includes/class-admin-page.php:382
+msgid "Storage (storage.app, storage.user), bridge.ping, and resize requests need no permission and are always included."
+msgstr ""
+
+#: includes/class-admin-page.php:386
+msgid "AI prompt — copy & paste"
+msgstr ""
+
+#: includes/class-admin-page.php:389
+msgid "Copy prompt"
+msgstr ""
+
+#: includes/class-admin-page.php:393
+msgid "AI prompt text"
+msgstr ""
+
+#: includes/class-admin-page.php:396
+msgid "Open Claude →"
+msgstr ""
+
+#: includes/class-admin-page.php:399
+msgid "Open ChatGPT →"
+msgstr ""
+
+#: includes/class-admin-page.php:403
+msgid "Tell the AI what you want to build. It will produce a single .html file. Save it, then drag it onto the Upload artifact tab above."
+msgstr ""
+
+#: includes/class-admin-page.php:409
+msgid "Or vibe-code it in your favorite IDE"
+msgstr ""
+
+#: includes/class-admin-page.php:413
+msgid "Build your app with <strong>Claude Code</strong>, <strong>Cursor</strong>, <strong>Codex</strong>, or any AI coding IDE &mdash; then ship it to this site with one command."
+msgstr ""
+
+#: includes/class-admin-page.php:425
+msgid "The CLI uses an <strong>Application Password</strong> generated from your WordPress profile. Generate one at <a href=\"profile.php#application-passwords-section\">your profile page</a>."
+msgstr ""
+
+#: includes/class-admin-page.php:435
+#: includes/class-settings.php:266
+msgid "URL prefix"
+msgstr ""
+
+#: includes/class-admin-page.php:436
+msgid "Configure routing →"
+msgstr ""
+
+#: includes/class-admin-page.php:447
+#: includes/class-settings.php:337
+msgid "Site home"
+msgstr ""
+
+#: includes/class-admin-page.php:455
+msgid "Delete"
+msgstr ""
+
+#: includes/class-admin-page.php:465
+#: templates/secrets-tab.php:158
+msgid "Cancel"
+msgstr ""
+
+#: includes/class-admin-page.php:474
+msgid "Installed"
+msgstr ""
+
+#: includes/class-admin-page.php:479
+msgid "Open app"
+msgstr ""
+
+#: includes/class-admin-page.php:480
+msgid "Embed in a post"
+msgstr ""
+
+#: includes/class-admin-page.php:481
+msgid "Set as site home"
+msgstr ""
+
+#: includes/class-admin-page.php:482
+msgid "Copy URL"
+msgstr ""
+
+#: includes/class-admin-page.php:530
+#: templates/secrets-tab.php:76
+msgid "Secrets"
+msgstr ""
+
+#: includes/class-admin-page.php:534
+msgid "Cron"
+msgstr ""
+
+#: includes/class-admin-page.php:537
+msgid "Webhooks"
+msgstr ""
+
+#: includes/class-admin-page.php:555
+msgid "Unknown tab."
+msgstr ""
+
+#: includes/class-admin-page.php:581
+#: includes/class-iframe-loader.php:73
+msgid "App not found"
+msgstr ""
+
+#. translators: %s: app id from the URL
+#: includes/class-admin-page.php:586
+#, php-format
+msgid "No installed app matches the id \"%s\". It may have been uninstalled."
+msgstr ""
+
+#: includes/class-admin-page.php:593
+msgid "Back to Apps"
+msgstr ""
+
+#: includes/class-ai-context-pack.php:43
+msgid "Site info"
+msgstr ""
+
+#: includes/class-ai-context-pack.php:44
+msgid "Site title, URL, language, timezone."
+msgstr ""
+
+#: includes/class-ai-context-pack.php:47
+msgid "Posts"
+msgstr ""
+
+#: includes/class-ai-context-pack.php:48
+msgid "List and read posts + custom post types."
+msgstr ""
+
+#: includes/class-ai-context-pack.php:51
+msgid "Pages"
+msgstr ""
+
+#: includes/class-ai-context-pack.php:52
+msgid "List and read static pages."
+msgstr ""
+
+#: includes/class-ai-context-pack.php:55
+msgid "User"
+msgstr ""
+
+#: includes/class-ai-context-pack.php:56
+msgid "Current user identity + capability checks."
+msgstr ""
+
+#: includes/class-ai-context-pack.php:59
+msgid "Abilities"
+msgstr ""
+
+#: includes/class-ai-context-pack.php:60
+msgid "List + invoke abilities registered by other plugins (Yoast SEO, etc.)."
+msgstr ""
+
+#: includes/class-ai-context-pack.php:63
+#: includes/class-bucket-renderer.php:91
+msgid "AI"
+msgstr ""
+
+#: includes/class-ai-context-pack.php:64
+msgid "Send prompts through the site's configured AI connector (WP 7.0+)."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:65
+msgid "New permission"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:87
+msgid "Read content"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:88
+msgid "Write content"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:89
+msgid "External services"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:90
+msgid "Send messages"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:92
+msgid "Run automatically"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:93
+msgid "Commerce"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:118
+msgid "Reads posts, pages, and user data from your site."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:119
+msgid "Creates or modifies content on your site."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:120
+msgid "Sends requests to external services on your behalf."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:121
+msgid "Sends email through your site's mail system."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:122
+msgid "Uses AI through your configured provider."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:123
+msgid "Schedules tasks or receives webhooks that run without a logged-in user."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:124
+msgid "Reads and modifies your WooCommerce store data."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:170
+msgid "Read access is enabled but no specific data types declared."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:178
+msgid "Write access enabled (no specific post types declared)."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:190
+msgid "Hosts:"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:194
+msgid "Required credentials:"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:209
+msgid "External services declared but no specific hosts listed."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:223
+msgid "Anonymous email enabled — recipients restricted to:"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:232
+msgid "Anonymous email enabled (no specific recipients listed)."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:234
+msgid "Sends transactional email triggered by logged-in users."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:238
+msgid "Calls AI through your configured provider."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:242
+msgid "Abilities this app may invoke:"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:254
+msgid "Scheduled jobs:"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:269
+msgid "Webhook endpoints:"
+msgstr ""
+
+#: includes/class-bucket-renderer.php:278
+msgid "Background tasks declared but no schedules or webhooks listed."
+msgstr ""
+
+#: includes/class-bucket-renderer.php:286
+msgid "Reads and modifies your store data."
+msgstr ""
+
+#: includes/class-cron-scheduler.php:41
+msgid "Every 15 minutes (DesignSetGo Apps)"
+msgstr ""
+
+#: includes/class-cron-scheduler.php:45
+msgid "Every 5 minutes (DesignSetGo Apps)"
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:52
+msgid "Generate a DSGo app from a natural-language prompt (Pro)"
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:53
+#: includes/class-dsgo-abilities.php:58
+msgid "Requires DSGo Pro. Stub returns riff_feature_disabled until Pro is active."
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:57
+msgid "Install a generated DSGo app draft (Pro)"
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:83
+msgid "The Riff feature requires DSGo Pro. Upgrade at https://designsetgo.com/pricing"
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:101
+msgid "List installed DSGo apps"
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:102
+msgid "Returns summaries of every DSGo app installed on the site (id, slug, title, version, install date, dynamic-routes flag)."
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:173
+msgid "Get an installed DSGo app by id"
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:174
+msgid "Returns full summary plus a manifest excerpt (permissions, declared abilities, display mode, route count). Bundle bytes are not included."
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:218
+#: includes/class-dsgo-abilities.php:364
+msgid "No installed app with that id."
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:251
+msgid "List starter templates available for app generation"
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:252
+msgid "Returns the starter-template catalog used by dsgo/generate-app. Empty when Pro is not active."
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:318
+msgid "Delete an installed DSGo app"
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:319
+msgid "Permanently uninstalls the app and removes its content. Requires confirm=true; the agent is expected to surface the destructive nature to the user before calling."
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:360
+msgid "Set confirm=true to delete this app."
+msgstr ""
+
+#: includes/class-dsgo-abilities.php:469
+msgid "Manage DSGo apps: list, inspect, generate, install, delete."
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:24
+msgid "DesignSetGo App"
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:49
+#: includes/class-elementor-app-widget.php:78
+#: includes/class-post-type.php:22
+#: includes/class-privacy.php:128
+#: includes/class-privacy.php:155
+msgid "App"
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:63
+msgid "No block-mode apps are installed yet."
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:65
+msgid "Install one →"
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:71
+msgid "— Choose an app —"
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:82
+msgid "Only apps that declare \"block\" in their display modes appear here."
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:92
+msgid "Layout"
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:100
+msgid "Height (px)"
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:114
+msgid "Auto-resize to content"
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:116
+msgid "On"
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:117
+msgid "Off"
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:120
+msgid "Lets the app set its own height. Requires the app to send a dsgo:resize message."
+msgstr ""
+
+#: includes/class-elementor-app-widget.php:140
+#: includes/class-shortcode.php:59
+msgid "No app selected."
+msgstr ""
+
+#. translators: %s: app slug from the URL
+#: includes/class-iframe-loader.php:76
+#, php-format
+msgid "No app named \"%s\" is installed on this site."
+msgstr ""
+
+#: includes/class-iframe-loader.php:86
+msgid "App misconfigured"
+msgstr ""
+
+#: includes/class-iframe-loader.php:87
+msgid "This app is missing its manifest. Reinstall the bundle to repair it."
+msgstr ""
+
+#: includes/class-iframe-loader.php:94
+msgid "App not available here"
+msgstr ""
+
+#: includes/class-iframe-loader.php:95
+msgid "This app is installed but does not support page-mode display."
+msgstr ""
+
+#. translators: %s: app display name
+#: includes/class-iframe-loader.php:241
+#: templates/iframe-loader.php:95
+#, php-format
+msgid "%s — embedded application"
+msgstr ""
+
+#: includes/class-iframe-loader.php:370
+#: includes/class-inline-renderer.php:843
+msgid "← Return to site"
+msgstr ""
+
+#: includes/class-inline-renderer.php:830
+msgid "Page not found"
+msgstr ""
+
+#. translators: %s: app name
+#: includes/class-inline-renderer.php:833
+#, php-format
+msgid "That route is not part of \"%s\"."
+msgstr ""
+
+#: includes/class-installer.php:165
+msgid "Previously approved (unchanged):"
+msgstr ""
+
+#: includes/class-installer.php:172
+msgid "Removed (no action required)"
+msgstr ""
+
+#: includes/class-installer.php:183
+msgid "This app uses per-app and per-user storage to persist state."
+msgstr ""
+
+#: includes/class-plugin.php:399
+msgid "DesignSetGo Apps is ready."
+msgstr ""
+
+#. translators: 1: URL to install page
+#: includes/class-plugin.php:404
+#, php-format
+msgid "Install your first app at <a href=\"%1$s\">DSGo Apps</a>, or run <code>npx designsetgo apps deploy</code> from a project directory."
+msgstr ""
+
+#: includes/class-privacy.php:125
+msgid "DesignSetGo Apps — App-specific storage"
+msgstr ""
+
+#: includes/class-privacy.php:129
+msgid "Key"
+msgstr ""
+
+#: includes/class-privacy.php:130
+msgid "Value"
+msgstr ""
+
+#: includes/class-privacy.php:152
+msgid "DesignSetGo Apps — Email audit log"
+msgstr ""
+
+#: includes/class-privacy.php:156
+msgid "Recipient type"
+msgstr ""
+
+#: includes/class-privacy.php:157
+msgid "Subject"
+msgstr ""
+
+#: includes/class-privacy.php:158
+msgid "Sent"
+msgstr ""
+
+#: includes/class-privacy.php:159
+msgid "Timestamp"
+msgstr ""
+
+#: includes/class-privacy.php:223
+msgid ""
+"When you use DesignSetGo Apps, the apps installed by your site administrator may save preferences, settings, or other data linked to your user account through the plugin's permissioned bridge. This data is stored in your WordPress user metadata, scoped per-app, and is never shared between apps.\n"
+"\n"
+"If an app uses the email bridge to send mail, the plugin retains a per-app audit log that records the recipient type, the subject line, and a one-way SHA-256 hash of the recipient address (never the address itself). The audit log is capped at 200 entries per app.\n"
+"\n"
+"Site administrators choose which apps to install and which permissions to grant. The plugin does not transmit personal data to DesignSetGo or any external service."
+msgstr ""
+
+#: includes/class-rest-api.php:386
+msgid "CLI deploys require a DesignSetGo Apps Pro license. The wp-admin upload importer is free and unlimited."
+msgstr ""
+
+#: includes/class-settings.php:44
+msgid "URL segment under which DSGo apps are served (e.g. \"apps\")."
+msgstr ""
+
+#: includes/class-settings.php:56
+msgid "Allow the AI app builder to read recent published content for context."
+msgstr ""
+
+#: includes/class-settings.php:102
+msgid "URL prefix must be a string."
+msgstr ""
+
+#. translators: %s: prefix the user submitted
+#: includes/class-settings.php:113
+#, php-format
+msgid "\"%s\" is not a valid URL prefix. Use up to 31 lowercase letters, digits, or hyphens, starting with a letter, or leave blank to mount apps at the site root. Reserved WordPress paths are rejected."
+msgstr ""
+
+#: includes/class-settings.php:197
+#: includes/class-settings.php:198
+msgid "Settings"
+msgstr ""
+
+#. translators: %s: brand name (defaults to "DesignSetGo"; overridden by Pro white-label)
+#: includes/class-settings.php:244
+#, php-format
+msgid "%s · Settings"
+msgstr ""
+
+#: includes/class-settings.php:249
+msgid "Routing & site home."
+msgstr ""
+
+#: includes/class-settings.php:252
+msgid "Configure the URL segment your apps live under, and review which app currently owns the site root."
+msgstr ""
+
+#: includes/class-settings.php:268
+msgid "The path segment under which prefixed-mount apps are served. Each app gets its own slug below this — or remove the prefix to mount apps directly at the site root."
+msgstr ""
+
+#: includes/class-settings.php:281
+msgid "Use a URL prefix"
+msgstr ""
+
+#: includes/class-settings.php:283
+msgid "Recommended. Keeps app URLs grouped under one path (e.g. /apps/my-app) and avoids slug collisions with anything else on your site — pages, posts, custom post types, archives, or other plugin URLs."
+msgstr ""
+
+#: includes/class-settings.php:291
+msgid "Path segment"
+msgstr ""
+
+#: includes/class-settings.php:310
+msgid "Lowercase letters, digits, hyphens. 1–31 chars. Must start with a letter. Default: \"apps\". Reserved WordPress paths are rejected. Leave blank to mount apps at the site root."
+msgstr ""
+
+#: includes/class-settings.php:315
+msgid "Apps will be served at:"
+msgstr ""
+
+#: includes/class-settings.php:330
+msgid "Heads up: with no prefix, an app slug that matches any other path on this site (a page, post, custom-post-type permalink, archive base, or a URL registered by another plugin) will not load — the other content wins. Pick app slugs that don't collide."
+msgstr ""
+
+#: includes/class-settings.php:339
+msgid "At most one app can own the site root URL at a time. Set or change this from the Apps page."
+msgstr ""
+
+#: includes/class-settings.php:347
+msgid "Currently serving"
+msgstr ""
+
+#: includes/class-settings.php:350
+msgid "This app is mounted at the site root. Inline-mode root apps fill in any path WordPress would 404 on; iframe-mode root apps render at \"/\" only. Real WP pages, posts, and feeds always win."
+msgstr ""
+
+#: includes/class-settings.php:353
+msgid "Manage on the Apps page →"
+msgstr ""
+
+#: includes/class-settings.php:360
+msgid "No app is set as site home. All installed apps live under the URL prefix above."
+msgstr ""
+
+#: includes/class-settings.php:363
+msgid "Pick one on the Apps page →"
+msgstr ""
+
+#: includes/class-settings.php:381
+msgid "Usage data"
+msgstr ""
+
+#: includes/class-settings.php:383
+msgid "Anonymized event data we use to improve generation quality. Stays on your site for 90 days, then auto-purges. Nothing leaves your server."
+msgstr ""
+
+#: includes/class-settings.php:401
+msgid "Collect anonymized usage data on this site"
+msgstr ""
+
+#. translators: 1: URL to "What's collected" tab, 2: URL to "View events" tab
+#: includes/class-settings.php:407
+#, php-format
+msgid "Enabled by default. See <a href=\"%1$s\">what's collected</a> or <a href=\"%2$s\">view recorded events</a>."
+msgstr ""
+
+#: includes/class-settings.php:437
+msgid "White label"
+msgstr ""
+
+#: includes/class-settings.php:439
+msgid "Replace the \"DesignSetGo\" brand string in places end-clients see — the apps-list eyebrow and the wp-admin Plugins listing. Leave blank to use the default brand."
+msgstr ""
+
+#: includes/class-settings.php:445
+msgid "Brand name"
+msgstr ""
+
+#: includes/class-settings.php:455
+msgid "e.g. Acme"
+msgstr ""
+
+#: includes/class-settings.php:458
+msgid "Applied to the apps-list eyebrow and to the Plugins-page Name/Author/Description for both Apps and Apps Pro. Plugin and Author URIs are cleared so client-facing surfaces never link back to designsetgo.dev."
+msgstr ""
+
+#: includes/class-settings.php:464
+msgid "Brand-management owner"
+msgstr ""
+
+#: includes/class-settings.php:478
+msgid "Only this user sees the white-label card. Transfer ownership to hand brand control to another admin; once transferred, you will no longer see these fields. To reclaim, the new owner has to transfer it back."
+msgstr ""
+
+#: includes/class-settings.php:492
+msgid "AI authoring context"
+msgstr ""
+
+#: includes/class-settings.php:494
+msgid "Controls what context the in-admin app builder may read from this site when generating apps."
+msgstr ""
+
+#: includes/class-settings.php:507
+msgid "Share recent content with the AI app builder"
+msgstr ""
+
+#: includes/class-settings.php:509
+msgid "When enabled, the in-admin AI app builder can read up to 5 recent published post titles and excerpts to match your site's tone and content shape. Posts the visitor cannot read are never included. Off by default — site content stays out of the model's context until you opt in."
+msgstr ""
+
+#: includes/class-settings.php:519
+msgid "Save changes"
+msgstr ""
+
+#: includes/class-webhook-auth.php:80
+msgid "Webhook secret is not configured. Set it in the Secrets tab."
+msgstr ""
+
+#: includes/class-webhook-auth.php:202
+msgid "Webhook authentication failed."
+msgstr ""
+
+#: templates/cron-tab.php:35
+msgid "Scheduled jobs"
+msgstr ""
+
+#: templates/cron-tab.php:37
+msgid "WP-cron fires approximately at the scheduled time, depending on site traffic. Low-traffic sites should consider configuring a server-side cron pointed at wp-cron.php."
+msgstr ""
+
+#: templates/cron-tab.php:46
+msgid "Job ID"
+msgstr ""
+
+#: templates/cron-tab.php:47
+#: templates/webhooks-tab.php:57
+msgid "Ability"
+msgstr ""
+
+#: templates/cron-tab.php:48
+msgid "Schedule"
+msgstr ""
+
+#: templates/cron-tab.php:49
+msgid "Next fire"
+msgstr ""
+
+#: templates/cron-tab.php:50
+#: templates/secrets-tab.php:93
+msgid "Actions"
+msgstr ""
+
+#: templates/cron-tab.php:59
+msgid "— not scheduled"
+msgstr ""
+
+#: templates/cron-tab.php:79
+msgid "Run now"
+msgstr ""
+
+#: templates/cron-tab.php:90
+msgid "Recent runs"
+msgstr ""
+
+#: templates/cron-tab.php:92
+msgid "No cron runs recorded yet."
+msgstr ""
+
+#: templates/cron-tab.php:97
+msgid "Fired"
+msgstr ""
+
+#: templates/cron-tab.php:98
+msgid "Job"
+msgstr ""
+
+#: templates/cron-tab.php:99
+#: templates/secrets-tab.php:92
+#: templates/webhooks-tab.php:132
+msgid "Status"
+msgstr ""
+
+#: templates/cron-tab.php:100
+#: templates/webhooks-tab.php:134
+msgid "Duration"
+msgstr ""
+
+#: templates/cron-tab.php:101
+#: templates/webhooks-tab.php:135
+msgid "Error"
+msgstr ""
+
+#: templates/secrets-tab.php:54
+msgid "Sodium extension unavailable."
+msgstr ""
+
+#: templates/secrets-tab.php:55
+msgid "The HTTP proxy requires the PHP sodium extension to encrypt secrets at rest. Contact your host to enable it — without sodium, this app cannot use external services."
+msgstr ""
+
+#: templates/secrets-tab.php:63
+msgid "This app needs credentials before it can run."
+msgstr ""
+
+#. translators: %s: comma-separated list of required secret aliases
+#: templates/secrets-tab.php:67
+#, php-format
+msgid "Required: %s"
+msgstr ""
+
+#: templates/secrets-tab.php:78
+msgid "Per-app encrypted credentials. Apps reference these by alias as {{ALIAS}} tokens in outbound HTTP requests; the iframe never sees a resolved value. Stored sodium-encrypted in wp_options with autoload off."
+msgstr ""
+
+#: templates/secrets-tab.php:84
+msgid "This app declares no secrets."
+msgstr ""
+
+#: templates/secrets-tab.php:90
+msgid "Alias"
+msgstr ""
+
+#: templates/secrets-tab.php:91
+msgid "Description"
+msgstr ""
+
+#: templates/secrets-tab.php:107
+msgid "Required by manifest"
+msgstr ""
+
+#: templates/secrets-tab.php:107
+msgid "required"
+msgstr ""
+
+#: templates/secrets-tab.php:114
+#: templates/secrets-tab.php:119
+msgid "Set"
+msgstr ""
+
+#: templates/secrets-tab.php:114
+msgid "Not set"
+msgstr ""
+
+#: templates/secrets-tab.php:119
+msgid "Replace"
+msgstr ""
+
+#: templates/secrets-tab.php:123
+msgid "Clear"
+msgstr ""
+
+#. translators: %s: secret alias
+#: templates/secrets-tab.php:134
+#, php-format
+msgid "Value for %s"
+msgstr ""
+
+#: templates/secrets-tab.php:149
+msgid "Show / hide value"
+msgstr ""
+
+#: templates/secrets-tab.php:150
+msgid "Show"
+msgstr ""
+
+#: templates/secrets-tab.php:154
+msgid "Stored encrypted; never shown again after save. To rotate the credential, set a new value here."
+msgstr ""
+
+#: templates/secrets-tab.php:157
+msgid "Save"
+msgstr ""
+
+#: templates/secrets-tab.php:171
+msgid "Test connection"
+msgstr ""
+
+#. translators: %s: test endpoint URL
+#: templates/secrets-tab.php:176
+#, php-format
+msgid "Send a real GET to %s through the proxy with the values you just configured. Useful for verifying allowlist + secret wiring before pointing real traffic at the app."
+msgstr ""
+
+#: templates/secrets-tab.php:182
+msgid "Run test fetch"
+msgstr ""
+
+#: templates/webhooks-tab.php:40
+msgid "Webhook endpoints"
+msgstr ""
+
+#: templates/webhooks-tab.php:45
+msgid "Webhook delivery requires DesignSetGo Apps Pro. Endpoints declared in the manifest will not receive requests until a Pro license is active."
+msgstr ""
+
+#: templates/webhooks-tab.php:56
+msgid "Endpoint ID"
+msgstr ""
+
+#: templates/webhooks-tab.php:58
+msgid "Auth"
+msgstr ""
+
+#: templates/webhooks-tab.php:59
+msgid "Async"
+msgstr ""
+
+#: templates/webhooks-tab.php:60
+msgid "Callback URL"
+msgstr ""
+
+#: templates/webhooks-tab.php:71
+#: templates/webhooks-tab.php:143
+msgid "queued"
+msgstr ""
+
+#: templates/webhooks-tab.php:72
+#: templates/webhooks-tab.php:143
+msgid "inline"
+msgstr ""
+
+#: templates/webhooks-tab.php:93
+msgid "Send a test payload"
+msgstr ""
+
+#: templates/webhooks-tab.php:96
+msgid "Body (JSON or raw text)"
+msgstr ""
+
+#: templates/webhooks-tab.php:105
+msgid "The handler signs this body with your configured secret and dispatches it through the full pipeline. The endpoint must already have its secret set on the Secrets tab."
+msgstr ""
+
+#: templates/webhooks-tab.php:111
+msgid "Send test payload"
+msgstr ""
+
+#: templates/webhooks-tab.php:122
+msgid "Recent deliveries"
+msgstr ""
+
+#: templates/webhooks-tab.php:124
+msgid "No webhook deliveries recorded yet."
+msgstr ""
+
+#: templates/webhooks-tab.php:129
+msgid "Received"
+msgstr ""
+
+#: templates/webhooks-tab.php:130
+msgid "Endpoint"
+msgstr ""
+
+#: templates/webhooks-tab.php:131
+msgid "Mode"
+msgstr ""
+
+#: templates/webhooks-tab.php:133
+msgid "HTTP"
+msgstr ""
