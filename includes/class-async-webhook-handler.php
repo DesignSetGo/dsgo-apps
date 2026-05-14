@@ -129,6 +129,7 @@ final class AsyncWebhookHandler {
             );
             return;
         }
+        AbilitiesPublisher::register_all();
         if (!wp_has_ability($ability_name)) {
             self::handle_retryable_failure(
                 $queue_row_id,

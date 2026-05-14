@@ -129,9 +129,12 @@ final class WebhookHandler {
         $ability_name = $endpoint['ability'] ?? null;
         if (!is_string($ability_name)
             || !function_exists('wp_has_ability')
-            || !wp_has_ability($ability_name)
             || !function_exists('wp_get_ability')
         ) {
+            return self::respond_error(404, 'webhook_ability_not_found', 'Ability not registered.', $app_id, $endpoint_id, $start_ms);
+        }
+        AbilitiesPublisher::register_all();
+        if (!wp_has_ability($ability_name)) {
             return self::respond_error(404, 'webhook_ability_not_found', 'Ability not registered.', $app_id, $endpoint_id, $start_ms);
         }
         $ability = wp_get_ability($ability_name);

@@ -81,6 +81,7 @@ final class CronDispatcher {
             self::log_error($app_id, $job_id, $ability_name, $start_ms, 'cron_ability_not_found', 'Abilities API not available');
             return;
         }
+        AbilitiesPublisher::register_all();
         if (!wp_has_ability($ability_name)) {
             self::log_error($app_id, $job_id, $ability_name, $start_ms, 'cron_ability_not_found', 'Ability not registered');
             return;

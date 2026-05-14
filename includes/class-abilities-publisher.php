@@ -25,6 +25,32 @@ final class AbilitiesPublisher {
     private const INACTIVE_OPTION_PREFIX = 'dsgo_apps_inactive_abilities_';
 
     /**
+     * Register published abilities for all installed apps on requests that
+     * initialize the Abilities API. Install-time registration only lasts for
+     * that PHP request; cron, webhooks, and admin "run now" happen later.
+     */
+    public static function register_all(): void {
+        $app_ids = get_posts([
+            'post_type'      => PostType::SLUG,
+            'post_status'    => 'publish',
+            'posts_per_page' => -1,
+            'no_found_rows'  => true,
+            'fields'         => 'ids',
+        ]);
+        foreach ($app_ids as $post_id) {
+            $raw = get_post_meta((int) $post_id, 'dsgo_apps_manifest', true);
+            if (!is_array($raw)) {
+                continue;
+            }
+            try {
+                self::register_for_app(Manifest::from_array_unchecked($raw));
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+    }
+
+    /**
      * Register every entry in $manifest->abilities_publishes. Diffs against the
      * previously-owned set: drops abilities removed in this manifest, adds new ones.
      *

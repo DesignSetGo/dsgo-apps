@@ -115,6 +115,7 @@ final class Plugin {
         add_action('rest_api_init', [RestApi::class, 'register']);
         // MCP Adapter publishes plugin-scoped abilities registered here.
         add_action('wp_abilities_api_init', [DSGoAbilities::class, 'register']);
+        add_action('wp_abilities_api_init', [AbilitiesPublisher::class, 'register_all'], 20);
         add_action('rest_api_init', [BlockStyles::class, 'register']);
         // Webhook endpoint routes — Pro-gated inside the router. One
         // POST route per manifest-declared webhooks.endpoints[] entry.

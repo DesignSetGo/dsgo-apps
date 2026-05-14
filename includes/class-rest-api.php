@@ -790,7 +790,7 @@ final class RestApi {
         $manifest = get_post_meta($post_id, 'dsgo_apps_manifest', true);
         if (is_array($manifest)) {
             $manifest['mount'] = ['mode' => $mode];
-            update_post_meta($post_id, 'dsgo_apps_manifest', $manifest);
+            update_post_meta($post_id, 'dsgo_apps_manifest', wp_slash($manifest));
         }
     }
 

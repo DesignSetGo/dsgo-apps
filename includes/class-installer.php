@@ -327,7 +327,7 @@ final class Installer {
                 throw new InstallerError('post_error', $post_id->get_error_message());
             }
 
-            update_post_meta($post_id, 'dsgo_apps_manifest', $manifest->to_array());
+            update_post_meta($post_id, 'dsgo_apps_manifest', wp_slash($manifest->to_array()));
             update_post_meta($post_id, 'dsgo_apps_bundle_path', $bundle_dir);
             update_post_meta($post_id, 'dsgo_apps_installed_version', $manifest->version);
             // Dedicated, indexable meta keys so frontend dispatchers can
