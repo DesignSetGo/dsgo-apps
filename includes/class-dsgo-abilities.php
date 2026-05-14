@@ -50,12 +50,12 @@ final class DSGoAbilities {
         self::register_riff_disabled_stub(
             'dsgo/generate-app',
             __('Generate a DSGo app from a natural-language prompt (Pro)', 'designsetgo-apps'),
-            __('Requires DSGo Pro. Stub returns riff_feature_disabled until Pro is active.', 'designsetgo-apps')
+            __('Returns riff_feature_disabled until DSGo Pro is active.', 'designsetgo-apps')
         );
         self::register_riff_disabled_stub(
             'dsgo/install-app',
             __('Install a generated DSGo app draft (Pro)', 'designsetgo-apps'),
-            __('Requires DSGo Pro. Stub returns riff_feature_disabled until Pro is active.', 'designsetgo-apps')
+            __('Returns riff_feature_disabled until DSGo Pro is active.', 'designsetgo-apps')
         );
 
         // Pro plugin attaches its two write abilities to this hook so the
@@ -72,6 +72,7 @@ final class DSGoAbilities {
                 'label'       => $label,
                 'description' => $description,
                 'category'    => self::CATEGORY,
+                'meta'        => self::mcp_meta(false, false, false),
                 'input_schema'  => ['type' => 'object', 'additionalProperties' => true],
                 'output_schema' => ['type' => 'object'],
                 'permission_callback' => static fn (): bool => current_user_can('manage_options'),
@@ -95,6 +96,7 @@ final class DSGoAbilities {
                 'label'       => __('List installed DSGo apps', 'designsetgo-apps'),
                 'description' => __('Returns summaries of every DSGo app installed on the site (id, slug, title, version, install date, dynamic-routes flag).', 'designsetgo-apps'),
                 'category'    => self::CATEGORY,
+                'meta'        => self::mcp_meta(true, false, true),
                 'input_schema'  => ['type' => 'object', 'properties' => new \stdClass(), 'additionalProperties' => false],
                 'output_schema' => [
                     'type'       => 'object',
@@ -163,6 +165,7 @@ final class DSGoAbilities {
                 'label'       => __('Get an installed DSGo app by id', 'designsetgo-apps'),
                 'description' => __('Returns full summary plus a manifest excerpt (permissions, declared abilities, display mode, route count). Bundle bytes are not included.', 'designsetgo-apps'),
                 'category'    => self::CATEGORY,
+                'meta'        => self::mcp_meta(true, false, true),
                 'input_schema'  => [
                     'type'       => 'object',
                     'properties' => [
@@ -237,6 +240,7 @@ final class DSGoAbilities {
                 'label'       => __('List starter templates available for app generation', 'designsetgo-apps'),
                 'description' => __('Returns the starter-template catalog used by dsgo/generate-app. Empty when Pro is not active.', 'designsetgo-apps'),
                 'category'    => self::CATEGORY,
+                'meta'        => self::mcp_meta(true, false, true),
                 'input_schema'  => ['type' => 'object', 'properties' => new \stdClass(), 'additionalProperties' => false],
                 'output_schema' => [
                     'type'       => 'object',
@@ -298,9 +302,9 @@ final class DSGoAbilities {
         Abilities_Context::run('wp_abilities_api_init', static function (): void {
             wp_register_ability('dsgo/delete-app', [
                 'label'       => __('Delete an installed DSGo app', 'designsetgo-apps'),
-                'description' => __('Permanently uninstalls the app and removes its content. Requires confirm=true; the agent is expected to surface the destructive nature to the user before calling.', 'designsetgo-apps'),
+                'description' => __('Permanently uninstalls the app and removes its content. Requires confirm=true.', 'designsetgo-apps'),
                 'category'    => self::CATEGORY,
-                'meta'        => ['annotations' => ['destructive' => true]],
+                'meta'        => self::mcp_meta(false, true, false),
                 'input_schema'  => [
                     'type'       => 'object',
                     'properties' => [
@@ -447,5 +451,27 @@ final class DSGoAbilities {
                 'description' => __('Manage DSGo apps: list, inspect, generate, install, delete.', 'designsetgo-apps'),
             ]);
         });
+    }
+
+    /**
+     * Review-facing metadata consumed by the WordPress MCP Adapter.
+     *
+     * The Adapter exposes only `meta.mcp.public` abilities on its default
+     * server and maps WP annotation names to MCP hints
+     * (`readonly` -> `readOnlyHint`, `destructive` -> `destructiveHint`).
+     *
+     * @return array{annotations: array{readonly: bool, destructive: bool, idempotent: bool}, mcp: array{public: bool}}
+     */
+    private static function mcp_meta(bool $readonly, bool $destructive, bool $idempotent): array {
+        return [
+            'annotations' => [
+                'readonly'    => $readonly,
+                'destructive' => $destructive,
+                'idempotent'  => $idempotent,
+            ],
+            'mcp' => [
+                'public' => true,
+            ],
+        ];
     }
 }

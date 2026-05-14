@@ -59,6 +59,48 @@ final class DSGoAbilitiesTest extends WP_UnitTestCase {
         $this->assertIsArray($ability->get_output_schema());
     }
 
+    public function test_lite_abilities_include_mcp_public_flag_and_review_annotations(): void {
+        if (!function_exists('wp_register_ability')) {
+            $this->markTestSkipped('Abilities API not loaded; requires WP 7.0+.');
+        }
+
+        DSGoAbilities::register();
+
+        $expected = [
+            'dsgo/list-apps'      => ['readonly' => true,  'destructive' => false, 'idempotent' => true],
+            'dsgo/get-app'        => ['readonly' => true,  'destructive' => false, 'idempotent' => true],
+            'dsgo/list-templates' => ['readonly' => true,  'destructive' => false, 'idempotent' => true],
+            'dsgo/delete-app'     => ['readonly' => false, 'destructive' => true,  'idempotent' => false],
+            'dsgo/generate-app'   => ['readonly' => false, 'destructive' => false, 'idempotent' => false],
+            'dsgo/install-app'    => ['readonly' => false, 'destructive' => false, 'idempotent' => false],
+        ];
+
+        foreach ($expected as $name => $annotations) {
+            $ability = wp_get_ability($name);
+            $this->assertNotNull($ability, $name . ' should be registered.');
+
+            $meta = $ability->get_meta();
+            $this->assertSame(['public' => true], $meta['mcp'] ?? null, $name . ' must be exposed through the WordPress MCP Adapter default server.');
+            $this->assertSame($annotations, $meta['annotations'] ?? null, $name . ' must publish MCP-review annotations.');
+        }
+    }
+
+    public function test_lite_ability_descriptions_do_not_embed_agent_instructions(): void {
+        if (!function_exists('wp_register_ability')) {
+            $this->markTestSkipped('Abilities API not loaded; requires WP 7.0+.');
+        }
+
+        DSGoAbilities::register();
+
+        foreach (['dsgo/delete-app', 'dsgo/generate-app', 'dsgo/install-app'] as $name) {
+            $description = strtolower(wp_get_ability($name)->get_description());
+            $this->assertStringNotContainsString('agent', $description, $name . ' description should describe behavior, not instruct the agent.');
+            $this->assertStringNotContainsString('stub', $description, $name . ' description should be user-facing.');
+            $this->assertStringNotContainsString('must call', $description, $name . ' description should not direct tool-call sequencing.');
+            $this->assertStringNotContainsString('should only', $description, $name . ' description should not direct tool-call sequencing.');
+        }
+    }
+
     public function test_list_apps_returns_empty_array_on_fresh_site(): void {
         if (!function_exists('wp_register_ability')) {
             $this->markTestSkipped('Abilities API not loaded; requires WP 7.0+.');
