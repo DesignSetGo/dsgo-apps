@@ -78,6 +78,8 @@ final class Plugin {
         require_once $base . 'class-iframe-loader.php';
         require_once $base . 'class-inline-renderer.php';
         require_once $base . 'class-rest-api.php';
+        require_once $base . 'class-shortcode.php';
+        require_once $base . 'class-elementor-widget.php';
         require_once $base . 'class-sitemap-provider.php';
         require_once $base . 'class-admin-page.php';
         require_once $base . 'class-ai-context-pack.php';
@@ -98,6 +100,11 @@ final class Plugin {
             register_block_type_from_metadata(DSGO_APPS_PATH . 'block/build');
         });
         add_action('init', [Settings::class, 'register']);
+        add_action('init', [Shortcode::class, 'register']);
+        // Elementor widget. The registration hooks onto Elementor's own
+        // `elementor/widgets/register` action, which only fires when
+        // Elementor is active — safe to call unconditionally here.
+        ElementorWidget::register();
         AdminPage::register();
         LlmsTxtIntegration::register();
         add_action('admin_notices', [self::class, 'maybe_render_activation_notice']);

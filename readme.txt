@@ -70,7 +70,7 @@ Apps can also publish abilities the site's AI agent, and any other plugin using 
 * WP REST endpoints for install, list, uninstall, and bridge proxy
 * AI surface through the site's WordPress 7.0 AI Client and Connectors
 * Abilities consumption through `dsgo.abilities.list/invoke()`
-* Gutenberg block for embedding installed apps inside posts and pages
+* Gutenberg block, Elementor widget, and `[dsgo_app]` shortcode for embedding installed apps inside posts, pages, and page-builder layouts
 * Sitemap provider for inline-mode routes
 * CLI (`@designsetgo/cli`) with `init`, `login`, `deploy`, `list` (Pro)
 * Riff — in-admin AI builder (Pro)
@@ -153,7 +153,7 @@ Site owners are responsible for reviewing the privacy policies and terms of any 
 
 1. Drop an AI artifact into the WP-admin importer; the app is live in seconds.
 2. The DSGo Apps admin screen - install, list, and uninstall apps from a single page.
-3. Embed an installed app as a Gutenberg block inside any post or page.
+3. Embed an installed app as a Gutenberg block, Elementor widget, or `[dsgo_app]` shortcode in any post, page, or page-builder layout.
 
 == Upgrade Notice ==
 
@@ -224,5 +224,5 @@ Initial public release.
 * AI surface through the user's WordPress 7.0 Connector with no DSGo-held keys.
 * Abilities consumption for calling abilities registered by other plugins.
 * Apps-as-Abilities publishing through manifest `abilities.publishes`.
-* Gutenberg block (`designsetgo-apps/embed`) for embedding installed apps inside posts and pages.
+* Gutenberg block (`designsetgo-apps/embed`), Elementor widget, and `[dsgo_app]` shortcode for embedding installed apps anywhere (Gutenberg, Elementor, Divi, Beaver Builder, Bricks, Classic Editor, theme templates).
 * Dynamic routes with live data sources (`wp:posts`, `wp:pages`, `wp:cpt:*`, `wc:products`).
