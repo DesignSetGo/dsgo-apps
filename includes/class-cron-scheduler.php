@@ -27,6 +27,12 @@ namespace DSGo_Apps;
 
 final class CronScheduler {
 
+    /** Interval (seconds) for the custom `dsgo-15min` cron schedule. */
+    private const INTERVAL_15MIN_SECONDS = 900;
+
+    /** Interval (seconds) for the custom `dsgo-5min` cron schedule. */
+    private const INTERVAL_5MIN_SECONDS = 300;
+
     /**
      * `cron_schedules` filter callback. Adds DSGo's two extra intervals to
      * whatever WP-core already provides. Intervals match the manifest enum
@@ -37,11 +43,11 @@ final class CronScheduler {
      */
     public static function register_custom_schedules(array $schedules): array {
         $schedules['dsgo-15min'] = [
-            'interval' => 900,
+            'interval' => self::INTERVAL_15MIN_SECONDS,
             'display'  => __('Every 15 minutes (DesignSetGo Apps)', 'designsetgo-apps'),
         ];
         $schedules['dsgo-5min'] = [
-            'interval' => 300,
+            'interval' => self::INTERVAL_5MIN_SECONDS,
             'display'  => __('Every 5 minutes (DesignSetGo Apps)', 'designsetgo-apps'),
         ];
         return $schedules;

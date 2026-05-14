@@ -309,6 +309,100 @@ final readonly class Manifest {
             $mount_mode = $parsed;
         }
 
+        $routes = self::validate_routes($raw, $isolation, $mount_mode);
+
+        [$theme_wrap, $theme_container] = self::validate_theme($raw, $isolation);
+
+        $csp = self::validate_csp($raw, $isolation);
+
+        [$modes, $default_mode] = self::validate_display_modes($raw, $isolation, $mount_mode);
+
+        $perms = self::validate_permissions_read($raw);
+
+        [$ai_max_tool_calls, $ai_timeout_seconds] = self::validate_ai($raw, $perms);
+
+        $email_recipients = self::validate_email($raw, $perms);
+
+        [$abilities_consumes, $abilities_publishes] = self::validate_abilities($raw, $perms);
+
+        [$media_uploads_enabled, $media_publish_globs] = self::validate_media($raw);
+
+        [$commerce_providers, $commerce_endpoints] = self::validate_commerce($raw, $perms);
+
+        [
+            $content_block_styles,
+            $content_theme_styles,
+            $content_block_styles_allowlist,
+            $content_block_styles_denylist,
+        ] = self::validate_content($raw);
+
+        $external = self::validate_external_origins($raw);
+
+        $embeds = self::validate_embeds($raw);
+
+        [$description, $author] = self::validate_metadata($raw);
+
+        // Scheduled jobs + webhook endpoints — both surfaces cross-reference
+        // abilities.publishes (must reference a published ability that carries
+        // execute_php) AND the top-level secrets[] block (webhooks only). Run
+        // them after abilities/secrets validation has produced canonical
+        // arrays so we can lean on those rather than re-parsing $raw.
+        self::validate_scheduled($raw, $permissions_run, $abilities_publishes);
+        self::validate_webhooks($raw, $permissions_run, $abilities_publishes, $secrets);
+
+        // Justifications run last so we have the full activated-bucket set.
+        self::validate_justifications($raw, $perms);
+
+        return new self(
+            id: $raw['id'],
+            name: $raw['name'],
+            description: $description,
+            version: $raw['version'],
+            author: $author,
+            entry: $raw['entry'],
+            display_modes: $modes,
+            display_default: $default_mode,
+            display_icon: isset($raw['display']['icon']) && is_string($raw['display']['icon']) ? $raw['display']['icon'] : null,
+            permissions_read: $perms,
+            external_origins: $external,
+            isolation: $isolation,
+            routes: $routes,
+            theme_wrap: $theme_wrap,
+            theme_container: $theme_container,
+            csp: $csp,
+            mount_mode: $mount_mode,
+            embeds: $embeds,
+            abilities_consumes: $abilities_consumes,
+            ai_max_tool_calls: $ai_max_tool_calls,
+            ai_timeout_seconds: $ai_timeout_seconds,
+            abilities_publishes: $abilities_publishes,
+            email_recipients: $email_recipients,
+            media_uploads_enabled: $media_uploads_enabled,
+            media_publish_globs: $media_publish_globs,
+            commerce_providers: $commerce_providers,
+            commerce_endpoints: $commerce_endpoints,
+            content_block_styles: $content_block_styles,
+            content_theme_styles: $content_theme_styles,
+            content_block_styles_allowlist: $content_block_styles_allowlist,
+            content_block_styles_denylist: $content_block_styles_denylist,
+            permissions_http: $permissions_http,
+            secrets: $secrets,
+            required_secrets: $required_secrets,
+            http_test_endpoint: $http_test_endpoint,
+            raw: $raw,
+        );
+    }
+
+    /**
+     * Validate the `routes[]` array. Only meaningful for inline-isolation
+     * apps; iframe apps return an empty array. Enforces unique paths, the
+     * single-`:param` placeholder rule, dataset shape, the reserved
+     * `/__dsgo-host` path, the `claim` opt-in, and the "first route must be
+     * `/`" rule.
+     *
+     * @return array<int, array{path:string, file:string, title:?string, description:?string, dataset:?array{source:string,id_field:string}, claim:?string}>
+     */
+    private static function validate_routes(array $raw, string $isolation, MountMode $mount_mode): array {
         $routes = [];
         if ($isolation === 'inline') {
             if (!isset($raw['routes']) || !is_array($raw['routes']) || $raw['routes'] === []) {
@@ -446,7 +540,18 @@ final readonly class Manifest {
                 throw new ManifestError('routes[0].path', 'first route must be "/"');
             }
         }
+        return $routes;
+    }
 
+    /**
+     * Validate the optional `theme` block. Only valid for inline-isolation
+     * apps. Returns `[theme_wrap, theme_container]`, both defaulting to
+     * `'none'`. The `full` wrap and `scoped` container are reserved for v2
+     * and rejected in v1.
+     *
+     * @return array{0:string, 1:string}
+     */
+    private static function validate_theme(array $raw, string $isolation): array {
         $theme_wrap = 'none';
         $theme_container = 'none';
         if (isset($raw['theme'])) {
@@ -475,7 +580,18 @@ final readonly class Manifest {
                 $theme_container = $raw['theme']['container'];
             }
         }
+        return [$theme_wrap, $theme_container];
+    }
 
+    /**
+     * Validate the Content-Security-Policy block. Required (and only valid)
+     * for inline-isolation apps; `runtime.csp` is mutually exclusive with
+     * `runtime.external_origins`. iframe apps must NOT declare `runtime.csp`.
+     * Returns the normalized csp array, or null for iframe apps.
+     *
+     * @return array{script_src:string[], style_src:string[], img_src:string[], connect_src:string[], font_src?:string[]}|null
+     */
+    private static function validate_csp(array $raw, string $isolation): ?array {
         $csp = null;
         if ($isolation === 'inline') {
             if (!isset($raw['runtime']['csp']) || !is_array($raw['runtime']['csp'])) {
@@ -521,7 +637,20 @@ final readonly class Manifest {
                 throw new ManifestError('runtime.csp', 'is only valid when isolation is "inline"; iframe apps use runtime.external_origins');
             }
         }
+        return $csp;
+    }
 
+    /**
+     * Validate `display.modes` + `display.default`, plus the isolation- and
+     * mount-mode constraints on the mode set:
+     *   - inline apps support only `page` rendering in v1
+     *   - root-mounted apps must include `page`
+     * Returns `[DisplayMode[], DisplayMode]` — the parsed mode list and the
+     * resolved default mode.
+     *
+     * @return array{0:array<int,DisplayMode>, 1:DisplayMode}
+     */
+    private static function validate_display_modes(array $raw, string $isolation, MountMode $mount_mode): array {
         $modes      = [];
         $seen_modes = [];
         foreach ($raw['display']['modes'] as $i => $v) {
@@ -592,6 +721,16 @@ final readonly class Manifest {
         }
         $default_mode = DisplayMode::from($default);
 
+        return [$modes, $default_mode];
+    }
+
+    /**
+     * Validate `permissions.read[]` into a typed Permission list. Unknown
+     * permission strings are rejected.
+     *
+     * @return array<int, Permission>
+     */
+    private static function validate_permissions_read(array $raw): array {
         $perms = [];
         foreach ($raw['permissions']['read'] as $i => $v) {
             if (!is_string($v) || Permission::tryFrom($v) === null) {
@@ -602,7 +741,19 @@ final readonly class Manifest {
             }
             $perms[] = Permission::from($v);
         }
+        return $perms;
+    }
 
+    /**
+     * Validate the optional `ai` options block. Only valid when the `ai`
+     * permission is present in `permissions.read`. Returns
+     * `[ai_max_tool_calls, ai_timeout_seconds]` with their defaults (5, 60)
+     * when the block is absent.
+     *
+     * @param array<int, Permission> $perms
+     * @return array{0:int, 1:int}
+     */
+    private static function validate_ai(array $raw, array $perms): array {
         // AI options — only valid when "ai" permission is present.
         $ai_max_tool_calls = 5;
         $ai_timeout_seconds = 60;
@@ -629,7 +780,18 @@ final readonly class Manifest {
                 $ai_timeout_seconds = $val;
             }
         }
+        return [$ai_max_tool_calls, $ai_timeout_seconds];
+    }
 
+    /**
+     * Validate the `email` block — required when the `email` permission is
+     * present, forbidden otherwise. Returns the typed `EmailRecipient[]`
+     * (empty when the permission is absent).
+     *
+     * @param array<int, Permission> $perms
+     * @return array<int, EmailRecipient>
+     */
+    private static function validate_email(array $raw, array $perms): array {
         // Email block — required when "email" permission is present, forbidden otherwise.
         $email_recipients = [];
         $has_email_perm = in_array(Permission::Email, $perms, true);
@@ -663,7 +825,18 @@ final readonly class Manifest {
         } elseif ($has_email_perm) {
             throw new ManifestError('email.recipients', 'email_recipients_required: must be present when "email" is in permissions.read');
         }
+        return $email_recipients;
+    }
 
+    /**
+     * Validate the `abilities` block — both `consumes[]` (gated on the
+     * `abilities` permission) and `publishes[]` (ungated). Returns
+     * `[abilities_consumes, abilities_publishes]`.
+     *
+     * @param array<int, Permission> $perms
+     * @return array{0:string[], 1:array<int, array<string, mixed>>}
+     */
+    private static function validate_abilities(array $raw, array $perms): array {
         // Abilities consume list — required when "abilities" permission is present.
         $abilities_consumes = [];
         $abilities_publishes = [];
@@ -731,7 +904,17 @@ final readonly class Manifest {
         } elseif ($has_abilities_perm) {
             throw new ManifestError('abilities.consumes', 'abilities_consumes_required: must be present when "abilities" is in permissions.read');
         }
+        return [$abilities_consumes, $abilities_publishes];
+    }
 
+    /**
+     * Validate the optional `media` block. Every key is optional — the block
+     * exists only to opt out of the core media-upload feature and to declare
+     * `publish[]` globs. Returns `[media_uploads_enabled, media_publish_globs]`.
+     *
+     * @return array{0:bool, 1:string[]}
+     */
+    private static function validate_media(array $raw): array {
         // Media block — every key is optional, used only to opt out of the
         // core media-upload feature. No corresponding permission entry: the
         // bridge defaults the feature ON for every app and gates uploads on
@@ -771,7 +954,18 @@ final readonly class Manifest {
                 }
             }
         }
+        return [$media_uploads_enabled, $media_publish_globs];
+    }
 
+    /**
+     * Validate the `commerce` block — required when the `commerce` permission
+     * is present, forbidden otherwise. Returns
+     * `[commerce_providers, commerce_endpoints]`.
+     *
+     * @param array<int, Permission> $perms
+     * @return array{0:string[], 1:string[]}
+     */
+    private static function validate_commerce(array $raw, array $perms): array {
         // Commerce — required when "commerce" permission is present.
         // Mirrors abilities.consumes shape: typed allow-list, providers + endpoints.
         $commerce_providers = [];
@@ -823,7 +1017,18 @@ final readonly class Manifest {
         } elseif ($has_commerce_perm) {
             throw new ManifestError('commerce', 'commerce_options_required: must be present when "commerce" is in permissions.read');
         }
+        return [$commerce_providers, $commerce_endpoints];
+    }
 
+    /**
+     * Validate the optional `content` block — opt-in shipping of block/theme
+     * stylesheets. Every key is optional. Returns
+     * `[content_block_styles, content_theme_styles,
+     *   content_block_styles_allowlist, content_block_styles_denylist]`.
+     *
+     * @return array{0:string[], 1:string, 2:string[], 3:string[]}
+     */
+    private static function validate_content(array $raw): array {
         // Content block — opt-in shipping of block/theme stylesheets alongside
         // posts.get / pages.get / dataset rows so apps can render WP block
         // markup with the styles WP would normally enqueue on the front end.
@@ -894,7 +1099,22 @@ final readonly class Manifest {
             }
             unset($target);
         }
+        return [
+            $content_block_styles,
+            $content_theme_styles,
+            $content_block_styles_allowlist,
+            $content_block_styles_denylist,
+        ];
+    }
 
+    /**
+     * Validate `runtime.external_origins[]` — the iframe-app outbound origin
+     * allowlist. Each entry must be a full `https://` origin without a path
+     * or wildcards. Returns the normalized string[] (empty when absent).
+     *
+     * @return string[]
+     */
+    private static function validate_external_origins(array $raw): array {
         $external = [];
         if (array_key_exists('external_origins', $raw['runtime'])) {
             if (!is_array($raw['runtime']['external_origins'])) {
@@ -910,7 +1130,19 @@ final readonly class Manifest {
             }
             $external = $raw['runtime']['external_origins'];
         }
+        return $external;
+    }
 
+    /**
+     * Validate `runtime.embeds[]` — the explicit allowlist of origins the app
+     * may load via <iframe>. The sanitizer accepts <iframe> for those origins
+     * (and only with `sandbox` set), and the inline-mode CSP populates
+     * `frame-src` from the same list. Returns the normalized string[] (empty
+     * when absent).
+     *
+     * @return string[]
+     */
+    private static function validate_embeds(array $raw): array {
         // Embeds: explicit allowlist of origins the app may load via <iframe>.
         // Authors declare which third parties they want to embed (YouTube,
         // Stripe Checkout, Calendly, etc.); the sanitizer accepts <iframe>
@@ -931,7 +1163,18 @@ final readonly class Manifest {
             }
             $embeds = $raw['runtime']['embeds'];
         }
+        return $embeds;
+    }
 
+    /**
+     * Validate the optional presentation metadata: `display.icon` (shape-only
+     * — the value is read straight off $raw by the constructor),
+     * `description`, and `author`. Returns `[description, author]`, each null
+     * when absent.
+     *
+     * @return array{0:?string, 1:?string}
+     */
+    private static function validate_metadata(array $raw): array {
         if (isset($raw['display']['icon'])) {
             if (!is_string($raw['display']['icon'])) {
                 throw new ManifestError('display.icon', 'must be a string when provided');
@@ -963,56 +1206,7 @@ final readonly class Manifest {
             }
             $author = $raw['author'];
         }
-
-        // Scheduled jobs + webhook endpoints — both surfaces cross-reference
-        // abilities.publishes (must reference a published ability that carries
-        // execute_php) AND the top-level secrets[] block (webhooks only). Run
-        // them after abilities/secrets validation has produced canonical
-        // arrays so we can lean on those rather than re-parsing $raw.
-        self::validate_scheduled($raw, $permissions_run, $abilities_publishes);
-        self::validate_webhooks($raw, $permissions_run, $abilities_publishes, $secrets);
-
-        // Justifications run last so we have the full activated-bucket set.
-        self::validate_justifications($raw, $perms);
-
-        return new self(
-            id: $raw['id'],
-            name: $raw['name'],
-            description: $description,
-            version: $raw['version'],
-            author: $author,
-            entry: $raw['entry'],
-            display_modes: $modes,
-            display_default: $default_mode,
-            display_icon: isset($raw['display']['icon']) && is_string($raw['display']['icon']) ? $raw['display']['icon'] : null,
-            permissions_read: $perms,
-            external_origins: $external,
-            isolation: $isolation,
-            routes: $routes,
-            theme_wrap: $theme_wrap,
-            theme_container: $theme_container,
-            csp: $csp,
-            mount_mode: $mount_mode,
-            embeds: $embeds,
-            abilities_consumes: $abilities_consumes,
-            ai_max_tool_calls: $ai_max_tool_calls,
-            ai_timeout_seconds: $ai_timeout_seconds,
-            abilities_publishes: $abilities_publishes,
-            email_recipients: $email_recipients,
-            media_uploads_enabled: $media_uploads_enabled,
-            media_publish_globs: $media_publish_globs,
-            commerce_providers: $commerce_providers,
-            commerce_endpoints: $commerce_endpoints,
-            content_block_styles: $content_block_styles,
-            content_theme_styles: $content_theme_styles,
-            content_block_styles_allowlist: $content_block_styles_allowlist,
-            content_block_styles_denylist: $content_block_styles_denylist,
-            permissions_http: $permissions_http,
-            secrets: $secrets,
-            required_secrets: $required_secrets,
-            http_test_endpoint: $http_test_endpoint,
-            raw: $raw,
-        );
+        return [$description, $author];
     }
 
     /**
@@ -1175,11 +1369,28 @@ final readonly class Manifest {
         return self::is_valid_hostname($parsed['host']);
     }
 
-    private static function is_valid_hostname(string $host): bool {
+    /**
+     * Single hostname validator shared by every manifest surface that checks
+     * a hostname: `is_valid_https_origin()` (runtime.external_origins,
+     * runtime.embeds), and `validate_permissions_http()` (permissions.http).
+     *
+     * Rules (the strictest of the formerly-divergent three call sites):
+     *   - total length 1–253
+     *   - no empty labels (`..`), no leading/trailing `.`
+     *   - each label 1–63 chars, charset `[a-z0-9-]` (case-insensitive),
+     *     no leading/trailing `-`
+     *
+     * When $require_multi_label is true the host must have at least two
+     * labels (e.g. `example.com`, not a bare `localhost`) — the extra rule
+     * the permissions.http allowlist enforces.
+     */
+    private static function is_valid_hostname(string $host, bool $require_multi_label = false): bool {
         if ($host === '' || strlen($host) > 253) return false;
         if (str_contains($host, '..')) return false;
         if (str_starts_with($host, '.') || str_ends_with($host, '.')) return false;
-        foreach (explode('.', $host) as $label) {
+        $labels = explode('.', $host);
+        if ($require_multi_label && count($labels) < 2) return false;
+        foreach ($labels as $label) {
             if ($label === '' || strlen($label) > 63) return false;
             if (str_starts_with($label, '-') || str_ends_with($label, '-')) return false;
             if (!preg_match('/^[a-z0-9-]+$/i', $label)) return false;
@@ -1370,10 +1581,9 @@ final readonly class Manifest {
                     sprintf('http_invalid_host_pattern: only `*.<domain>` single-label wildcard allowed (%s)', $host),
                 );
             }
-            // Hostname character validation — labels separated by `.`, each
-            // label `[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?`, at least two labels.
-            $label = '[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?';
-            if (!preg_match('/^' . $label . '(\.' . $label . ')+$/', $check)) {
+            // Hostname character validation — shared validator, with the
+            // at-least-two-labels rule the HTTP allowlist requires.
+            if (!self::is_valid_hostname($check, true /* require_multi_label */)) {
                 throw new ManifestError(
                     'permissions.http',
                     sprintf('http_invalid_host_pattern: not a valid hostname (%s)', $host),

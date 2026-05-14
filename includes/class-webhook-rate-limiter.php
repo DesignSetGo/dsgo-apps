@@ -66,13 +66,14 @@ final class WebhookRateLimiter {
      * here keeps callers honest.
      */
     public static function try_acquire(string $app_id, string $endpoint_id, int $limit): bool {
-        $key   = self::transient_key($app_id, $endpoint_id);
-        $count = (int) get_transient($key);
-        if ($count >= $limit) {
-            return false;
-        }
-        set_transient($key, $count + 1, self::TTL_SECONDS);
-        return true;
+        // Delegates the read-modify-write counter core to the shared
+        // Rate_Limiter; the (app, endpoint, minute-bucket) key and the
+        // 120s TTL are webhook-specific and stay owned here.
+        return Rate_Limiter::try_acquire(
+            self::transient_key($app_id, $endpoint_id),
+            $limit,
+            self::TTL_SECONDS,
+        );
     }
 
     private static function transient_key(string $app_id, string $endpoint_id): string {

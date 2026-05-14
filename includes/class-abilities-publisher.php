@@ -87,15 +87,14 @@ final class AbilitiesPublisher {
         $new_owned    = [];
         $new_inactive = [];
 
-        // Wrap registration in the wp_abilities_api_init action context that
-        // wp_register_ability requires.
-        global $wp_current_filter;
+        // Registration must happen inside the WP Abilities API action
+        // contexts that wp_register_ability* require; Abilities_Context::run
+        // handles the $wp_current_filter push/try/finally/pop.
 
         // Ensure all referenced categories exist before registering abilities.
         // wp_register_ability_category requires the wp_abilities_api_categories_init context.
         if (function_exists('wp_register_ability_category') && function_exists('wp_has_ability_category')) {
-            $wp_current_filter[] = 'wp_abilities_api_categories_init';
-            try {
+            Abilities_Context::run('wp_abilities_api_categories_init', static function () use ($manifest): void {
                 foreach ($manifest->abilities_publishes as $entry) {
                     $cat = $entry['category'] ?? null;
                     if ($cat && !wp_has_ability_category($cat)) {
@@ -105,12 +104,9 @@ final class AbilitiesPublisher {
                         ]);
                     }
                 }
-            } finally {
-                array_pop($wp_current_filter);
-            }
+            });
         }
 
-        $wp_current_filter[] = 'wp_abilities_api_init';
         // TODO: partial-registration leak. If a later entry throws
         // ManifestError('execute_php_method_not_found'), earlier entries
         // in this loop have already been registered via
@@ -125,7 +121,7 @@ final class AbilitiesPublisher {
         // mode is narrow (method_not_found is an author bug surfaced
         // before any user-facing version of the manifest) and the
         // self-heal covers the common case.
-        try {
+        Abilities_Context::run('wp_abilities_api_init', static function () use ($manifest, $previously_owned, &$new_owned, &$new_inactive): void {
             $current_names = array_map(static fn (array $a): string => $a['name'], $manifest->abilities_publishes);
             foreach ($previously_owned as $old_name) {
                 if (!in_array($old_name, $current_names, true) && function_exists('wp_unregister_ability')) {
@@ -143,9 +139,7 @@ final class AbilitiesPublisher {
                     $new_inactive[] = $entry['name'];
                 }
             }
-        } finally {
-            array_pop($wp_current_filter);
-        }
+        });
 
         update_option(self::OWNED_OPTION_PREFIX . $manifest->id, $new_owned, false);
         // Overwrite — never append — so re-installing with a companion

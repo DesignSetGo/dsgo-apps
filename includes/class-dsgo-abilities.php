@@ -67,9 +67,7 @@ final class DSGoAbilities {
         if (wp_has_ability($name)) {
             return;
         }
-        global $wp_current_filter;
-        $wp_current_filter[] = 'wp_abilities_api_init';
-        try {
+        Abilities_Context::run('wp_abilities_api_init', static function () use ($name, $label, $description): void {
             wp_register_ability($name, [
                 'label'       => $label,
                 'description' => $description,
@@ -85,18 +83,14 @@ final class DSGoAbilities {
                     );
                 },
             ]);
-        } finally {
-            array_pop($wp_current_filter);
-        }
+        });
     }
 
     private static function register_list_apps(): void {
         if (wp_has_ability('dsgo/list-apps')) {
             return;
         }
-        global $wp_current_filter;
-        $wp_current_filter[] = 'wp_abilities_api_init';
-        try {
+        Abilities_Context::run('wp_abilities_api_init', static function (): void {
             wp_register_ability('dsgo/list-apps', [
                 'label'       => __('List installed DSGo apps', 'designsetgo-apps'),
                 'description' => __('Returns summaries of every DSGo app installed on the site (id, slug, title, version, install date, dynamic-routes flag).', 'designsetgo-apps'),
@@ -130,9 +124,7 @@ final class DSGoAbilities {
                 'permission_callback' => static fn (): bool => current_user_can('manage_options'),
                 'execute_callback'    => [self::class, 'execute_list_apps'],
             ]);
-        } finally {
-            array_pop($wp_current_filter);
-        }
+        });
     }
 
     /**
@@ -166,9 +158,7 @@ final class DSGoAbilities {
         if (wp_has_ability('dsgo/get-app')) {
             return;
         }
-        global $wp_current_filter;
-        $wp_current_filter[] = 'wp_abilities_api_init';
-        try {
+        Abilities_Context::run('wp_abilities_api_init', static function (): void {
             wp_register_ability('dsgo/get-app', [
                 'label'       => __('Get an installed DSGo app by id', 'designsetgo-apps'),
                 'description' => __('Returns full summary plus a manifest excerpt (permissions, declared abilities, display mode, route count). Bundle bytes are not included.', 'designsetgo-apps'),
@@ -200,9 +190,7 @@ final class DSGoAbilities {
                 'permission_callback' => static fn (): bool => current_user_can('manage_options'),
                 'execute_callback'    => [self::class, 'execute_get_app'],
             ]);
-        } finally {
-            array_pop($wp_current_filter);
-        }
+        });
     }
 
     /**
@@ -244,9 +232,7 @@ final class DSGoAbilities {
         if (wp_has_ability('dsgo/list-templates')) {
             return;
         }
-        global $wp_current_filter;
-        $wp_current_filter[] = 'wp_abilities_api_init';
-        try {
+        Abilities_Context::run('wp_abilities_api_init', static function (): void {
             wp_register_ability('dsgo/list-templates', [
                 'label'       => __('List starter templates available for app generation', 'designsetgo-apps'),
                 'description' => __('Returns the starter-template catalog used by dsgo/generate-app. Empty when Pro is not active.', 'designsetgo-apps'),
@@ -274,9 +260,7 @@ final class DSGoAbilities {
                 'permission_callback' => '__return_true',
                 'execute_callback'    => [self::class, 'execute_list_templates'],
             ]);
-        } finally {
-            array_pop($wp_current_filter);
-        }
+        });
     }
 
     /**
@@ -311,9 +295,7 @@ final class DSGoAbilities {
         if (wp_has_ability('dsgo/delete-app')) {
             return;
         }
-        global $wp_current_filter;
-        $wp_current_filter[] = 'wp_abilities_api_init';
-        try {
+        Abilities_Context::run('wp_abilities_api_init', static function (): void {
             wp_register_ability('dsgo/delete-app', [
                 'label'       => __('Delete an installed DSGo app', 'designsetgo-apps'),
                 'description' => __('Permanently uninstalls the app and removes its content. Requires confirm=true; the agent is expected to surface the destructive nature to the user before calling.', 'designsetgo-apps'),
@@ -339,9 +321,7 @@ final class DSGoAbilities {
                 'permission_callback' => static fn (): bool => current_user_can('manage_options'),
                 'execute_callback'    => [self::class, 'execute_delete_app'],
             ]);
-        } finally {
-            array_pop($wp_current_filter);
-        }
+        });
     }
 
     /**
@@ -461,15 +441,11 @@ final class DSGoAbilities {
         if (wp_has_ability_category(self::CATEGORY)) {
             return;
         }
-        global $wp_current_filter;
-        $wp_current_filter[] = 'wp_abilities_api_categories_init';
-        try {
+        Abilities_Context::run('wp_abilities_api_categories_init', static function (): void {
             wp_register_ability_category(self::CATEGORY, [
                 'label'       => __('DSGo Apps', 'designsetgo-apps'),
                 'description' => __('Manage DSGo apps: list, inspect, generate, install, delete.', 'designsetgo-apps'),
             ]);
-        } finally {
-            array_pop($wp_current_filter);
-        }
+        });
     }
 }

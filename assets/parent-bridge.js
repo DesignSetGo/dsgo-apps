@@ -42,6 +42,99 @@
         // ability error.
         'execute_php_class_not_loadable',
     ];
+    /**
+     * Canonical bridge error class. Carries the structured `{code, message,
+     * details}` shape on a real `Error` so it can be `throw`n, `instanceof`-
+     * checked, and round-tripped onto the wire without reverse-engineering
+     * object literals. Implements `BridgeError`, so anywhere a `BridgeError`
+     * is expected an instance is assignable.
+     *
+     * Throw this — never a bare `{ code, message }` literal — so `catch`
+     * blocks have exactly one shape to handle.
+     */
+    class BridgeRequestError extends Error {
+        constructor(error) {
+            // `.message` stays the raw bridge message: transport.ts and toBridgeError
+            // serialize it straight back onto the wire, so prefixing the code here
+            // would leak `code: message` into the public error contract.
+            super(error.message);
+            this.code = error.code;
+            this.details = error.details;
+            this.name = 'BridgeRequestError';
+        }
+    }
+    // ---------------------------------------------------------------------------
+    // Iframe auto-resize clamp — the host shrinks/grows a block-embed iframe to
+    // the height the app reports. Bounds keep a misbehaving app from collapsing
+    // to nothing or growing without limit. Shared by the client (sender) and
+    // parent-bridge (receiver) so both ends agree on the range.
+    // ---------------------------------------------------------------------------
+    const RESIZE_MIN_HEIGHT_PX = 100;
+    const RESIZE_MAX_HEIGHT_PX = 2000;
+    function clampResizeHeight(raw) {
+        return Math.max(RESIZE_MIN_HEIGHT_PX, Math.min(RESIZE_MAX_HEIGHT_PX, Math.round(raw)));
+    }
+    // ---------------------------------------------------------------------------
+    // Path validation — trust-boundary check shared by the client-side router
+    // (router.ts) and the parent-side enforcement (parent-bridge.ts). Both ends
+    // MUST agree: the parent re-runs this even if the iframe already validated,
+    // because the iframe is untrusted.
+    // ---------------------------------------------------------------------------
+    /**
+     * Reserved paths a root-mounted app may not navigate into. Mirrors the
+     * server-side guard in InlineRenderer's mount handling.
+     */
+    const ROOT_RESERVED_PREFIXES = [
+        '/wp-admin/',
+        '/wp-login.php',
+        '/wp-json/',
+        '/feed',
+        '/sitemap',
+    ];
+    /**
+     * Validate a navigation path against an app's mount prefix and resolve it to
+     * a parent-window URL. Structured `reason`s are preserved so callers can
+     * surface a precise `invalid_params` message.
+     *
+     * `mountPrefix`:
+     *   - `null`  — block-embed / admin: no parent URL surface.
+     *   - `''`    — root-mounted: any path except WordPress-reserved prefixes.
+     *   - `/x`    — prefixed mount: resolved URL is `${mountPrefix}${rawPath}`.
+     */
+    function validatePath(rawPath, mountPrefix) {
+        if (typeof rawPath !== 'string' || rawPath === '') {
+            return { ok: false, reason: 'path must be a non-empty string' };
+        }
+        if (!rawPath.startsWith('/')) {
+            return { ok: false, reason: 'path must start with "/"' };
+        }
+        if (rawPath.includes('..') || rawPath.includes('//')) {
+            return { ok: false, reason: 'path must not contain ".." or "//"' };
+        }
+        // Reject control characters (0x00-0x1F, 0x7F).
+        if (/[\x00-\x1F\x7F]/.test(rawPath)) {
+            return { ok: false, reason: 'path must not contain control characters' };
+        }
+        if (mountPrefix === null) {
+            // Block-embed / admin contexts have no parent URL surface; the path is
+            // valid in the abstract sense but won't change the address bar.
+            return { ok: true, resolvedURL: rawPath };
+        }
+        if (mountPrefix === '') {
+            // Root-mounted: any path allowed except WP-reserved prefixes.
+            for (const reserved of ROOT_RESERVED_PREFIXES) {
+                if (rawPath === reserved.replace(/\/$/, '') || rawPath.startsWith(reserved)) {
+                    return { ok: false, reason: `path "${rawPath}" is in a WordPress-reserved prefix` };
+                }
+            }
+            return { ok: true, resolvedURL: rawPath };
+        }
+        // Prefixed mount: the resolved URL is `${mountPrefix}${rawPath}`, except
+        // when path === '/', where we want `${mountPrefix}/` rather than
+        // `${mountPrefix}//`.
+        const resolvedURL = rawPath === '/' ? mountPrefix + '/' : mountPrefix + rawPath;
+        return { ok: true, resolvedURL };
+    }
 
     /**
      * transport.ts — transport-agnostic request dispatcher.
@@ -50,6 +143,26 @@
      * transport (Task 13) can call `handleRequest` with their own apiFetch
      * instance and globals, keeping all method-routing logic in one place.
      */
+    /**
+     * Narrow a WP-REST rejection (which arrives as `unknown` — it could be the
+     * parsed JSON error body, a thrown `Response`, or anything else) to the
+     * `{ data: { status } }` shape used by the per-method 401 fallbacks below.
+     */
+    function restStatusOf(err) {
+        if (!err || typeof err !== 'object')
+            return undefined;
+        const data = err.data;
+        if (!data || typeof data !== 'object')
+            return undefined;
+        const status = data.status;
+        return typeof status === 'number' ? status : undefined;
+    }
+    /** Read a single property off an untrusted REST object without `any`. */
+    function pick(obj, key) {
+        if (!obj || typeof obj !== 'object')
+            return undefined;
+        return obj[key];
+    }
     function makeOk(id, data) {
         return { type: 'dsgo:response', id, ok: true, data };
     }
@@ -63,24 +176,28 @@
     function shapePost(raw) {
         if (!raw || typeof raw !== 'object')
             return raw;
+        const r = raw;
+        const title = r.title;
+        const excerpt = r.excerpt;
+        const content = r.content;
         return {
-            id: raw.id,
-            slug: raw.slug,
-            title: raw.title?.rendered ?? '',
-            excerpt: raw.excerpt?.rendered ?? '',
-            content: raw.content?.rendered ?? '',
+            id: r.id,
+            slug: r.slug,
+            title: title?.rendered ?? '',
+            excerpt: excerpt?.rendered ?? '',
+            content: content?.rendered ?? '',
             // Sibling field; only present when the manifest opts in via
             // `content.blockStyles` / `content.themeStyles`. See class-block-styles.php.
-            content_styles: raw.content_styles ?? null,
-            status: raw.status,
-            protected: raw.content?.protected ?? raw.excerpt?.protected ?? false,
-            date: raw.date_gmt ? raw.date_gmt + 'Z' : raw.date,
-            modified: raw.modified_gmt ? raw.modified_gmt + 'Z' : raw.modified,
-            author: raw.author,
-            link: raw.link,
+            content_styles: r.content_styles ?? null,
+            status: r.status,
+            protected: content?.protected ?? excerpt?.protected ?? false,
+            date: r.date_gmt ? String(r.date_gmt) + 'Z' : r.date,
+            modified: r.modified_gmt ? String(r.modified_gmt) + 'Z' : r.modified,
+            author: r.author,
+            link: r.link,
             featured_media_url: null,
-            categories: raw.categories ?? [],
-            tags: raw.tags ?? [],
+            categories: r.categories ?? [],
+            tags: r.tags ?? [],
         };
     }
     // ---------------------------------------------------------------------------
@@ -152,7 +269,12 @@
             return makeOk(req.id, result);
         }
         catch (err) {
-            // wp.apiFetch has two failure shapes:
+            // `routeToWp` itself only ever throws `BridgeRequestError` — a structured
+            // error we can map straight through without reverse-engineering a shape.
+            if (err instanceof BridgeRequestError) {
+                return makeErr(req.id, err.code, err.message);
+            }
+            // Everything else came out of `wp.apiFetch`, which has two failure shapes:
             //   1. Default (`parse: true`): rejects with the parsed JSON error body
             //      `{ code, message, data: { status } }`.
             //   2. `parse: false` (used by posts.list/pages.list to read X-WP-Total
@@ -218,7 +340,7 @@
                 // harness having to enumerate every method in the system prompt.
                 const { name } = (req.params ?? {});
                 if (typeof name !== 'string' || name === '') {
-                    throw { code: 'invalid_params', message: 'name is required' };
+                    throw new BridgeRequestError({ code: 'invalid_params', message: 'name is required' });
                 }
                 return await af({ path: `/dsgo/v1/apps/${manifest.id}/help/methods/${encodeURIComponent(name)}`, headers });
             }
@@ -267,17 +389,19 @@
             case 'user.current': {
                 try {
                     const raw = await af({ path: '/wp/v2/users/me?context=edit', headers });
+                    const r = (raw ?? {});
+                    const avatars = (r.avatar_urls ?? {});
                     return {
-                        id: raw.id,
-                        name: raw.name,
-                        slug: raw.slug,
-                        email: raw.email ?? '',
-                        avatar_url: raw.avatar_urls?.['96'] ?? raw.avatar_urls?.['48'] ?? raw.avatar_urls?.['24'] ?? '',
-                        roles: raw.roles ?? [],
+                        id: r.id,
+                        name: r.name,
+                        slug: r.slug,
+                        email: r.email ?? '',
+                        avatar_url: avatars['96'] ?? avatars['48'] ?? avatars['24'] ?? '',
+                        roles: r.roles ?? [],
                     };
                 }
                 catch (err) {
-                    if (err?.data?.status === 401)
+                    if (restStatusOf(err) === 401)
                         return null;
                     throw err;
                 }
@@ -286,10 +410,10 @@
                 const { cap } = req.params;
                 try {
                     const r = await af({ path: '/dsgo/v1/can?cap=' + encodeURIComponent(cap), headers });
-                    return r.can;
+                    return pick(r, 'can');
                 }
                 catch (err) {
-                    if (err?.data?.status === 401)
+                    if (restStatusOf(err) === 401)
                         return false;
                     throw err;
                 }
@@ -297,7 +421,7 @@
             case 'storage.app.get': {
                 const { key } = req.params;
                 const r = await af({ path: `/dsgo/v1/apps/${manifest.id}/storage/app/${encodeURIComponent(key)}`, headers });
-                return r.value;
+                return pick(r, 'value');
             }
             case 'storage.app.set': {
                 const { key, value } = req.params;
@@ -307,7 +431,7 @@
             case 'storage.user.get': {
                 const { key } = req.params;
                 const r = await af({ path: `/dsgo/v1/apps/${manifest.id}/storage/user/${encodeURIComponent(key)}`, headers });
-                return r.value;
+                return pick(r, 'value');
             }
             case 'storage.user.set': {
                 const { key, value } = req.params;
@@ -351,8 +475,7 @@
                 // Accept Blob (the canonical case — SVG, Canvas.toBlob, fetch().blob())
                 // and File (which extends Blob, so the runtime check covers it).
                 if (typeof Blob === 'undefined' || !(params.file instanceof Blob)) {
-                    // eslint-disable-next-line no-throw-literal
-                    throw { code: 'invalid_params', message: '"file" must be a Blob or File' };
+                    throw new BridgeRequestError({ code: 'invalid_params', message: '"file" must be a Blob or File' });
                 }
                 const filename = typeof params.filename === 'string' && params.filename !== ''
                     ? params.filename
@@ -405,7 +528,10 @@
                 });
             }
             default:
-                throw new Error('unknown method: ' + req.method);
+                // Unreachable in practice — `guardRequest` rejects unknown methods with
+                // `unknown_method` before routing — but keep it a structured error so
+                // every throw out of this function has the same shape.
+                throw new BridgeRequestError({ code: 'unknown_method', message: req.method });
         }
     }
 
@@ -458,33 +584,6 @@
             embeds.set(w, { iframe, ...cfg });
         });
     }
-    /**
-     * Validate a path against an embed's mount prefix. Mirrors router.ts's
-     * client-side validator so the parent enforces server-of-record rules
-     * even if the iframe lies.
-     */
-    function validateNavigatePath(rawPath, mountPrefix) {
-        if (typeof rawPath !== 'string' || rawPath === '' || !rawPath.startsWith('/')) {
-            return { ok: false, reason: 'path must start with "/"' };
-        }
-        if (rawPath.includes('..') || rawPath.includes('//') || /[ -]/.test(rawPath)) {
-            return { ok: false, reason: 'path contains forbidden characters' };
-        }
-        if (mountPrefix === null) {
-            return { ok: false, reason: 'navigation not supported in this context' };
-        }
-        if (mountPrefix === '') {
-            const reserved = ['/wp-admin/', '/wp-login.php', '/wp-json/', '/feed', '/sitemap'];
-            for (const r of reserved) {
-                if (rawPath === r.replace(/\/$/, '') || rawPath.startsWith(r)) {
-                    return { ok: false, reason: `path is in a WordPress-reserved prefix` };
-                }
-            }
-            return { ok: true, resolvedURL: rawPath };
-        }
-        const resolvedURL = rawPath === '/' ? mountPrefix + '/' : mountPrefix + rawPath;
-        return { ok: true, resolvedURL };
-    }
     function handleRouterNavigate(entry, req) {
         const target = entry.iframe.contentWindow;
         if (!target)
@@ -496,7 +595,10 @@
             return;
         }
         const params = (req.params ?? {});
-        const v = validateNavigatePath(params.path, entry.context.mountPrefix);
+        // `validatePath` is the canonical trust-boundary validator (shared.ts).
+        // The parent re-runs it even though the iframe already validated, because
+        // the iframe is untrusted — it could lie about the path.
+        const v = validatePath(params.path, entry.context.mountPrefix);
         if (!v.ok) {
             target.postMessage({
                 type: 'dsgo:response', id: req.id, ok: false,
@@ -616,7 +718,7 @@
             const raw = Number(msg.height);
             if (!Number.isFinite(raw))
                 return;
-            const h = Math.max(100, Math.min(2000, Math.round(raw)));
+            const h = clampResizeHeight(raw);
             entry.iframe.style.height = h + 'px';
             return;
         }
@@ -652,4 +754,3 @@
     attachPopstateListener();
 
 })();
-//# sourceMappingURL=parent-bridge.js.map

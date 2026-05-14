@@ -35,6 +35,12 @@ final class Plugin {
     private function load_dependencies(): void {
         $base = DSGO_APPS_PATH . 'includes/';
         require_once $base . 'class-manifest.php';
+        // Shared low-level helpers — loaded before the bridge / webhook /
+        // cron / abilities subsystems that depend on them.
+        require_once $base . 'class-bridge-result.php';
+        require_once $base . 'class-rate-limiter.php';
+        require_once $base . 'class-app-repository.php';
+        require_once $base . 'class-abilities-context.php';
         require_once $base . 'class-abilities-bridge.php';
         require_once $base . 'class-abilities-publisher.php';
         require_once $base . 'class-dsgo-abilities.php';

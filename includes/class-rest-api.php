@@ -464,18 +464,28 @@ final class RestApi {
 
     /**
      * Map an InstallerError code to its HTTP status. Shared between
-     * create_app(), preview_app(), and any future endpoint that surfaces
-     * installer validation outcomes.
+     * create_app(), preview_app(), import_html(), install_starter(), and any
+     * future endpoint that surfaces installer validation outcomes.
+     *
+     * The match arms cover the UNION of every error_code InstallerError can
+     * raise (see Installer::install / Installer::preview): the install-lock
+     * conflict (`install_in_progress`), the post-extract bundle failures
+     * (`invalid_route_html`, `missing_route_file`), the root-mount conflict,
+     * and the validation 422s. fs_error / post_error / install_failed fall
+     * through to 500.
      */
     private static function installer_error_status(string $error_code): int {
         return match ($error_code) {
             'forbidden'             => 403,
             'not_found'             => 404,
-            'root_mount_conflict'   => 409,
+            'root_mount_conflict',
+            'install_in_progress'   => 409,
             'invalid_zip',
             'missing_manifest',
             'invalid_manifest',
             'invalid_entry_html',
+            'invalid_route_html',
+            'missing_route_file',
             'unsafe_path',
             'forbidden_extension',
             'too_many_files',
@@ -540,20 +550,7 @@ final class RestApi {
             };
             return new \WP_REST_Response(['code' => $e->error_code, 'message' => $e->bare_message], $status);
         } catch (InstallerError $e) {
-            $status = match ($e->error_code) {
-                'forbidden'             => 403,
-                'not_found'             => 404,
-                'root_mount_conflict'   => 409,
-                'invalid_zip',
-                'missing_manifest',
-                'invalid_manifest',
-                'invalid_entry_html',
-                'unsafe_path',
-                'forbidden_extension',
-                'too_many_files',
-                'bundle_too_large'      => 422,
-                default                 => 500,
-            };
+            $status = self::installer_error_status($e->error_code);
             return new \WP_REST_Response(['code' => $e->error_code, 'message' => $e->bare_message], $status);
         } finally {
             if (is_string($zip_path)) {
@@ -643,23 +640,7 @@ final class RestApi {
             $result = Installer::install($zip_path, get_current_user_id());
             return new \WP_REST_Response(self::shape_install_response($result), 201);
         } catch (InstallerError $e) {
-            $status = match ($e->error_code) {
-                'forbidden'             => 403,
-                'not_found'             => 404,
-                'root_mount_conflict'   => 409,
-                'install_in_progress'   => 409,
-                'invalid_zip',
-                'missing_manifest',
-                'invalid_manifest',
-                'invalid_entry_html',
-                'invalid_route_html',
-                'missing_route_file',
-                'unsafe_path',
-                'forbidden_extension',
-                'too_many_files',
-                'bundle_too_large'      => 422,
-                default                 => 500,
-            };
+            $status = self::installer_error_status($e->error_code);
             return new \WP_REST_Response(['code' => $e->error_code, 'message' => $e->bare_message], $status);
         } finally {
             // Per-request scratch dir under get_temp_dir(); WP_Filesystem can't

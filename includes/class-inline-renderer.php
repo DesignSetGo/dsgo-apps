@@ -932,68 +932,32 @@ final class InlineRenderer {
     }
 
     private static function render_route_not_found(Manifest $manifest): void {
-        $title = __('Page not found', 'designsetgo-apps');
-        $body  = sprintf(
-            /* translators: %s: app name */
-            __('That route is not part of "%s".', 'designsetgo-apps'),
-            $manifest->name,
-        );
         if (!headers_sent()) {
             nocache_headers();
             status_header(404);
             header('Content-Type: text/html; charset=utf-8');
             header('X-Content-Type-Options: nosniff');
         }
-        $home = '<a href="' . esc_url(home_url('/')) . '">'
-            . esc_html__('← Return to site', 'designsetgo-apps') . '</a>';
-        $style = '<style>'
-            . '.dsgo-error{max-width:48rem;margin:6rem auto 4rem;padding:0 1.5rem;text-align:center}'
-            . '.dsgo-error__status{font-size:.75rem;letter-spacing:.18em;text-transform:uppercase;opacity:.55;margin:0 0 .75rem}'
-            . '.dsgo-error__title{font-size:clamp(1.75rem,3.5vw,2.5rem);margin:0 0 .75rem;font-weight:600;line-height:1.2}'
-            . '.dsgo-error__body{font-size:1.0625rem;line-height:1.6;opacity:.8;margin:0 0 2rem}'
-            . '.dsgo-error__home a{display:inline-block;padding:.6rem 1.1rem;border:1px solid currentColor;border-radius:999px;text-decoration:none;font-size:.9375rem}'
-            . '.dsgo-error__home a:hover{background:currentColor;color:#fff}'
-            . '</style>';
-        $rendered = false;
-        if ($manifest->theme_wrap === 'header_footer'
-            && function_exists('get_header')
-            && function_exists('get_footer')) {
-            ob_start();
-            try {
-                get_header();
-                // $style is a static <style> block; $home is built with esc_url + esc_html__ above.
-                echo '<main class="dsgo-error">' . $style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-                echo '<p class="dsgo-error__status">404</p>';
-                echo '<h1 class="dsgo-error__title">' . esc_html($title) . '</h1>';
-                echo '<p class="dsgo-error__body">' . esc_html($body) . '</p>';
-                echo '<p class="dsgo-error__home">' . $home . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-                echo '</main>';
-                get_footer();
-                $rendered = (ob_get_length() ?: 0) > 0;
-                ob_end_flush();
-            } catch (\Throwable $e) {
-                ob_end_clean();
-                $rendered = false;
-            }
-        }
-        if (!$rendered) {
-            $lang = esc_attr(str_replace('_', '-', get_locale()));
-            // $lang is esc_attr'd; $style is a static block; $home is built from
-            // esc_url/esc_html above. The concat echo is safe.
-            // phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped
-            echo '<!doctype html><html lang="' . $lang . '"><head><meta charset="utf-8">'
-                . '<meta name="viewport" content="width=device-width,initial-scale=1">'
-                . '<title>' . esc_html($title) . '</title>'
-                . '<style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#1a1a1a;background:#fafaf7;margin:0}</style>'
-                . $style
-                . '</head><body><main class="dsgo-error">'
-                . '<p class="dsgo-error__status">404</p>'
-                . '<h1 class="dsgo-error__title">' . esc_html($title) . '</h1>'
-                . '<p class="dsgo-error__body">' . esc_html($body) . '</p>'
-                . '<p class="dsgo-error__home">' . $home . '</p>'
-                . '</main></body></html>';
-            // phpcs:enable WordPress.Security.EscapeOutput.OutputNotEscaped
-        }
+
+        // Prepare the presentation data; the markup (theme-wrapped body +
+        // self-contained fallback document) lives in the template partial.
+        // phpcs:disable WordPress.PHP.DontExtract
+        $ctx = [
+            'title'          => __('Page not found', 'designsetgo-apps'),
+            'body'           => sprintf(
+                /* translators: %s: app name */
+                __('That route is not part of "%s".', 'designsetgo-apps'),
+                $manifest->name,
+            ),
+            'home_link'      => '<a href="' . esc_url(home_url('/')) . '">'
+                . esc_html__('← Return to site', 'designsetgo-apps') . '</a>',
+            'lang'           => esc_attr(str_replace('_', '-', get_locale())),
+            'can_theme_wrap' => $manifest->theme_wrap === 'header_footer'
+                && function_exists('get_header')
+                && function_exists('get_footer'),
+        ];
+        // phpcs:enable WordPress.PHP.DontExtract
+        require DSGO_APPS_PATH . 'templates/route-not-found.php';
     }
 
     /**

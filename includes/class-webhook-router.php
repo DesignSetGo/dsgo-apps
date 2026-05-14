@@ -42,21 +42,12 @@ final class WebhookRouter {
             return;
         }
 
-        $post_ids = get_posts([
-            'post_type'      => PostType::SLUG,
-            'post_status'    => 'publish',
-            'posts_per_page' => -1,
-            'no_found_rows'  => true,
-            'fields'         => 'ids',
-        ]);
-        foreach ($post_ids as $post_id) {
-            $post = get_post($post_id);
-            if (!$post instanceof \WP_Post) continue;
-            $manifest_arr = get_post_meta($post_id, 'dsgo_apps_manifest', true);
-            if (!is_array($manifest_arr)) continue;
-            $endpoints = $manifest_arr['webhooks']['endpoints'] ?? null;
+        // App_Repository centralizes the published-app + manifest query
+        // shared with WebhookHandler / AsyncWebhookHandler / CronDispatcher.
+        foreach (App_Repository::find_published_apps() as $app) {
+            $endpoints = $app['manifest']['webhooks']['endpoints'] ?? null;
             if (!is_array($endpoints) || $endpoints === []) continue;
-            self::register_routes_for_app($post->post_name, $endpoints);
+            self::register_routes_for_app($app['post']->post_name, $endpoints);
         }
     }
 

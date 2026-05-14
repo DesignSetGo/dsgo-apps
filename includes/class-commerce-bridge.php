@@ -44,7 +44,15 @@ final class CommerceBridge {
     }
 
     /**
-     * @param array{action:string, params:array<string,mixed>} $request
+     * Invoke a commerce action and return the wire-format result array.
+     *
+     * Builds a BridgeResult internally and serializes it via to_array() at
+     * the boundary — the emitted shape (`ok` + `data` on success; `ok`,
+     * `code`, `message` plus optional `reason` / `wp_error_code` / `status`
+     * on failure) is byte-identical to the inline arrays this method built
+     * before.
+     *
+     * @param array<string,mixed> $params
      * @return array{
      *   ok:bool,
      *   data?:mixed,
@@ -56,21 +64,25 @@ final class CommerceBridge {
      * }
      */
     public static function invoke(string $action, array $params, Manifest $manifest, int $visitor_user_id): array {
+        return self::invoke_result($action, $params, $manifest, $visitor_user_id)->to_array();
+    }
+
+    /**
+     * Internal BridgeResult-returning core of invoke(). Kept separate so the
+     * public method stays a thin to_array() boundary.
+     *
+     * @param array<string,mixed> $params
+     */
+    private static function invoke_result(string $action, array $params, Manifest $manifest, int $visitor_user_id): BridgeResult {
         $endpoint = self::endpoint_for_action($action);
         if ($endpoint === null) {
-            return [
-                'ok'      => false,
-                'code'    => 'unknown_method',
-                'message' => sprintf('commerce action "%s" is not recognized', $action),
-            ];
+            return BridgeResult::error('unknown_method',
+                sprintf('commerce action "%s" is not recognized', $action));
         }
         if (!self::endpoint_in_manifest($endpoint, $manifest)) {
-            return [
-                'ok'      => false,
-                'code'    => 'permission_denied',
-                'reason'  => 'not_in_endpoints',
-                'message' => sprintf('commerce endpoint "%s" not in manifest commerce.endpoints', $endpoint),
-            ];
+            return BridgeResult::error('permission_denied',
+                sprintf('commerce endpoint "%s" not in manifest commerce.endpoints', $endpoint),
+                ['reason' => 'not_in_endpoints']);
         }
         // Site policy hook — same shape as dsgo_apps_can_invoke_ability.
         $allowed = apply_filters(
@@ -82,12 +94,9 @@ final class CommerceBridge {
             $visitor_user_id,
         );
         if (!$allowed) {
-            return [
-                'ok'      => false,
-                'code'    => 'permission_denied',
-                'reason'  => 'invoker_policy',
-                'message' => sprintf('site policy blocks commerce action "%s" for app "%s"', $action, $manifest->id),
-            ];
+            return BridgeResult::error('permission_denied',
+                sprintf('site policy blocks commerce action "%s" for app "%s"', $action, $manifest->id),
+                ['reason' => 'invoker_policy']);
         }
 
         // Provider gate — at least one configured provider must be active.
@@ -96,12 +105,9 @@ final class CommerceBridge {
             if (self::provider_available($p)) { $provider_active = true; break; }
         }
         if (!$provider_active) {
-            return [
-                'ok'      => false,
-                'code'    => 'not_implemented',
-                'reason'  => 'no_provider_active',
-                'message' => 'no configured commerce provider is active on this site',
-            ];
+            return BridgeResult::error('not_implemented',
+                'no configured commerce provider is active on this site',
+                ['reason' => 'no_provider_active']);
         }
 
         return match ($action) {
@@ -112,6 +118,12 @@ final class CommerceBridge {
             'cart.update_item'          => self::cart_update_item($params, $manifest, $visitor_user_id),
             'cart.remove_item'          => self::cart_remove_item($params, $manifest, $visitor_user_id),
             'checkout.open_hosted_page' => self::checkout_open_hosted_page($params, $manifest, $visitor_user_id),
+            // endpoint_for_action() already rejects unrecognized actions, so
+            // this arm is unreachable in practice — but an explicit default
+            // keeps a future products.*/cart.*/checkout.* action that lands
+            // before its handler from throwing UnhandledMatchError.
+            default                     => BridgeResult::error('unknown_method',
+                sprintf('commerce action "%s" is not recognized', $action)),
         };
     }
 
@@ -129,7 +141,7 @@ final class CommerceBridge {
     // Products
     // -----------------------------------------------------------------------
 
-    private static function products_list(array $params, Manifest $manifest, int $visitor_user_id): array {
+    private static function products_list(array $params, Manifest $manifest, int $visitor_user_id): BridgeResult {
         $query = self::filter_query_params($params, [
             'page', 'per_page', 'search', 'category', 'tag',
             'min_price', 'max_price', 'orderby', 'order', 'on_sale', 'featured',
@@ -139,78 +151,75 @@ final class CommerceBridge {
             'type', 'parent', 'include', 'exclude', 'slug', 'sku', 'stock_status',
         ]);
         $resp = self::store_api_request('GET', '/wc/store/v1/products', $query, null, $manifest, $visitor_user_id);
-        if (!$resp['ok']) return $resp;
+        if (!$resp['ok']) return self::store_api_error_to_result($resp);
         $items = is_array($resp['data']) ? array_map([self::class, 'shape_product'], $resp['data']) : [];
-        return [
-            'ok'   => true,
-            'data' => [
-                'items'       => $items,
-                'total'       => isset($resp['headers']['x-wp-total']) ? (int) $resp['headers']['x-wp-total'] : count($items),
-                'total_pages' => isset($resp['headers']['x-wp-totalpages']) ? (int) $resp['headers']['x-wp-totalpages'] : 1,
-            ],
-        ];
+        return BridgeResult::ok([
+            'items'       => $items,
+            'total'       => isset($resp['headers']['x-wp-total']) ? (int) $resp['headers']['x-wp-total'] : count($items),
+            'total_pages' => isset($resp['headers']['x-wp-totalpages']) ? (int) $resp['headers']['x-wp-totalpages'] : 1,
+        ]);
     }
 
-    private static function products_get(array $params, Manifest $manifest, int $visitor_user_id): array {
+    private static function products_get(array $params, Manifest $manifest, int $visitor_user_id): BridgeResult {
         $id = isset($params['id']) ? (int) $params['id'] : 0;
         if ($id <= 0) {
-            return ['ok' => false, 'code' => 'invalid_params', 'message' => '"id" must be a positive integer'];
+            return BridgeResult::error('invalid_params', '"id" must be a positive integer');
         }
         $resp = self::store_api_request('GET', '/wc/store/v1/products/' . $id, [], null, $manifest, $visitor_user_id);
-        if (!$resp['ok']) return $resp;
-        return ['ok' => true, 'data' => self::shape_product($resp['data'])];
+        if (!$resp['ok']) return self::store_api_error_to_result($resp);
+        return BridgeResult::ok(self::shape_product($resp['data']));
     }
 
     // -----------------------------------------------------------------------
     // Cart (read + mutate)
     // -----------------------------------------------------------------------
 
-    private static function cart_get(array $params, Manifest $manifest, int $visitor_user_id): array {
+    private static function cart_get(array $params, Manifest $manifest, int $visitor_user_id): BridgeResult {
         $resp = self::store_api_request('GET', '/wc/store/v1/cart', [], null, $manifest, $visitor_user_id);
-        if (!$resp['ok']) return $resp;
-        return ['ok' => true, 'data' => self::shape_cart($resp['data'])];
+        if (!$resp['ok']) return self::store_api_error_to_result($resp);
+        return BridgeResult::ok(self::shape_cart($resp['data']));
     }
 
-    private static function cart_add_item(array $params, Manifest $manifest, int $visitor_user_id): array {
+    private static function cart_add_item(array $params, Manifest $manifest, int $visitor_user_id): BridgeResult {
         $id  = isset($params['id']) ? (int) $params['id'] : 0;
         $qty = isset($params['quantity']) ? (int) $params['quantity'] : 1;
         if ($id <= 0) {
-            return ['ok' => false, 'code' => 'invalid_params', 'message' => '"id" must be a positive integer'];
+            return BridgeResult::error('invalid_params', '"id" must be a positive integer');
         }
         if ($qty <= 0 || $qty > 999) {
-            return ['ok' => false, 'code' => 'invalid_params', 'message' => '"quantity" must be 1-999'];
+            return BridgeResult::error('invalid_params', '"quantity" must be 1-999');
         }
         $body = ['id' => $id, 'quantity' => $qty];
         if (isset($params['variation']) && is_array($params['variation'])) {
             $body['variation'] = array_values(array_filter($params['variation'], 'is_array'));
         }
         $resp = self::store_api_request('POST', '/wc/store/v1/cart/add-item', [], $body, $manifest, $visitor_user_id);
-        if (!$resp['ok']) return $resp;
-        return ['ok' => true, 'data' => self::shape_cart($resp['data'])];
+        if (!$resp['ok']) return self::store_api_error_to_result($resp);
+        return BridgeResult::ok(self::shape_cart($resp['data']));
     }
 
-    private static function cart_update_item(array $params, Manifest $manifest, int $visitor_user_id): array {
+    private static function cart_update_item(array $params, Manifest $manifest, int $visitor_user_id): BridgeResult {
         $key = isset($params['key']) && is_string($params['key']) ? $params['key'] : '';
         $qty = isset($params['quantity']) ? (int) $params['quantity'] : 0;
         if ($key === '') {
-            return ['ok' => false, 'code' => 'invalid_params', 'message' => '"key" is required'];
+            return BridgeResult::error('invalid_params', '"key" is required');
         }
         if ($qty < 0 || $qty > 999) {
-            return ['ok' => false, 'code' => 'invalid_params', 'message' => '"quantity" must be 0-999'];
+            return BridgeResult::error('invalid_params', '"quantity" must be 0-999');
         }
         $resp = self::store_api_request('POST', '/wc/store/v1/cart/update-item', [], ['key' => $key, 'quantity' => $qty], $manifest, $visitor_user_id);
-        if (!$resp['ok']) return $resp;
-        return ['ok' => true, 'data' => self::shape_cart($resp['data'])];
+        if (!$resp['ok']) return self::store_api_error_to_result($resp);
+        return BridgeResult::ok(self::shape_cart($resp['data']));
     }
 
-    private static function cart_remove_item(array $params, Manifest $manifest, int $visitor_user_id): array {
+    private static function cart_remove_item(array $params, Manifest $manifest, int $visitor_user_id): BridgeResult {
         $key = isset($params['key']) && is_string($params['key']) ? $params['key'] : '';
         if ($key === '') {
-            return ['ok' => false, 'code' => 'invalid_params', 'message' => '"key" is required'];
+            return BridgeResult::error('invalid_params', '"key" is required');
         }
         $resp = self::store_api_request('POST', '/wc/store/v1/cart/remove-item', [], ['key' => $key], $manifest, $visitor_user_id);
-        if (!$resp['ok']) return $resp;
-        return ['ok' => true, 'data' => self::shape_cart($resp['data'])];
+        if (!$resp['ok']) return self::store_api_error_to_result($resp);
+        return BridgeResult::ok(self::shape_cart($resp['data']));
     }
 
     // -----------------------------------------------------------------------
@@ -223,14 +232,14 @@ final class CommerceBridge {
     // window. WC Blocks checkout then loads with the visitor's cart intact.
     // -----------------------------------------------------------------------
 
-    private static function checkout_open_hosted_page(array $params, Manifest $manifest, int $visitor_user_id): array {
+    private static function checkout_open_hosted_page(array $params, Manifest $manifest, int $visitor_user_id): BridgeResult {
         if (!self::provider_available('woocommerce')) {
-            return ['ok' => false, 'code' => 'not_implemented', 'message' => 'WooCommerce is not active'];
+            return BridgeResult::error('not_implemented', 'WooCommerce is not active');
         }
         // wc_get_checkout_url() returns the configured Checkout page URL.
         $url = function_exists('wc_get_checkout_url') ? wc_get_checkout_url() : '';
         if (!is_string($url) || $url === '') {
-            return ['ok' => false, 'code' => 'not_implemented', 'message' => 'WooCommerce Checkout page is not configured'];
+            return BridgeResult::error('not_implemented', 'WooCommerce Checkout page is not configured');
         }
         $return_to = isset($params['return_to']) && is_string($params['return_to']) ? $params['return_to'] : '';
         if ($return_to !== '') {
@@ -245,10 +254,7 @@ final class CommerceBridge {
                 $url = add_query_arg('dsgo_return_to', rawurlencode($return_to), $url);
             }
         }
-        return [
-            'ok'   => true,
-            'data' => ['url' => $url],
-        ];
+        return BridgeResult::ok(['url' => $url]);
     }
 
     // -----------------------------------------------------------------------
@@ -333,9 +339,93 @@ final class CommerceBridge {
         return ['ok' => true, 'data' => $response->get_data(), 'headers' => $headers];
     }
 
+    /**
+     * Translate a `store_api_request()` failure array into a BridgeResult.
+     *
+     * `store_api_request()` is a pure-internal helper that still returns the
+     * legacy assoc-array shape (it carries a `headers` field used only on the
+     * success path). Its failure arrays look like
+     * `['ok'=>false,'code'=>...,'message'=>...]` plus optional `status` and
+     * `wp_error_code` keys; this lifts those into a BridgeResult so the
+     * action handlers above can stay BridgeResult-native. The detail keys are
+     * forwarded verbatim — including a literal `wp_error_code => null` when
+     * present — so the serialized wire format is byte-identical to the old
+     * direct `return $resp;`.
+     *
+     * @param array<string,mixed> $resp
+     */
+    private static function store_api_error_to_result(array $resp): BridgeResult {
+        $details = [];
+        if (array_key_exists('status', $resp)) {
+            $details['status'] = $resp['status'];
+        }
+        if (array_key_exists('wp_error_code', $resp)) {
+            $details['wp_error_code'] = $resp['wp_error_code'];
+        }
+        if (array_key_exists('reason', $resp)) {
+            $details['reason'] = $resp['reason'];
+        }
+        return BridgeResult::error(
+            (string) ($resp['code'] ?? 'internal_error'),
+            (string) ($resp['message'] ?? ''),
+            $details,
+        );
+    }
+
     // -----------------------------------------------------------------------
     // Response shapers — keep WC payloads small and consistent.
     // -----------------------------------------------------------------------
+
+    /**
+     * Field map for the `id|name|slug|link` shape shared by the `categories`
+     * and `tags` blocks. Declared once so the two call sites can't drift.
+     */
+    private const TAXONOMY_REF_FIELDS = [
+        'id'   => ['id',   'int'],
+        'name' => ['name', 'string'],
+        'slug' => ['slug', 'string'],
+        'link' => ['link', 'string'],
+    ];
+
+    /**
+     * Normalize a raw list of stdClass/array rows into a list of associative
+     * arrays with a fixed, typed shape. Replaces the six near-identical
+     * `foreach ... normalize_to_array ... build assoc array` loops that
+     * shape_product() used to inline; the output is byte-identical.
+     *
+     * Each `$field_map` entry is `output_key => [source_key, type]` where
+     * `type` is `'int'`, `'string'`, or `'bool'`. A nested list uses
+     * `output_key => ['__list', source_key, $sub_field_map]` — the source
+     * value is recursively run through shape_list() with the sub-map.
+     *
+     * @param mixed                                          $raw
+     * @param array<string, array{0:string,1:string}|array{0:'__list',1:string,2:array<string,mixed>}> $field_map
+     * @return array<int, array<string, mixed>>
+     */
+    private static function shape_list($raw, array $field_map): array {
+        $out = [];
+        foreach ((self::normalize_to_array($raw) ?: []) as $row) {
+            $row = self::normalize_to_array($row);
+            if (!is_array($row)) continue;
+            $shaped = [];
+            foreach ($field_map as $out_key => $spec) {
+                if ($spec[0] === '__list') {
+                    // ['__list', source_key, sub_field_map]
+                    $shaped[$out_key] = self::shape_list($row[$spec[1]] ?? [], $spec[2]);
+                    continue;
+                }
+                [$src_key, $type] = $spec;
+                $value = $row[$src_key] ?? null;
+                $shaped[$out_key] = match ($type) {
+                    'int'    => (int) ($value ?? 0),
+                    'bool'   => (bool) ($value ?? false),
+                    default  => (string) ($value ?? ''),
+                };
+            }
+            $out[] = $shaped;
+        }
+        return $out;
+    }
 
     /**
      * @param mixed $raw
@@ -346,85 +436,38 @@ final class CommerceBridge {
         // is_array() / array-key access work uniformly across versions.
         $raw = self::normalize_to_array($raw);
         if (!is_array($raw)) return [];
-        $images = [];
-        foreach (($raw['images'] ?? []) as $img) {
-            $img = self::normalize_to_array($img);
-            if (!is_array($img)) continue;
-            $images[] = [
-                'id'        => (int) ($img['id'] ?? 0),
-                'src'       => (string) ($img['src'] ?? ''),
-                'thumbnail' => (string) ($img['thumbnail'] ?? ''),
-                'alt'       => (string) ($img['alt'] ?? ''),
-            ];
-        }
+        $images = self::shape_list($raw['images'] ?? [], [
+            'id'        => ['id',        'int'],
+            'src'       => ['src',       'string'],
+            'thumbnail' => ['thumbnail', 'string'],
+            'alt'       => ['alt',       'string'],
+        ]);
         // Attributes drive the variation picker on the parent product. Each
         // entry includes its terms so apps can render selectors without
         // pulling taxonomy data over a second channel.
-        $attributes = [];
-        foreach (($raw['attributes'] ?? []) as $attr) {
-            $attr = self::normalize_to_array($attr);
-            if (!is_array($attr)) continue;
-            $terms = [];
-            foreach (($attr['terms'] ?? []) as $term) {
-                $term = self::normalize_to_array($term);
-                if (!is_array($term)) continue;
-                $terms[] = [
-                    'id'   => (int) ($term['id'] ?? 0),
-                    'name' => (string) ($term['name'] ?? ''),
-                    'slug' => (string) ($term['slug'] ?? ''),
-                ];
-            }
-            $attributes[] = [
-                'id'             => (int) ($attr['id'] ?? 0),
-                'name'           => (string) ($attr['name'] ?? ''),
-                'taxonomy'       => (string) ($attr['taxonomy'] ?? ''),
-                'has_variations' => (bool) ($attr['has_variations'] ?? false),
-                'terms'          => $terms,
-            ];
-        }
+        $attributes = self::shape_list($raw['attributes'] ?? [], [
+            'id'             => ['id',             'int'],
+            'name'           => ['name',           'string'],
+            'taxonomy'       => ['taxonomy',       'string'],
+            'has_variations' => ['has_variations', 'bool'],
+            'terms'          => ['__list', 'terms', [
+                'id'   => ['id',   'int'],
+                'name' => ['name', 'string'],
+                'slug' => ['slug', 'string'],
+            ]],
+        ]);
         // Variations is a lightweight ref list ({id, attributes:[{name,value}]}).
         // To get per-variation prices/stock, apps call products.list with
         // type=variation&parent=<id> — that's the canonical Store API path.
-        $variations = [];
-        foreach (($raw['variations'] ?? []) as $variation) {
-            $variation = self::normalize_to_array($variation);
-            if (!is_array($variation)) continue;
-            $combo = [];
-            foreach (($variation['attributes'] ?? []) as $pair) {
-                $pair = self::normalize_to_array($pair);
-                if (!is_array($pair)) continue;
-                $combo[] = [
-                    'name'  => (string) ($pair['name'] ?? ''),
-                    'value' => (string) ($pair['value'] ?? ''),
-                ];
-            }
-            $variations[] = [
-                'id'         => (int) ($variation['id'] ?? 0),
-                'attributes' => $combo,
-            ];
-        }
-        $categories = [];
-        foreach (($raw['categories'] ?? []) as $cat) {
-            $cat = self::normalize_to_array($cat);
-            if (!is_array($cat)) continue;
-            $categories[] = [
-                'id'   => (int) ($cat['id'] ?? 0),
-                'name' => (string) ($cat['name'] ?? ''),
-                'slug' => (string) ($cat['slug'] ?? ''),
-                'link' => (string) ($cat['link'] ?? ''),
-            ];
-        }
-        $tags = [];
-        foreach (($raw['tags'] ?? []) as $tag) {
-            $tag = self::normalize_to_array($tag);
-            if (!is_array($tag)) continue;
-            $tags[] = [
-                'id'   => (int) ($tag['id'] ?? 0),
-                'name' => (string) ($tag['name'] ?? ''),
-                'slug' => (string) ($tag['slug'] ?? ''),
-                'link' => (string) ($tag['link'] ?? ''),
-            ];
-        }
+        $variations = self::shape_list($raw['variations'] ?? [], [
+            'id'         => ['id', 'int'],
+            'attributes' => ['__list', 'attributes', [
+                'name'  => ['name',  'string'],
+                'value' => ['value', 'string'],
+            ]],
+        ]);
+        $categories = self::shape_list($raw['categories'] ?? [], self::TAXONOMY_REF_FIELDS);
+        $tags       = self::shape_list($raw['tags'] ?? [], self::TAXONOMY_REF_FIELDS);
         $quantity_limits = self::normalize_to_array($raw['quantity_limits'] ?? null);
         $shaped_quantity_limits = is_array($quantity_limits) ? [
             'minimum'      => isset($quantity_limits['minimum']) ? (int) $quantity_limits['minimum'] : 1,

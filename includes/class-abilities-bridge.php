@@ -97,6 +97,13 @@ final class AbilitiesBridge {
     }
 
     /**
+     * Invoke a consumed ability and return the wire-format result array.
+     *
+     * Builds a BridgeResult internally and serializes it via to_array() at
+     * the boundary — the emitted shape (`ok` + `data` on success; `ok`,
+     * `code`, `message` plus optional `reason` / `wp_error_code` on failure)
+     * is byte-identical to the inline arrays this method built before.
+     *
      * @return array{
      *   ok:bool,
      *   data?:mixed,
@@ -107,28 +114,33 @@ final class AbilitiesBridge {
      * }
      */
     public static function invoke(string $name, array $args, Manifest $manifest, int $visitor_user_id): array {
+        return self::invoke_result($name, $args, $manifest, $visitor_user_id)->to_array();
+    }
+
+    /**
+     * Internal BridgeResult-returning core of invoke(). Kept separate so the
+     * public method stays a thin to_array() boundary.
+     */
+    private static function invoke_result(string $name, array $args, Manifest $manifest, int $visitor_user_id): BridgeResult {
         if (!self::name_in_consumes($name, $manifest)) {
-            return [
-                'ok'      => false,
-                'code'    => 'permission_denied',
-                'reason'  => 'not_in_consumes',
-                'message' => sprintf('ability "%s" not allowed by abilities.consumes', $name),
-            ];
+            return BridgeResult::error(
+                'permission_denied',
+                sprintf('ability "%s" not allowed by abilities.consumes', $name),
+                ['reason' => 'not_in_consumes'],
+            );
         }
         if (!function_exists('wp_get_ability')) {
-            return [
-                'ok'      => false,
-                'code'    => 'not_implemented',
-                'reason'  => 'wp_abilities_unavailable',
-                'message' => 'wp_get_ability() is not available; WordPress 6.9+ required',
-            ];
+            return BridgeResult::error(
+                'not_implemented',
+                'wp_get_ability() is not available; WordPress 6.9+ required',
+                ['reason' => 'wp_abilities_unavailable'],
+            );
         }
         if (!wp_has_ability($name)) {
-            return [
-                'ok'      => false,
-                'code'    => 'not_found',
-                'message' => sprintf('ability "%s" is not registered', $name),
-            ];
+            return BridgeResult::error(
+                'not_found',
+                sprintf('ability "%s" is not registered', $name),
+            );
         }
         $ability = wp_get_ability($name);
         $allowed = apply_filters(
@@ -140,41 +152,36 @@ final class AbilitiesBridge {
             $visitor_user_id,
         );
         if (!$allowed) {
-            return [
-                'ok'      => false,
-                'code'    => 'permission_denied',
-                'reason'  => 'invoker_policy',
-                'message' => sprintf('site policy blocks ability "%s" for app "%s"', $name, $manifest->id),
-            ];
+            return BridgeResult::error(
+                'permission_denied',
+                sprintf('site policy blocks ability "%s" for app "%s"', $name, $manifest->id),
+                ['reason' => 'invoker_policy'],
+            );
         }
         $result = $ability->execute(empty($args) ? null : $args);
         if (is_wp_error($result)) {
             $code = $result->get_error_code();
             if ($code === 'ability_invalid_permissions') {
-                return [
-                    'ok'           => false,
-                    'code'         => 'permission_denied',
-                    'reason'       => 'capability_denied',
-                    'message'      => $result->get_error_message(),
-                    'wp_error_code' => $code,
-                ];
+                return BridgeResult::error(
+                    'permission_denied',
+                    $result->get_error_message(),
+                    ['reason' => 'capability_denied', 'wp_error_code' => $code],
+                );
             }
             if (str_starts_with($code, 'rest_invalid_param') || $code === 'ability_input_invalid') {
-                return [
-                    'ok'           => false,
-                    'code'         => 'invalid_params',
-                    'message'      => $result->get_error_message(),
-                    'wp_error_code' => $code,
-                ];
+                return BridgeResult::error(
+                    'invalid_params',
+                    $result->get_error_message(),
+                    ['wp_error_code' => $code],
+                );
             }
-            return [
-                'ok'           => false,
-                'code'         => 'internal_error',
-                'message'      => $result->get_error_message(),
-                'wp_error_code' => $code,
-            ];
+            return BridgeResult::error(
+                'internal_error',
+                $result->get_error_message(),
+                ['wp_error_code' => $code],
+            );
         }
-        return ['ok' => true, 'data' => $result];
+        return BridgeResult::ok($result);
     }
 
     /**

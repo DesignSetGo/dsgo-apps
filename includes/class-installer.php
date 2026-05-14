@@ -150,41 +150,20 @@ final class Installer {
         $active_buckets ??= Bucket::active_for($manifest);
         $active_values   = array_map(fn (Bucket $b) => $b->value, $active_buckets);
 
-        $out = '<div class="dsgo-install-dialog">';
-
-        // Active bucket rows. New buckets get the dsgo-bucket--new marker.
-        foreach ($active_buckets as $bucket) {
-            $out .= Bucket_Renderer::render_row($bucket, $manifest, $previously_approved);
-        }
-
-        // Previously approved + unchanged collapse (update flow only).
-        if ($previously_approved !== null) {
-            $unchanged = array_values(array_intersect($previously_approved, $active_values));
-            if ($unchanged !== []) {
-                $out .= '<p class="dsgo-install-dialog__unchanged">'
-                      . esc_html__('Previously approved (unchanged):', 'designsetgo-apps') . ' '
-                      . esc_html(implode(', ', $unchanged))
-                      . '</p>';
-            }
-            $removed = array_values(array_diff($previously_approved, $active_values));
-            if ($removed !== []) {
-                $out .= '<section class="dsgo-install-dialog__removed">';
-                $out .= '<h4>' . esc_html__('Removed (no action required)', 'designsetgo-apps') . '</h4>';
-                $out .= '<ul>';
-                foreach ($removed as $r) {
-                    $out .= '<li><code>' . esc_html($r) . '</code></li>';
-                }
-                $out .= '</ul></section>';
-            }
-        }
-
-        // Passive storage footer (always shown — storage has no bucket).
-        $out .= '<p class="dsgo-install-dialog__storage-note">'
-              . esc_html__('This app uses per-app and per-user storage to persist state.', 'designsetgo-apps')
-              . '</p>';
-
-        $out .= '</div>';
-        return $out;
+        // Prepare the template context and capture the partial's output. The
+        // markup lives in templates/install-consent.php so the installer stays
+        // a data-only pipeline class (same pattern as the per-app admin tabs).
+        // phpcs:disable WordPress.PHP.DontExtract
+        $ctx = [
+            'manifest'            => $manifest,
+            'previously_approved' => $previously_approved,
+            'active_buckets'      => $active_buckets,
+            'active_values'       => $active_values,
+        ];
+        // phpcs:enable WordPress.PHP.DontExtract
+        ob_start();
+        require DSGO_APPS_PATH . 'templates/install-consent.php';
+        return (string) ob_get_clean();
     }
 
     public static function install(string $zip_path, int $user_id): InstallResult {

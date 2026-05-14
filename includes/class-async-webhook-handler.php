@@ -266,32 +266,19 @@ final class AsyncWebhookHandler {
      * Read the manifest from the app's dsgo_app post and resolve the
      * `webhooks.endpoints[]` entry whose id matches $endpoint_id.
      * Returns the bound ability name, or null when the app or endpoint
-     * has been deleted since enqueue.
+     * has been deleted since enqueue (or the endpoint declares no
+     * string `ability`). Delegates the post + endpoint lookup to
+     * App_Repository so the four webhook/cron call sites share one query.
      */
     private static function resolve_ability(string $app_id, string $endpoint_id): ?string {
-        $posts = get_posts([
-            'post_type'      => PostType::SLUG,
-            'name'           => $app_id,
-            'post_status'    => 'publish',
-            'posts_per_page' => 1,
-            'no_found_rows'  => true,
-            'fields'         => 'ids',
-        ]);
-        if ($posts === []) return null;
-        $manifest_arr = get_post_meta($posts[0], 'dsgo_apps_manifest', true);
-        if (!is_array($manifest_arr)) return null;
-        $endpoints = $manifest_arr['webhooks']['endpoints'] ?? null;
-        if (!is_array($endpoints)) return null;
-        foreach ($endpoints as $endpoint) {
-            if (is_array($endpoint)
-                && ($endpoint['id'] ?? null) === $endpoint_id
-                && isset($endpoint['ability'])
-                && is_string($endpoint['ability'])
-            ) {
-                return $endpoint['ability'];
-            }
+        $endpoint = App_Repository::endpoint_config($app_id, $endpoint_id);
+        if ($endpoint === null
+            || !isset($endpoint['ability'])
+            || !is_string($endpoint['ability'])
+        ) {
+            return null;
         }
-        return null;
+        return $endpoint['ability'];
     }
 
     /**

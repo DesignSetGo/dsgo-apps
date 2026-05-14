@@ -56,6 +56,22 @@ final class Http_Proxy_Bridge {
     /** Default per-app per-minute call cap; filter `dsgo_apps_http_rate_per_minute`. */
     private const DEFAULT_RATE_PER_MINUTE = 60;
 
+    /**
+     * Rate-limit bucket transient TTL (seconds). Set to 90s — longer than
+     * the 60s minute bucket — so a request landing at sec 59 doesn't reset
+     * the counter for the next minute.
+     */
+    private const RATE_LIMIT_TTL_SECONDS = 90;
+
+    /** Default request timeout (ms) when the caller omits `timeout_ms`. */
+    private const DEFAULT_TIMEOUT_MS = 10000;
+
+    /** Lower clamp bound (ms) for a caller-supplied `timeout_ms`. */
+    private const MIN_TIMEOUT_MS = 1000;
+
+    /** Upper clamp bound (ms) for a caller-supplied `timeout_ms`. */
+    private const MAX_TIMEOUT_MS = 30000;
+
     /** Default request body cap (bytes); filter `dsgo_apps_http_request_max_bytes`. */
     private const DEFAULT_REQUEST_MAX_BYTES = 1_048_576;   // 1 MB
 
@@ -93,6 +109,13 @@ final class Http_Proxy_Bridge {
     /**
      * Run the 13-step pipeline against a single request.
      *
+     * Thin orchestrator: each cohesive group of pipeline steps lives in its
+     * own private method that returns either its output value or a
+     * BridgeResult error (short-circuit). fetch() threads those together and
+     * serializes the final BridgeResult via to_http_object() — the wire shape
+     * (object{ok,status,headers,body} on success; object{error_code,message
+     * [,retry_after_seconds]} on failure) is unchanged.
+     *
      * @param array{
      *   method?:string,
      *   headers?:array<string,string>,
@@ -104,15 +127,64 @@ final class Http_Proxy_Bridge {
         $t_start = hrtime(true);
 
         // === Step 1: URL parse + scheme ===
-        // Done first so every subsequent rejection (including permission
-        // denial) can write an audit log row tagged with the host the app
-        // tried to reach. Apps that pound the proxy without permissions.http
-        // declared should not be invisible in the audit table.
+        $parsed = self::parse_request_url($url);
+        if ($parsed instanceof BridgeResult) {
+            return $parsed->to_http_object();
+        }
+        $host = $parsed['host'];
+        $path = $parsed['path'];
+
+        // Log context shared by every step 2-13 audit-log write. Built once
+        // here so the step helpers don't each rebuild the same five fields.
+        $method = strtoupper((string) ($init['method'] ?? 'GET'));
+        $log_ctx = [
+            'app_id'  => $manifest->id,
+            'host'    => $host,
+            'method'  => $method,
+            'path'    => $path,
+            't_start' => $t_start,
+        ];
+
+        // === Steps 2-4: permission, method, allowlist ===
+        $gate_err = self::check_request_gates($manifest, $method, $log_ctx);
+        if ($gate_err instanceof BridgeResult) {
+            return $gate_err->to_http_object();
+        }
+
+        // === Steps 5-9: SSRF guard, header sanitize, body cap, secret
+        // substitution, rate limit. On success returns the prepared request
+        // state (clean headers, substituted body, validated IP list). ===
+        $prepared = self::prepare_request($manifest, $init, $log_ctx);
+        if ($prepared instanceof BridgeResult) {
+            return $prepared->to_http_object();
+        }
+
+        // === Step 10: issue the request ===
+        $issued = self::issue_request($url, $parsed['parsed'], $prepared, $log_ctx);
+        if ($issued instanceof BridgeResult) {
+            return $issued->to_http_object();
+        }
+
+        // === Steps 11-13: response cap + header strip, JSON auto-parse,
+        // success audit-log row. ===
+        return self::process_response($issued, $prepared['req_bytes'], $log_ctx)->to_http_object();
+    }
+
+    /**
+     * Step 1: parse + validate the request URL. Done first so every
+     * subsequent rejection (including permission denial) can write an audit
+     * log row tagged with the host the app tried to reach.
+     *
+     * Returns `['host'=>string, 'path'=>string, 'parsed'=>array]` on success,
+     * or a BridgeResult error. A malformed URL is the ONLY rejection path
+     * that does not write a log row — there's no parseable host to tag it.
+     *
+     * @return array{host:string,path:string,parsed:array<string,mixed>}|BridgeResult
+     */
+    private static function parse_request_url(string $url): array|BridgeResult {
         $parsed = wp_parse_url($url);
         if (!is_array($parsed) || ($parsed['scheme'] ?? null) !== 'https' || empty($parsed['host'])) {
-            // No parseable host — nothing useful to log. This is the only
-            // rejection path that does not write a row.
-            return self::error('http_invalid_url',
+            return BridgeResult::error('http_invalid_url',
                 'url must be a syntactically valid https:// URL');
         }
         $host = strtolower((string) $parsed['host']);
@@ -120,89 +192,143 @@ final class Http_Proxy_Bridge {
         if (isset($parsed['query']) && $parsed['query'] !== '') {
             $path .= '?' . $parsed['query'];
         }
+        return ['host' => $host, 'path' => $path, 'parsed' => $parsed];
+    }
 
-        // === Step 2: permission ===
-        $method_for_log = strtoupper((string) ($init['method'] ?? 'GET'));
+    /**
+     * Steps 2-4: permission, method validation, host allowlist. Each
+     * rejection writes a status=0 audit-log row via log_and_error().
+     *
+     * Returns null when all three gates pass, or a BridgeResult error.
+     *
+     * @param array{app_id:string,host:string,method:string,path:string,t_start:int} $log_ctx
+     */
+    private static function check_request_gates(Manifest $manifest, string $method, array $log_ctx): ?BridgeResult {
+        // Step 2: permission.
         if ($manifest->permissions_http === []) {
-            return self::log_and_error($manifest->id, $host, $method_for_log, $path, $t_start,
+            return self::log_and_error($log_ctx,
                 'http_permission_denied',
                 'app manifest has no permissions.http allowlist');
         }
 
-        // === Step 3: method validation ===
-        $method = $method_for_log;
+        // Step 3: method validation.
         if (!in_array($method, self::ALLOWED_METHODS, true)) {
-            return self::log_and_error($manifest->id, $host, $method, $path, $t_start,
+            return self::log_and_error($log_ctx,
                 'http_method_not_allowed',
                 sprintf('method "%s" is not permitted by the proxy', $method));
         }
 
-        // === Step 4: allowlist ===
-        if (!self::host_is_allowed($host, $manifest->permissions_http)) {
-            return self::log_and_error($manifest->id, $host, $method, $path, $t_start,
+        // Step 4: allowlist.
+        if (!self::host_is_allowed($log_ctx['host'], $manifest->permissions_http)) {
+            return self::log_and_error($log_ctx,
                 'http_host_not_allowed',
-                sprintf('host "%s" is not in the manifest allowlist', $host));
+                sprintf('host "%s" is not in the manifest allowlist', $log_ctx['host']));
         }
 
-        // === Step 5: SSRF guard ===
-        // resolve_and_validate() returns the resolved IP list on success so
-        // step 10 can pin one of them via CURLOPT_RESOLVE (defeats DNS
-        // rebinding between this check and the actual cURL request).
+        return null;
+    }
+
+    /**
+     * Steps 5-9: SSRF guard, outbound header sanitize, request body cap,
+     * secret substitution, and per-app rate limit. Each rejection writes a
+     * status=0 audit-log row.
+     *
+     * Returns the prepared request state on success:
+     *   ['headers'=>array, 'body'=>?string, 'resolved_ips'=>string[],
+     *    'req_bytes'=>int, 'timeout_ms'=>int]
+     * or a BridgeResult error.
+     *
+     * @param array<string,mixed> $init
+     * @param array{app_id:string,host:string,method:string,path:string,t_start:int} $log_ctx
+     * @return array{headers:array<string,string>,body:?string,resolved_ips:string[],req_bytes:int,timeout_ms:int}|BridgeResult
+     */
+    private static function prepare_request(Manifest $manifest, array $init, array $log_ctx): array|BridgeResult {
+        $host = $log_ctx['host'];
+
+        // Step 5: SSRF guard. resolve_and_validate() returns the resolved IP
+        // list on success so step 10 can pin one of them via CURLOPT_RESOLVE
+        // (defeats DNS rebinding between this check and the actual fetch).
         $ssrf = self::resolve_and_validate($host);
         if (isset($ssrf['error'])) {
-            return self::log_and_error($manifest->id, $host, $method, $path, $t_start,
+            return self::log_and_error($log_ctx,
                 'http_ssrf_blocked',
                 sprintf('host "%s" resolves to a blocked address (%s)', $host, $ssrf['error']));
         }
         $resolved_ips = $ssrf['ips'];
 
-        // === Step 6: header sanitize ===
+        // Step 6: header sanitize.
         $raw_headers = is_array($init['headers'] ?? null) ? $init['headers'] : [];
         $clean_headers = [];
         $hdr_err = self::sanitize_headers($raw_headers, $clean_headers);
         if ($hdr_err !== null) {
-            return self::log_and_error($manifest->id, $host, $method, $path, $t_start,
-                'http_invalid_header', $hdr_err);
+            return self::log_and_error($log_ctx, 'http_invalid_header', $hdr_err);
         }
 
-        // === Step 7: request body size ===
+        // Step 7: request body size.
         $body = $init['body'] ?? null;
         if ($body !== null && !is_string($body)) {
             // Non-string bodies aren't supported in v1 (no JSON-object init form).
-            return self::log_and_error($manifest->id, $host, $method, $path, $t_start,
+            return self::log_and_error($log_ctx,
                 'http_invalid_body', 'body must be a string (already-serialized)');
         }
         $req_bytes = $body === null ? 0 : strlen($body);
         $req_cap   = (int) apply_filters('dsgo_apps_http_request_max_bytes', self::DEFAULT_REQUEST_MAX_BYTES);
         if ($req_bytes > $req_cap) {
-            return self::log_and_error($manifest->id, $host, $method, $path, $t_start,
+            return self::log_and_error($log_ctx,
                 'http_request_too_large',
                 sprintf('request body is %d bytes (max %d)', $req_bytes, $req_cap));
         }
 
-        // === Step 8: secret substitution ===
+        // Step 8: secret substitution.
         $subst_err = self::substitute_secrets($manifest, $clean_headers, $body);
         if ($subst_err !== null) {
-            return self::log_and_error($manifest->id, $host, $method, $path, $t_start,
-                $subst_err['code'], $subst_err['message']);
+            return self::log_and_error($log_ctx, $subst_err['code'], $subst_err['message']);
         }
 
-        // === Step 9: rate limit ===
+        // Step 9: rate limit.
         $rl = self::rate_limit_check($manifest->id);
         if ($rl !== null) {
-            return self::log_and_error($manifest->id, $host, $method, $path, $t_start,
+            return self::log_and_error($log_ctx,
                 'http_rate_limited',
                 'per-app HTTP rate limit exceeded; retry after the window resets',
                 ['retry_after_seconds' => $rl['retry_after_seconds']]);
         }
 
-        // === Step 10: issue the request ===
-        $timeout_ms = (int) ($init['timeout_ms'] ?? 10000);
-        $timeout_ms = max(1000, min(30000, $timeout_ms));
+        // Caller-supplied timeout, clamped to the allowed window. Captured
+        // here (the only place $init is in scope) and threaded to step 10.
+        $timeout_ms = (int) ($init['timeout_ms'] ?? self::DEFAULT_TIMEOUT_MS);
+        $timeout_ms = max(self::MIN_TIMEOUT_MS, min(self::MAX_TIMEOUT_MS, $timeout_ms));
+
+        return [
+            'headers'      => $clean_headers,
+            'body'         => $body,
+            'resolved_ips' => $resolved_ips,
+            'req_bytes'    => $req_bytes,
+            'timeout_ms'   => $timeout_ms,
+        ];
+    }
+
+    /**
+     * Step 10: issue the outbound request through the active transport.
+     *
+     * Returns the raw wp_remote_request-shaped response array on success, or
+     * a BridgeResult error (transport unsupported / WP_Error / unexpected
+     * response shape). The CURLOPT_RESOLVE DNS-pinning and `redirection => 0`
+     * SSRF defenses are preserved exactly — relocated, not altered.
+     *
+     * @param array<string,mixed> $parsed   Output of wp_parse_url().
+     * @param array{headers:array<string,string>,body:?string,resolved_ips:string[],req_bytes:int,timeout_ms:int} $prepared
+     * @param array{app_id:string,host:string,method:string,path:string,t_start:int} $log_ctx
+     * @return array<string,mixed>|BridgeResult
+     */
+    private static function issue_request(string $url, array $parsed, array $prepared, array $log_ctx): array|BridgeResult {
+        $body      = $prepared['body'];
+        $req_bytes = $prepared['req_bytes'];
+
         $args = [
-            'method'      => $method,
-            'headers'     => $clean_headers,
-            'timeout'     => $timeout_ms / 1000,
+            'method'      => $log_ctx['method'],
+            'headers'     => $prepared['headers'],
+            'timeout'     => $prepared['timeout_ms'] / 1000,
             // redirection => 0 is load-bearing: an allowlisted host could
             // otherwise return `Location: http://10.0.0.1/` and trick the
             // proxy into following into the internal network. The bridge
@@ -219,26 +345,19 @@ final class Http_Proxy_Bridge {
             $response = (self::$transport_factory)($url, $args);
         } else {
             if (!self::transport_supports_ip_pinning()) {
-                return self::log_and_error(
-                    $manifest->id,
-                    $host,
-                    $method,
-                    $path,
-                    $t_start,
+                return self::log_and_error($log_ctx,
                     'http_transport_unsupported',
                     'HTTP proxy requires the cURL transport with CURLOPT_RESOLVE support',
                     [],
-                    $req_bytes
-                );
+                    $req_bytes);
             }
             // DNS-pin via CURLOPT_RESOLVE so the actual fetch reaches the
             // SSRF-validated IP rather than re-resolving (and getting a
             // private address from an attacker-controlled NS — classic
             // rebinding TOCTOU). Only effective on the cURL transport;
             // documented as a residual risk in the class docstring.
-            $pin_host = $host;
-            $port     = isset($parsed['port']) ? (int) $parsed['port'] : 443;
-            $pin_cb   = self::build_curl_pin_callback($pin_host, $port, $resolved_ips);
+            $port   = isset($parsed['port']) ? (int) $parsed['port'] : 443;
+            $pin_cb = self::build_curl_pin_callback($log_ctx['host'], $port, $prepared['resolved_ips']);
             add_action('http_api_curl', $pin_cb, 10, 3);
             try {
                 $response = wp_remote_request($url, $args);
@@ -248,33 +367,47 @@ final class Http_Proxy_Bridge {
         }
 
         if ($response instanceof \WP_Error) {
-            $msg     = $response->get_error_message();
-            $is_to   = stripos($msg, 'timed out') !== false || stripos($msg, 'timeout') !== false;
-            $code    = $is_to ? 'http_timeout' : 'http_network_error';
-            return self::log_and_error($manifest->id, $host, $method, $path, $t_start,
-                $code, $msg);
+            $msg   = $response->get_error_message();
+            $is_to = stripos($msg, 'timed out') !== false || stripos($msg, 'timeout') !== false;
+            $code  = $is_to ? 'http_timeout' : 'http_network_error';
+            return self::log_and_error($log_ctx, $code, $msg);
         }
         if (!is_array($response)) {
-            return self::log_and_error($manifest->id, $host, $method, $path, $t_start,
+            return self::log_and_error($log_ctx,
                 'http_network_error', 'transport returned an unexpected response shape');
         }
 
-        // === Step 11: response cap + header strip ===
+        return $response;
+    }
+
+    /**
+     * Steps 11-13: response body cap + header strip, JSON auto-parse on a
+     * json content-type, and the success audit-log row.
+     *
+     * Returns a success BridgeResult carrying the
+     * `['status'=>int,'headers'=>array,'body'=>mixed]` triple, or a
+     * BridgeResult error for an oversized response.
+     *
+     * @param array<string,mixed> $response Raw transport response array.
+     * @param array{app_id:string,host:string,method:string,path:string,t_start:int} $log_ctx
+     */
+    private static function process_response(array $response, int $req_bytes, array $log_ctx): BridgeResult {
+        // Step 11: response cap + header strip.
         $resp_body  = (string) ($response['body'] ?? '');
         $resp_bytes = strlen($resp_body);
         $resp_cap   = (int) apply_filters('dsgo_apps_http_response_max_bytes', self::DEFAULT_RESPONSE_MAX_BYTES);
         if ($resp_bytes > $resp_cap) {
-            return self::log_and_error($manifest->id, $host, $method, $path, $t_start,
+            return self::log_and_error($log_ctx,
                 'http_response_too_large',
                 sprintf('response body is %d bytes (max %d)', $resp_bytes, $resp_cap),
                 [],
                 /* req_bytes */ $req_bytes,
                 /* resp_bytes */ $resp_bytes);
         }
-        $status        = (int) ($response['response']['code'] ?? 0);
-        $safe_headers  = self::sanitize_response_headers($response['headers'] ?? []);
+        $status       = (int) ($response['response']['code'] ?? 0);
+        $safe_headers = self::sanitize_response_headers($response['headers'] ?? []);
 
-        // === Step 12: JSON auto-parse ===
+        // Step 12: JSON auto-parse.
         $content_type = '';
         foreach ($safe_headers as $k => $v) {
             if (strcasecmp($k, 'content-type') === 0) { $content_type = (string) $v; break; }
@@ -290,25 +423,23 @@ final class Http_Proxy_Bridge {
             }
         }
 
-        // === Step 13: log success ===
-        $duration_ms = self::ms_since($t_start);
+        // Step 13: success audit-log row.
         Http_Proxy_Log::log(
-            app_id: $manifest->id,
-            host: $host,
-            method: $method,
-            path: self::path_for_log($path),
+            app_id: $log_ctx['app_id'],
+            host: $log_ctx['host'],
+            method: $log_ctx['method'],
+            path: self::path_for_log($log_ctx['path']),
             status: $status,
-            duration_ms: $duration_ms,
+            duration_ms: self::ms_since($log_ctx['t_start']),
             req_bytes: $req_bytes,
             resp_bytes: $resp_bytes,
         );
 
-        return (object) [
-            'ok'      => true,
+        return BridgeResult::ok([
             'status'  => $status,
             'headers' => $safe_headers,
             'body'    => $body_out,
-        ];
+        ]);
     }
 
     // --- step 4 helper: host matching ---
@@ -546,15 +677,15 @@ final class Http_Proxy_Bridge {
     private static function rate_limit_check(string $app_id): ?array {
         $limit  = (int) apply_filters('dsgo_apps_http_rate_per_minute', self::DEFAULT_RATE_PER_MINUTE);
         if ($limit <= 0) return null;   // disabled
+        // Per-app per-minute bucket. The key + the 90s TTL (covers the
+        // minute boundary so a request landing at sec 59 doesn't reset the
+        // counter for the next minute) stay owned here; the shared
+        // Rate_Limiter just runs the read-modify-write counter core.
         $bucket = 'dsgo_apps_http_rl_' . $app_id . '_' . (int) (time() / 60);
-        $count  = (int) get_transient($bucket);
-        if ($count >= $limit) {
+        if (!Rate_Limiter::try_acquire($bucket, $limit, self::RATE_LIMIT_TTL_SECONDS)) {
             $retry_after = 60 - (time() % 60);
             return ['retry_after_seconds' => $retry_after > 0 ? $retry_after : 1];
         }
-        // 90s TTL covers the minute boundary so a request landing at sec 59
-        // doesn't reset the counter for the next minute.
-        set_transient($bucket, $count + 1, 90);
         return null;
     }
 
@@ -601,38 +732,37 @@ final class Http_Proxy_Bridge {
         return $q === false ? $path : substr($path, 0, $q);
     }
 
-    private static function error(string $code, string $message, array $extra = []): object {
-        return (object) array_merge(['error_code' => $code, 'message' => $message], $extra);
-    }
-
     /**
-     * Compose: write a log row with status=0 (no upstream response made it
-     * back) and return the error object. Used by every step 2–9 short-
-     * circuit so the audit trail tracks attempted requests, not just
-     * successful ones.
+     * Compose: write a status=0 audit-log row (no upstream response made it
+     * back) and return the matching BridgeResult error. Used by every
+     * step 2-12 short-circuit so the audit trail tracks attempted requests,
+     * not just successful ones.
+     *
+     * `$extra` carries optional error-detail fields (e.g.
+     * `retry_after_seconds`) — they ride through BridgeResult::error()'s
+     * `$details` and are surfaced verbatim by to_http_object().
+     *
+     * @param array{app_id:string,host:string,method:string,path:string,t_start:int} $log_ctx
+     * @param array<string,mixed> $extra
      */
     private static function log_and_error(
-        string $app_id,
-        string $host,
-        string $method,
-        string $path,
-        int $t_start,
+        array $log_ctx,
         string $code,
         string $message,
         array $extra = [],
         int $req_bytes = 0,
         int $resp_bytes = 0,
-    ): object {
+    ): BridgeResult {
         Http_Proxy_Log::log(
-            app_id: $app_id,
-            host: $host,
-            method: $method,
-            path: self::path_for_log($path),
+            app_id: $log_ctx['app_id'],
+            host: $log_ctx['host'],
+            method: $log_ctx['method'],
+            path: self::path_for_log($log_ctx['path']),
             status: 0,
-            duration_ms: self::ms_since($t_start),
+            duration_ms: self::ms_since($log_ctx['t_start']),
             req_bytes: $req_bytes,
             resp_bytes: $resp_bytes,
         );
-        return self::error($code, $message, $extra);
+        return BridgeResult::error($code, $message, $extra);
     }
 }

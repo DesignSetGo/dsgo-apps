@@ -55,6 +55,12 @@ final class WebhookHandler {
         'x-webhook-signature',
     ];
 
+    /**
+     * Thin orchestrator for the 10-step webhook pipeline. Each cohesive
+     * step group lives in its own private method that either short-circuits
+     * with a WP_REST_Response or returns null/its value to continue. The
+     * step order, status codes, and body shapes are unchanged.
+     */
     public static function handle(\WP_REST_Request $req, string $app_id, string $endpoint_id): \WP_REST_Response {
         $start_ms = self::now_ms();
 
@@ -64,16 +70,10 @@ final class WebhookHandler {
             return self::respond_error(404, 'endpoint_not_found', 'Endpoint not registered.', $app_id, $endpoint_id, $start_ms);
         }
 
-        // Step 2: rate limit. The manifest validator guarantees the
-        // value is 1..600; the default kicks in only when authors omit
-        // the field entirely.
-        $limit = isset($endpoint['rate_limit_per_minute']) && is_int($endpoint['rate_limit_per_minute'])
-            ? $endpoint['rate_limit_per_minute']
-            : self::DEFAULT_RATE_LIMIT_PER_MINUTE;
-        if (!WebhookRateLimiter::try_acquire($app_id, $endpoint_id, $limit)) {
-            $response = self::respond_error(429, 'rate_limited', 'Too many requests.', $app_id, $endpoint_id, $start_ms);
-            $response->header('Retry-After', '60');
-            return $response;
+        // Step 2: rate limit.
+        $rate_limited = self::check_rate_limit($endpoint, $app_id, $endpoint_id, $start_ms);
+        if ($rate_limited !== null) {
+            return $rate_limited;
         }
 
         // Step 3: pull the raw body + headers off the request. The body
@@ -84,15 +84,10 @@ final class WebhookHandler {
         }
         $headers_lower = self::lowercase_headers($req->get_headers());
 
-        // Step 4: auth. Auth failures use 401; the special
-        // webhook_secret_not_set case from WebhookAuth maps to 503
-        // because it's an operator-visible misconfiguration, not a
-        // signature problem.
-        $auth_result = WebhookAuth::verify($endpoint, $raw_body, $headers_lower, $app_id);
-        if (is_wp_error($auth_result)) {
-            $code   = $auth_result->get_error_code();
-            $status = $code === 'webhook_secret_not_set' ? 503 : 401;
-            return self::respond_error($status, $code, $auth_result->get_error_message(), $app_id, $endpoint_id, $start_ms);
+        // Step 4: auth.
+        $auth_failure = self::verify_auth($endpoint, $raw_body, $headers_lower, $app_id, $endpoint_id, $start_ms);
+        if ($auth_failure !== null) {
+            return $auth_failure;
         }
 
         // Step 5: idempotency, when the endpoint declares an event-id
@@ -106,26 +101,93 @@ final class WebhookHandler {
             }
         }
 
-        // Step 6: async path. enqueue + single-event schedule + 200
-        // queued:true immediately. Do NOT set the idempotency cache
-        // here — AsyncWebhookHandler::run sets it on actual success.
+        // Step 6: async path — terminal. enqueue + single-event schedule +
+        // 200 queued:true immediately.
         if (!empty($endpoint['async'])) {
-            $safe_headers = self::safe_headers($headers_lower, $endpoint);
-            $row_id = AsyncWebhookHandler::enqueue(
-                $app_id,
-                $endpoint_id,
-                $event_id !== '' ? $event_id : null,
-                $raw_body,
-                (string) wp_json_encode($safe_headers),
-            );
-            if ($row_id === 0) {
-                return self::respond_error(500, 'webhook_enqueue_failed', 'Could not enqueue webhook.', $app_id, $endpoint_id, $start_ms);
-            }
-            wp_schedule_single_event(time(), AsyncWebhookHandler::ASYNC_HOOK, [$row_id]);
-            return self::respond_success(200, ['ok' => true, 'queued' => true], $app_id, $endpoint_id, $start_ms, async: true);
+            return self::dispatch_async($endpoint, $headers_lower, $raw_body, $event_id, $app_id, $endpoint_id, $start_ms);
         }
 
-        // Step 7: sync path — resolve the ability.
+        // Steps 7-10: sync path — terminal. resolve ability, invoke, set
+        // idempotency transient on success, log + return.
+        return self::dispatch_sync($endpoint, $headers_lower, $raw_body, $event_id, $app_id, $endpoint_id, $start_ms);
+    }
+
+    /**
+     * Step 2: per-endpoint rate limit. The manifest validator guarantees
+     * the value is 1..600; the default kicks in only when authors omit the
+     * field entirely. Returns a 429 WP_REST_Response (with Retry-After) when
+     * the budget is exhausted, or null to continue.
+     *
+     * @param array<string, mixed> $endpoint
+     */
+    private static function check_rate_limit(array $endpoint, string $app_id, string $endpoint_id, int $start_ms): ?\WP_REST_Response {
+        $limit = isset($endpoint['rate_limit_per_minute']) && is_int($endpoint['rate_limit_per_minute'])
+            ? $endpoint['rate_limit_per_minute']
+            : self::DEFAULT_RATE_LIMIT_PER_MINUTE;
+        if (!WebhookRateLimiter::try_acquire($app_id, $endpoint_id, $limit)) {
+            $response = self::respond_error(429, 'rate_limited', 'Too many requests.', $app_id, $endpoint_id, $start_ms);
+            $response->header('Retry-After', '60');
+            return $response;
+        }
+        return null;
+    }
+
+    /**
+     * Step 4: verify the inbound request's auth credential. Auth failures
+     * use 401; the special webhook_secret_not_set case from WebhookAuth maps
+     * to 503 because it's an operator-visible misconfiguration, not a
+     * signature problem. Returns the error WP_REST_Response, or null on
+     * success.
+     *
+     * @param array<string, mixed>  $endpoint
+     * @param array<string, string> $headers_lower
+     */
+    private static function verify_auth(array $endpoint, string $raw_body, array $headers_lower, string $app_id, string $endpoint_id, int $start_ms): ?\WP_REST_Response {
+        $auth_result = WebhookAuth::verify($endpoint, $raw_body, $headers_lower, $app_id);
+        if (is_wp_error($auth_result)) {
+            $code   = $auth_result->get_error_code();
+            $status = $code === 'webhook_secret_not_set' ? 503 : 401;
+            return self::respond_error($status, $code, $auth_result->get_error_message(), $app_id, $endpoint_id, $start_ms);
+        }
+        return null;
+    }
+
+    /**
+     * Step 6: async dispatch — terminal. Enqueues the encrypted payload,
+     * schedules the single-event async hook, and returns 200 queued:true
+     * immediately. Does NOT set the idempotency cache here —
+     * AsyncWebhookHandler::run sets it on actual success.
+     *
+     * @param array<string, mixed>  $endpoint
+     * @param array<string, string> $headers_lower
+     */
+    private static function dispatch_async(array $endpoint, array $headers_lower, string $raw_body, string $event_id, string $app_id, string $endpoint_id, int $start_ms): \WP_REST_Response {
+        $safe_headers = self::safe_headers($headers_lower, $endpoint);
+        $row_id = AsyncWebhookHandler::enqueue(
+            $app_id,
+            $endpoint_id,
+            $event_id !== '' ? $event_id : null,
+            $raw_body,
+            (string) wp_json_encode($safe_headers),
+        );
+        if ($row_id === 0) {
+            return self::respond_error(500, 'webhook_enqueue_failed', 'Could not enqueue webhook.', $app_id, $endpoint_id, $start_ms);
+        }
+        wp_schedule_single_event(time(), AsyncWebhookHandler::ASYNC_HOOK, [$row_id]);
+        return self::respond_success(200, ['ok' => true, 'queued' => true], $app_id, $endpoint_id, $start_ms, async: true);
+    }
+
+    /**
+     * Steps 7-10: sync dispatch — terminal. Resolves the bound ability,
+     * invokes it (catching Throwables so an ability crash never propagates
+     * to the REST layer), records the idempotency transient on success, and
+     * writes the WebhookLog row via respond_*().
+     *
+     * @param array<string, mixed>  $endpoint
+     * @param array<string, string> $headers_lower
+     */
+    private static function dispatch_sync(array $endpoint, array $headers_lower, string $raw_body, string $event_id, string $app_id, string $endpoint_id, int $start_ms): \WP_REST_Response {
+        // Step 7: resolve the ability.
         $ability_name = $endpoint['ability'] ?? null;
         if (!is_string($ability_name)
             || !function_exists('wp_has_ability')
@@ -180,29 +242,13 @@ final class WebhookHandler {
     /**
      * Load the manifest's `webhooks.endpoints[]` entry matching the
      * pair. Returns null if the app, manifest, or endpoint is missing.
+     * Delegates the post + manifest lookup to App_Repository so the
+     * webhook router / async handler / cron dispatcher share one query.
      *
      * @return array<string, mixed>|null
      */
     private static function load_endpoint_config(string $app_id, string $endpoint_id): ?array {
-        $posts = get_posts([
-            'post_type'      => PostType::SLUG,
-            'name'           => $app_id,
-            'post_status'    => 'publish',
-            'posts_per_page' => 1,
-            'no_found_rows'  => true,
-            'fields'         => 'ids',
-        ]);
-        if ($posts === []) return null;
-        $manifest_arr = get_post_meta($posts[0], 'dsgo_apps_manifest', true);
-        if (!is_array($manifest_arr)) return null;
-        $endpoints = $manifest_arr['webhooks']['endpoints'] ?? null;
-        if (!is_array($endpoints)) return null;
-        foreach ($endpoints as $entry) {
-            if (is_array($entry) && ($entry['id'] ?? null) === $endpoint_id) {
-                return $entry;
-            }
-        }
-        return null;
+        return App_Repository::endpoint_config($app_id, $endpoint_id);
     }
 
     /**

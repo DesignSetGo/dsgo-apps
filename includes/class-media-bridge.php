@@ -75,31 +75,46 @@ final class MediaBridge {
     }
 
     /**
+     * Promote an uploaded file into a media-library attachment and return
+     * the wire-format result array.
+     *
+     * Builds a BridgeResult internally and serializes it via to_array() at
+     * the boundary — the emitted shape (`ok` + `data` on success; `ok`,
+     * `code`, `message` on failure) is byte-identical to the inline arrays
+     * this method built before.
+     *
      * @param array{name?:string,type?:string,tmp_name?:string,error?:int,size?:int} $file
      * @param array{filename?:mixed,alt_text?:mixed} $params
      * @return array{ok:bool,data?:array,code?:string,message?:string}
      */
     public static function upload(Manifest $manifest, int $visitor_user_id, array $file, array $params = []): array {
+        return self::upload_result($manifest, $visitor_user_id, $file, $params)->to_array();
+    }
+
+    /**
+     * Internal BridgeResult-returning core of upload(). Kept separate so the
+     * public method stays a thin to_array() boundary.
+     *
+     * @param array{name?:string,type?:string,tmp_name?:string,error?:int,size?:int} $file
+     * @param array{filename?:mixed,alt_text?:mixed} $params
+     */
+    private static function upload_result(Manifest $manifest, int $visitor_user_id, array $file, array $params = []): BridgeResult {
         if (!self::is_enabled_for_app($manifest)) {
-            return ['ok' => false, 'code' => 'permission_denied',
-                    'message' => 'media uploads are disabled for this app'];
+            return BridgeResult::error('permission_denied', 'media uploads are disabled for this app');
         }
 
         // The REST callback already verified the visitor has `upload_files`,
         // but we re-check inside the bridge so a future direct invocation
         // (e.g. from a unit test or alternative caller) can't bypass the gate.
         if ($visitor_user_id <= 0 || !user_can($visitor_user_id, 'upload_files')) {
-            return ['ok' => false, 'code' => 'permission_denied',
-                    'message' => 'visitor lacks "upload_files" capability'];
+            return BridgeResult::error('permission_denied', 'visitor lacks "upload_files" capability');
         }
 
         if (empty($file) || !isset($file['tmp_name']) || !is_string($file['tmp_name']) || $file['tmp_name'] === '') {
-            return ['ok' => false, 'code' => 'invalid_params',
-                    'message' => 'expected multipart "file" field'];
+            return BridgeResult::error('invalid_params', 'expected multipart "file" field');
         }
         if (isset($file['error']) && $file['error'] !== UPLOAD_ERR_OK) {
-            return ['ok' => false, 'code' => 'invalid_params',
-                    'message' => sprintf('upload error code %d', $file['error'])];
+            return BridgeResult::error('invalid_params', sprintf('upload error code %d', $file['error']));
         }
 
         $max_bytes = (int) apply_filters('dsgo_apps_media_max_bytes', self::DEFAULT_MAX_BYTES, $manifest->id);
@@ -108,17 +123,16 @@ final class MediaBridge {
             $size = (int) filesize($file['tmp_name']);
         }
         if ($size <= 0) {
-            return ['ok' => false, 'code' => 'invalid_params', 'message' => 'uploaded file is empty'];
+            return BridgeResult::error('invalid_params', 'uploaded file is empty');
         }
         if ($size > $max_bytes) {
-            return ['ok' => false, 'code' => 'payload_too_large',
-                    'message' => sprintf('file exceeds %d bytes (got %d)', $max_bytes, $size)];
+            return BridgeResult::error('payload_too_large',
+                sprintf('file exceeds %d bytes (got %d)', $max_bytes, $size));
         }
 
         if (self::is_rate_limited($manifest->id)) {
             $cap = (int) apply_filters('dsgo_apps_media_rate_limit_per_hour', self::RATE_LIMIT_PER_HOUR, $manifest->id);
-            return ['ok' => false, 'code' => 'rate_limited',
-                    'message' => sprintf('app exceeded %d uploads/hour', $cap)];
+            return BridgeResult::error('rate_limited', sprintf('app exceeded %d uploads/hour', $cap));
         }
 
         $override_filename = isset($params['filename']) && is_string($params['filename']) && $params['filename'] !== ''
@@ -154,14 +168,14 @@ final class MediaBridge {
             // is the canonical signal for an unsupported MIME — surface as
             // invalid_params so apps can recover, not as internal_error.
             $code = stripos($msg, 'file type') !== false ? 'invalid_params' : 'internal_error';
-            return ['ok' => false, 'code' => $code, 'message' => $msg];
+            return BridgeResult::error($code, $msg);
         }
 
         $upload_path = (string) ($handled['file'] ?? '');
         $upload_url  = (string) ($handled['url']  ?? '');
         $upload_type = (string) ($handled['type'] ?? '');
         if ($upload_path === '' || $upload_url === '' || $upload_type === '') {
-            return ['ok' => false, 'code' => 'internal_error', 'message' => 'wp_handle_upload returned an incomplete result'];
+            return BridgeResult::error('internal_error', 'wp_handle_upload returned an incomplete result');
         }
 
         $title = sanitize_text_field(pathinfo($file['name'], PATHINFO_FILENAME));
@@ -185,7 +199,7 @@ final class MediaBridge {
                 wp_delete_file($upload_path);
             }
             $msg = is_wp_error($attachment_id) ? $attachment_id->get_error_message() : 'wp_insert_attachment failed';
-            return ['ok' => false, 'code' => 'internal_error', 'message' => (string) $msg];
+            return BridgeResult::error('internal_error', (string) $msg);
         }
 
         // Record provenance so admins can audit which app produced an asset
@@ -219,7 +233,7 @@ final class MediaBridge {
             'size'          => $size,
         ]);
 
-        return ['ok' => true, 'data' => [
+        return BridgeResult::ok([
             'id'        => $attachment_id,
             'url'       => $upload_url,
             'mime_type' => $upload_type,
@@ -227,7 +241,7 @@ final class MediaBridge {
             'width'     => $width,
             'height'    => $height,
             'alt_text'  => $alt_saved,
-        ]];
+        ]);
     }
 
     /**
@@ -251,13 +265,15 @@ final class MediaBridge {
     }
 
     private static function is_rate_limited(string $app_id): bool {
-        $key   = self::rate_counter_key($app_id);
-        $count = (int) get_transient($key);
-        $cap   = (int) apply_filters('dsgo_apps_media_rate_limit_per_hour', self::RATE_LIMIT_PER_HOUR, $app_id);
-        if ($count >= $cap) {
-            return true;
-        }
-        set_transient($key, $count + 1, HOUR_IN_SECONDS + 60);
-        return false;
+        $cap = (int) apply_filters('dsgo_apps_media_rate_limit_per_hour', self::RATE_LIMIT_PER_HOUR, $app_id);
+        // Shared fixed-window counter; the per-hour bucket key and the
+        // HOUR+60 TTL are media-specific and stay owned here. try_acquire
+        // returns true when the call is permitted, so "rate limited" is
+        // the negation.
+        return !Rate_Limiter::try_acquire(
+            self::rate_counter_key($app_id),
+            $cap,
+            HOUR_IN_SECONDS + 60,
+        );
     }
 }

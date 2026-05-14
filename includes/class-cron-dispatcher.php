@@ -58,18 +58,16 @@ final class CronDispatcher {
         // Step 1: confirm the app still exists. A scheduled hook can
         // survive its app being deleted if the delete handler doesn't
         // call CronScheduler::unschedule_all, so we re-check here.
-        $posts = get_posts([
-            'post_type'      => PostType::SLUG,
-            'name'           => $app_id,
-            'post_status'    => 'publish',
-            'posts_per_page' => 1,
-            'no_found_rows'  => true,
-        ]);
-        if ($posts === []) {
+        // App_Repository centralizes the published-app query shared with
+        // the webhook router / handler / async handler; the post-only
+        // variant is used here because the dispatcher tolerates a post
+        // with missing manifest meta (resolve_timeout falls back).
+        $app_post = App_Repository::find_published_post_by_app_id($app_id);
+        if ($app_post === null) {
             self::log_error($app_id, $job_id, $ability_name, $start_ms, 'cron_app_not_found', 'App not found');
             return;
         }
-        $app_post_id = $posts[0]->ID;
+        $app_post_id = $app_post->ID;
 
         // Step 2: resolve the ability. The companion plugin may not be
         // installed yet (or may have been deactivated). Check existence

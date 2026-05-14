@@ -1,34 +1,35 @@
-/* DesignSetGo Apps — admin page client.
+/* DesignSetGo Apps — admin page client: install + tabs + bootstrap module.
  *
- * Vanilla JS, no build step. Wires up the install dropzone, the installed-apps
- * list with delete + "set as site home" affordances, and the consent panel
- * that handles promote / replace / step-down flows against
- * /wp-json/dsgo/v1/apps and /wp-json/dsgo/v1/site-home.
+ * Owns the install dropzone (two-phase preview → install against
+ * /wp-json/dsgo/v1/apps), the post-install success panel, the install/HTML
+ * importer tabs, the bundled starter installer, the AI-prompt recomposer, and
+ * the page bootstrap (event wiring + the initial list refresh).
+ *
+ * This is the LAST module in the load order (core → consent → list → install)
+ * because the bootstrap wiring at the bottom must run after every other module
+ * has populated `window.DSGoAdmin`.
  */
 
 (function () {
     'use strict';
 
-    var cfg = window.DSGoAdmin || {};
-    var __ = (window.wp && window.wp.i18n && window.wp.i18n.__) || function (s) { return s; };
-    var sprintf = (window.wp && window.wp.i18n && window.wp.i18n.sprintf) || function (s) { return s; };
-
-    var root = document.querySelector('[data-dsgo-admin]');
+    var ns = window.DSGoAdmin || {};
+    var cfg = ns.cfg || {};
+    var __ = ns.__;
+    var sprintf = ns.sprintf;
+    var root = ns.root;
     if (!root) return;
 
-    var dropzone = root.querySelector('[data-dsgo-dropzone]');
-    var fileInput = root.querySelector('[data-dsgo-input]');
-    var pickButton = root.querySelector('[data-dsgo-pick]');
-    var status = root.querySelector('[data-dsgo-status]');
-    var statusFill = root.querySelector('[data-dsgo-progress]');
-    var statusText = root.querySelector('[data-dsgo-status-text]');
-    var listEl = root.querySelector('[data-dsgo-list]');
-    var listSubtitle = root.querySelector('[data-dsgo-list-subtitle]');
-    var rowTemplate = document.querySelector('[data-dsgo-row-template]');
-    var consentTemplate = document.querySelector('[data-dsgo-consent-template]');
-    var successTemplate = document.querySelector('[data-dsgo-success-template]');
-    var installPanel = root.querySelector('[data-dsgo-install-panel]');
-    var installToggle = root.querySelector('[data-dsgo-install-toggle]');
+    var dom = ns.dom || {};
+    var dropzone = dom.dropzone;
+    var fileInput = dom.fileInput;
+    var pickButton = dom.pickButton;
+    var status = dom.status;
+    var statusFill = dom.statusFill;
+    var statusText = dom.statusText;
+    var installPanel = dom.installPanel;
+    var installToggle = dom.installToggle;
+    var successTemplate = dom.successTemplate;
 
     if (installToggle && installPanel) {
         installToggle.addEventListener('click', function () {
@@ -41,436 +42,6 @@
                     if (dropzone) dropzone.focus();
                 }, 0);
             }
-        });
-    }
-
-    /** Cached list of apps from the most recent fetch. Used by the consent
-     *  copy ("step the existing home down...") to know who's currently home. */
-    var apps = [];
-    /** Currently open consent panel DOM node, or null. */
-    var openConsent = null;
-    /** Currently visible post-install success panel DOM node, or null. */
-    var openSuccess = null;
-
-    function clearChildren(node) {
-        while (node.firstChild) node.removeChild(node.firstChild);
-    }
-
-    function getCurrentHome() {
-        for (var i = 0; i < apps.length; i++) {
-            if (apps[i].is_site_home) return apps[i];
-        }
-        return null;
-    }
-
-    // ─── List rendering ─────────────────────────────────────────────────
-
-    function fetchApps() {
-        return fetch(cfg.restRoot + 'apps', {
-            headers: { 'X-WP-Nonce': cfg.nonce, Accept: 'application/json' },
-            credentials: 'same-origin',
-        }).then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        });
-    }
-
-    function applyState() {
-        var hasApps = apps.length > 0;
-        root.classList.toggle('dsgo-admin--has-apps', hasApps);
-        root.classList.toggle('dsgo-admin--empty', !hasApps);
-        // Collapse the install panel whenever we flip back to empty so the
-        // hero presentation isn't clobbered by an open-panel state.
-        if (!hasApps && installPanel) {
-            installPanel.classList.remove('is-open');
-            if (installToggle) installToggle.setAttribute('aria-expanded', 'false');
-        }
-    }
-
-    function renderList(payload) {
-        apps = Array.isArray(payload) ? payload : [];
-        closeConsent();
-        clearChildren(listEl);
-        listEl.removeAttribute('aria-busy');
-        applyState();
-        if (apps.length === 0) {
-            var empty = document.createElement('li');
-            empty.className = 'dsgo-applist__empty';
-            empty.textContent = __('No apps installed yet. Drop a bundle to begin.', 'designsetgo-apps');
-            listEl.appendChild(empty);
-            listSubtitle.textContent = __('Nothing here yet.', 'designsetgo-apps');
-            return;
-        }
-        listSubtitle.textContent = sprintf(
-            /* translators: %d: number of installed apps */
-            __('%d installed', 'designsetgo-apps'),
-            apps.length,
-        );
-        apps.forEach(function (app) {
-            listEl.appendChild(renderRow(app));
-        });
-    }
-
-    function renderRow(app) {
-        var node = rowTemplate.content.firstElementChild.cloneNode(true);
-        node.dataset.appId = app.id;
-
-        node.querySelector('.dsgo-applist__title').textContent = app.name || app.id;
-
-        if (app.is_site_home) {
-            node.classList.add('is-home');
-            node.querySelector('.dsgo-applist__home-badge').hidden = false;
-        }
-
-        var meta = node.querySelector('.dsgo-applist__meta');
-        var bits = [];
-        if (app.version) bits.push('v' + app.version);
-        if (app.isolation) bits.push(app.isolation);
-        if (Array.isArray(app.modes) && app.modes.length) bits.push(app.modes.join(' · '));
-        meta.textContent = bits.join('  ·  ');
-
-        var url = node.querySelector('.dsgo-applist__url');
-        url.href = app.url || '#';
-        url.textContent = (app.url || '').replace(/^https?:\/\//, '');
-
-        var homeBtn = node.querySelector('[data-dsgo-home]');
-        if (app.is_site_home) {
-            homeBtn.textContent = __('Step down', 'designsetgo-apps');
-            /* translators: %s: app name */
-            homeBtn.setAttribute('aria-label', sprintf(__('Step %s down from site home', 'designsetgo-apps'), app.name || app.id));
-            homeBtn.classList.add('dsgo-applist__home--demote');
-            homeBtn.addEventListener('click', function () { openStepDownConsent(app, node); });
-        } else if (app.home_eligible) {
-            homeBtn.textContent = __('Set home', 'designsetgo-apps');
-            /* translators: %s: app name */
-            homeBtn.setAttribute('aria-label', sprintf(__('Make %s your site home', 'designsetgo-apps'), app.name || app.id));
-            homeBtn.addEventListener('click', function () { openPromoteConsent(app, node); });
-        } else {
-            homeBtn.remove();
-        }
-
-        var del = node.querySelector('[data-dsgo-delete]');
-        /* translators: %s: app name */
-        del.setAttribute('aria-label', sprintf(__('Uninstall %s', 'designsetgo-apps'), app.name || app.id));
-        del.addEventListener('click', function () { confirmDelete(app); });
-
-        // Per-app Secrets link. Only renders when the manifest declares
-        // secrets[]; the apps-list REST response exposes `has_secrets` for
-        // this purpose so we don't have to fetch every manifest.
-        if (app.has_secrets) {
-            var secretsLink = document.createElement('a');
-            secretsLink.className = 'button button-secondary dsgo-applist__secrets';
-            secretsLink.textContent = __('Secrets', 'designsetgo-apps');
-            secretsLink.setAttribute('aria-label',
-                /* translators: %s: app name */
-                sprintf(__('Manage secrets for %s', 'designsetgo-apps'), app.name || app.id));
-            var url = window.location.pathname
-                + '?page=designsetgo-apps&app_id=' + encodeURIComponent(app.id)
-                + '&tab=secrets';
-            secretsLink.href = url;
-            del.parentNode.insertBefore(secretsLink, del);
-        }
-
-        // "Pro features inactive" badge. Shown when the manifest declares
-        // Pro-gated features that the current license hasn't unlocked.
-        if (Array.isArray(app.inactive_pro_features) && app.inactive_pro_features.length) {
-            var featureLabels = {
-                cron:               __('scheduled jobs', 'designsetgo-apps'),
-                webhooks:           __('webhook endpoints', 'designsetgo-apps'),
-                abilities_publish:  __('abilities publishing', 'designsetgo-apps'),
-                dynamic_routes:     __('dynamic routes', 'designsetgo-apps'),
-            };
-            var labels = app.inactive_pro_features.map(function (f) {
-                return featureLabels[f] || f;
-            });
-            var badge = document.createElement('p');
-            badge.className = 'dsgo-applist__pro-inactive';
-            var badgeText = document.createTextNode(
-                sprintf(
-                    /* translators: %s: comma-separated list of inactive Pro features */
-                    __('Pro features inactive: %s.', 'designsetgo-apps'),
-                    labels.join(', '),
-                ) + ' '
-            );
-            badge.appendChild(badgeText);
-            var upgradeLink = document.createElement('a');
-            upgradeLink.href = cfg.pricingUrl || 'https://designsetgo.dev/pricing';
-            upgradeLink.textContent = __('Activate Pro →', 'designsetgo-apps');
-            badge.appendChild(upgradeLink);
-            node.querySelector('.dsgo-applist__main').appendChild(badge);
-        }
-
-        // Extension seam: Pro (or any third-party plugin enqueued on this
-        // page) listens for this event to inject row-level actions.
-        // detail.app: the app object from /dsgo/v1/apps; detail.node: the
-        // <li>; detail.beforeDelete: the delete button (insertion anchor).
-        document.dispatchEvent(new CustomEvent('dsgo:apps:row-rendered', {
-            detail: { app: app, node: node, beforeDelete: del },
-        }));
-
-        return node;
-    }
-
-    function refresh() {
-        listEl.setAttribute('aria-busy', 'true');
-        return fetchApps()
-            .then(function (payload) {
-                renderList(payload);
-                // Extension seam: dispatched after the full list re-renders so
-                // Pro can repaint its drafts heading / supplemental rows.
-                document.dispatchEvent(new CustomEvent('dsgo:apps:list-refreshed', {
-                    detail: { apps: apps, listEl: listEl },
-                }));
-            })
-            .catch(function (err) {
-                clearChildren(listEl);
-                var msg = document.createElement('li');
-                msg.className = 'dsgo-applist__empty';
-                /* translators: %s: error message from the REST request */
-                msg.textContent = sprintf(__('Could not load apps: %s', 'designsetgo-apps'), err.message);
-                listEl.appendChild(msg);
-                listSubtitle.textContent = __('Failed to load.', 'designsetgo-apps');
-            });
-    }
-
-    // Public API: extensions can call window.DSGoAdminPage.refresh() after
-    // mutating server state (e.g. deploying a draft → installs an app).
-    window.DSGoAdminPage = { refresh: refresh };
-
-    // ─── Consent panels ─────────────────────────────────────────────────
-
-    function closeConsent() {
-        if (openConsent && openConsent.parentNode) {
-            openConsent.parentNode.removeChild(openConsent);
-        }
-        openConsent = null;
-    }
-
-    function closeSuccess() {
-        if (openSuccess && openSuccess.parentNode) {
-            openSuccess.parentNode.removeChild(openSuccess);
-        }
-        openSuccess = null;
-    }
-
-    function buildConsent(opts) {
-        var panel = consentTemplate.content.firstElementChild.cloneNode(true);
-        panel.querySelector('[data-dsgo-consent-title]').textContent = opts.title;
-        var body = panel.querySelector('[data-dsgo-consent-body]');
-        clearChildren(body);
-        opts.body.forEach(function (block) {
-            body.appendChild(block);
-        });
-        var confirm = panel.querySelector('[data-dsgo-consent-confirm]');
-        confirm.textContent = opts.confirmLabel;
-        if (opts.danger) confirm.classList.add('is-danger');
-        confirm.addEventListener('click', function () { opts.onConfirm(confirm); });
-        panel.querySelector('[data-dsgo-consent-cancel]').addEventListener('click', closeConsent);
-        return panel;
-    }
-
-    function makeParagraph(text, className) {
-        var p = document.createElement('p');
-        p.textContent = text;
-        if (className) p.className = className;
-        return p;
-    }
-
-    function makeBulletList(items, className) {
-        var ul = document.createElement('ul');
-        if (className) ul.className = className;
-        items.forEach(function (item) {
-            var li = document.createElement('li');
-            // item: { label, sub } — label is rendered as code, sub as plain text after.
-            if (item.label) {
-                var code = document.createElement('code');
-                code.textContent = item.label;
-                li.appendChild(code);
-            }
-            if (item.sub) {
-                var span = document.createElement('span');
-                span.textContent = ' ' + item.sub;
-                li.appendChild(span);
-            }
-            ul.appendChild(li);
-        });
-        return ul;
-    }
-
-    function attachConsentToRow(row, panel) {
-        closeConsent();
-        row.appendChild(panel);
-        openConsent = panel;
-        // Move focus to the heading for SR users; small delay to let the
-        // element actually appear in the layout tree.
-        window.setTimeout(function () {
-            var heading = panel.querySelector('[data-dsgo-consent-title]');
-            if (heading) heading.setAttribute('tabindex', '-1'), heading.focus();
-        }, 0);
-    }
-
-    function siteHostExample() {
-        try { return new URL(cfg.siteUrl).host; } catch (e) { return 'your-site.com'; }
-    }
-
-    function openPromoteConsent(app, row) {
-        var current = getCurrentHome();
-        var host = siteHostExample();
-        var prefixPath = '/' + cfg.urlPrefix + '/' + app.id;
-        var body = [];
-        var title;
-        var confirmLabel;
-
-        if (current && current.id !== app.id) {
-            // REPLACE flow.
-            title = sprintf(
-                /* translators: 1: new app name, 2: current home app name */
-                __('Replace your site home — %2$s → %1$s?', 'designsetgo-apps'),
-                app.name || app.id,
-                current.name || current.id,
-            );
-            confirmLabel = __('Replace', 'designsetgo-apps');
-            body.push(makeParagraph(
-                sprintf(
-                    /* translators: 1: current home app, 2: prefix path */
-                    __('"%1$s" steps down to %2$s. "%3$s" becomes the site home.', 'designsetgo-apps'),
-                    current.name || current.id,
-                    '/' + cfg.urlPrefix + '/' + current.id,
-                    app.name || app.id,
-                ),
-            ));
-        } else {
-            title = sprintf(
-                /* translators: %s: app name */
-                __('Make "%s" your site home?', 'designsetgo-apps'),
-                app.name || app.id,
-            );
-            confirmLabel = __('Set as home', 'designsetgo-apps');
-        }
-
-        body.push(makeParagraph(__('This app will own:', 'designsetgo-apps'), 'dsgo-consent__heading'));
-        var willOwn = [{ label: 'https://' + host + '/', sub: app.isolation === 'iframe'
-            ? __('renders the app at the site root', 'designsetgo-apps')
-            : __('the app\'s "/" route', 'designsetgo-apps') }];
-        if (app.isolation === 'inline') {
-            willOwn.push({
-                label: __('Any other URL WordPress would 404', 'designsetgo-apps'),
-                sub: __('the app\'s matching route, when one exists', 'designsetgo-apps'),
-            });
-        }
-        body.push(makeBulletList(willOwn, 'dsgo-consent__list'));
-
-        body.push(makeParagraph(__('Real WordPress content keeps working unchanged:', 'designsetgo-apps'), 'dsgo-consent__heading'));
-        body.push(makeBulletList([
-            { label: '/sample-page',         sub: __('your existing pages', 'designsetgo-apps') },
-            { label: '/2026/some-post',      sub: __('posts and archives', 'designsetgo-apps') },
-            { label: '/wp-admin/*',          sub: __('WordPress admin', 'designsetgo-apps') },
-        ], 'dsgo-consent__list'));
-
-        body.push(makeParagraph(
-            sprintf(
-                /* translators: %s: prefix URL like /apps/foo */
-                __('The app currently lives at %s. That URL keeps working, and any block embeds in your posts are unaffected.', 'designsetgo-apps'),
-                prefixPath,
-            ),
-            'dsgo-consent__footnote',
-        ));
-
-        if (app.isolation === 'iframe') {
-            body.push(makeParagraph(
-                __('Note: iframe-mode apps render at "/" but cannot catch 404s for other URLs.', 'designsetgo-apps'),
-                'dsgo-consent__footnote dsgo-consent__footnote--warn',
-            ));
-        }
-
-        attachConsentToRow(row, buildConsent({
-            title: title,
-            body: body,
-            confirmLabel: confirmLabel,
-            onConfirm: function (btn) { setSiteHome(app.id, btn); },
-        }));
-    }
-
-    function openStepDownConsent(app, row) {
-        var prefixPath = '/' + cfg.urlPrefix + '/' + app.id;
-        var body = [
-            makeParagraph(
-                sprintf(
-                    /* translators: 1: app name, 2: prefix path */
-                    __('"%1$s" will move back to %2$s.', 'designsetgo-apps'),
-                    app.name || app.id,
-                    prefixPath,
-                ),
-            ),
-            makeParagraph(
-                __('Your site root will return to WordPress\'s default front page (latest posts, or the static page set in Settings → Reading).', 'designsetgo-apps'),
-                'dsgo-consent__footnote',
-            ),
-        ];
-        attachConsentToRow(row, buildConsent({
-            title: sprintf(
-                /* translators: %s: app name */
-                __('Step "%s" down from site home?', 'designsetgo-apps'),
-                app.name || app.id,
-            ),
-            body: body,
-            confirmLabel: __('Step down', 'designsetgo-apps'),
-            onConfirm: function (btn) { setSiteHome(null, btn); },
-        }));
-    }
-
-    function setSiteHome(appId, btn) {
-        btn.disabled = true;
-        var prevText = btn.textContent;
-        btn.textContent = __('Working…', 'designsetgo-apps');
-        fetch(cfg.restRoot + 'site-home', {
-            method: 'POST',
-            headers: {
-                'X-WP-Nonce': cfg.nonce,
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({ app_id: appId }),
-        }).then(function (r) {
-            if (!r.ok) {
-                return r.json().catch(function () { return {}; }).then(function (body) {
-                    throw new Error(body.message || ('HTTP ' + r.status));
-                });
-            }
-            return refresh();
-        }).catch(function (err) {
-            btn.disabled = false;
-            btn.textContent = prevText;
-            /* translators: %s: error message from the REST request */
-            window.alert(sprintf(__('Could not update site home: %s', 'designsetgo-apps'), err.message));
-        });
-    }
-
-    // ─── Delete ─────────────────────────────────────────────────────────
-
-    function confirmDelete(app) {
-        var name = app.name || app.id;
-        /* translators: %s: app name */
-        var msg = app.is_site_home
-            ? sprintf(__('Uninstall "%s"? It is currently your site home — your root URL will return to WordPress\'s default front page.', 'designsetgo-apps'), name)
-            /* translators: %s: app name */
-            : sprintf(__('Uninstall "%s"? This removes the bundle and any per-user storage.', 'designsetgo-apps'), name);
-        if (!window.confirm(msg)) return;
-        fetch(cfg.restRoot + 'apps/' + encodeURIComponent(app.id), {
-            method: 'DELETE',
-            headers: { 'X-WP-Nonce': cfg.nonce, Accept: 'application/json' },
-            credentials: 'same-origin',
-        }).then(function (r) {
-            if (!r.ok) {
-                return r.json().catch(function () { return {}; }).then(function (body) {
-                    throw new Error(body.message || ('HTTP ' + r.status));
-                });
-            }
-            refresh();
-        }).catch(function (err) {
-            /* translators: %s: error message from the REST request */
-            window.alert(sprintf(__('Delete failed: %s', 'designsetgo-apps'), err.message));
         });
     }
 
@@ -494,7 +65,7 @@
         var appUrl = body && body.url ? body.url : '';
         if (!appId || !appUrl) return;
 
-        closeSuccess();
+        ns.closeSuccess();
         if (installPanel) installPanel.classList.add('is-open');
         if (installToggle) installToggle.setAttribute('aria-expanded', 'true');
         var panel = successTemplate.content.firstElementChild.cloneNode(true);
@@ -512,7 +83,7 @@
         embed.href = cfg.newPostUrl || '/wp-admin/post-new.php';
 
         var home = panel.querySelector('[data-dsgo-success-home]');
-        home.addEventListener('click', function () { setSiteHome(appId, home); });
+        home.addEventListener('click', function () { ns.setSiteHome(appId, home); });
 
         var copy = panel.querySelector('[data-dsgo-success-copy]');
         var copyDefault = copy.textContent;
@@ -534,7 +105,7 @@
         });
 
         status.parentNode.insertBefore(panel, status.nextSibling);
-        openSuccess = panel;
+        ns.openSuccess = panel;
     }
 
     var installInFlight = false;
@@ -632,7 +203,7 @@
             ? __('Update', 'designsetgo-apps')
             : __('Install', 'designsetgo-apps');
 
-        var panel = buildConsent({
+        var panel = ns.buildConsent({
             title: title,
             body: [bodyDiv],
             confirmLabel: confirmLabel,
@@ -656,7 +227,7 @@
 
         // Anchor the consent panel under the dropzone (or the install panel).
         var anchor = installPanel || dropzone.parentNode;
-        attachConsentToRow(anchor, panel);
+        ns.attachConsentToRow(anchor, panel);
     }
 
     function finalizeInstall(file, preview) {
@@ -685,7 +256,7 @@
         });
         xhr.addEventListener('load', function () {
             installInFlight = false;
-            closeConsent();
+            ns.closeConsent();
             var body = {};
             try { body = JSON.parse(xhr.responseText); } catch (e) {}
             if (xhr.status >= 200 && xhr.status < 300) {
@@ -709,7 +280,7 @@
                     'success',
                 );
                 renderSuccessActions(body, file.name);
-                refresh();
+                ns.refresh();
                 window.setTimeout(function () { setProgress(0); status.hidden = true; }, 4000);
             } else {
                 showStatus(body.message || ('HTTP ' + xhr.status), 'error');
@@ -718,7 +289,7 @@
         });
         xhr.addEventListener('error', function () {
             installInFlight = false;
-            closeConsent();
+            ns.closeConsent();
             showStatus(__('Install failed — check your connection and try again.', 'designsetgo-apps'), 'error');
             setProgress(0);
         });
@@ -985,7 +556,7 @@
                         'success',
                     );
                     renderSuccessActions(body, id);
-                    refresh();
+                    ns.refresh();
                     selectHtmlFile(null);
                     if (idInput) idInput.value = '';
                     if (nameInput) nameInput.value = '';
@@ -1033,7 +604,7 @@
                         'success',
                     );
                     renderSuccessActions(res.body, 'dsgo-starter');
-                    refresh();
+                    ns.refresh();
                     window.setTimeout(function () { setProgress(0); status.hidden = true; }, 4000);
                 } else {
                     showStatus(res.body && res.body.message ? res.body.message : ('HTTP ' + res.status), 'error');
@@ -1180,5 +751,5 @@
         });
     }
 
-    refresh();
+    ns.refresh();
 })();

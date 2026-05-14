@@ -34,28 +34,44 @@ final class AiBridge {
     }
 
     /**
+     * Run an AI prompt through the bridge and return the wire-format result.
+     *
+     * Builds a BridgeResult internally and serializes it via to_array() at
+     * the boundary — the emitted shape (`ok` + `data` on success; `ok`,
+     * `code`, `message` plus optional `reason` / `wp_error_code` on failure)
+     * is byte-identical to the inline arrays this method built before.
+     *
      * @param array{messages?:mixed,tools?:mixed,max_tokens?:mixed} $params
      * @return array{ok:bool,data?:array,code?:string,reason?:string,wp_error_code?:string,message?:string}
      */
     public static function prompt(Manifest $manifest, int $visitor_user_id, array $params): array {
+        return self::prompt_result($manifest, $visitor_user_id, $params)->to_array();
+    }
+
+    /**
+     * Internal BridgeResult-returning core of prompt(). Kept separate so the
+     * public method stays a thin to_array() boundary.
+     *
+     * @param array{messages?:mixed,tools?:mixed,max_tokens?:mixed} $params
+     */
+    private static function prompt_result(Manifest $manifest, int $visitor_user_id, array $params): BridgeResult {
         $messages = $params['messages'] ?? null;
         if (!is_array($messages)) {
-            return ['ok' => false, 'code' => 'invalid_params', 'message' => '"messages" must be an array'];
+            return BridgeResult::error('invalid_params', '"messages" must be an array');
         }
         foreach ($messages as $i => $m) {
             if (!is_array($m) || !isset($m['role'], $m['content'])
                 || !in_array($m['role'], ['user', 'assistant', 'system'], true)
                 || !is_string($m['content'])) {
-                return ['ok' => false, 'code' => 'invalid_params',
-                        'message' => sprintf('messages[%d] is malformed', $i)];
+                return BridgeResult::error('invalid_params', sprintf('messages[%d] is malformed', $i));
             }
         }
 
         $factory = self::$factory_override ?? [self::class, 'default_factory'];
         $deps = $factory($manifest);
         if (empty($deps['supports_ai'])) {
-            return ['ok' => false, 'code' => 'ai_not_configured',
-                    'message' => 'No AI provider is configured. Visit Settings → Connectors to set one up.'];
+            return BridgeResult::error('ai_not_configured',
+                'No AI provider is configured. Visit Settings → Connectors to set one up.');
         }
         $builder = $deps['builder'];
         $resolver_factory = $deps['resolver_factory'] ?? null;
@@ -63,8 +79,9 @@ final class AiBridge {
         $tools_param = $params['tools'] ?? [];
         $tool_names = self::resolve_tool_names($tools_param, $manifest);
         if ($tool_names === null) {
-            return ['ok' => false, 'code' => 'permission_denied', 'reason' => 'tool_not_in_consumes',
-                    'message' => 'one or more requested tools are not in abilities.consumes'];
+            return BridgeResult::error('permission_denied',
+                'one or more requested tools are not in abilities.consumes',
+                ['reason' => 'tool_not_in_consumes']);
         }
         if ($manifest->ai_max_tool_calls === 0) {
             $tool_names = [];
@@ -90,8 +107,9 @@ final class AiBridge {
         for ($i = 0; $i < $manifest->ai_max_tool_calls; $i++) {
             if ((microtime(true) - $start) > $manifest->ai_timeout_seconds) {
                 self::log_telemetry($manifest->id, $start, 'ai_timeout', count($tool_calls));
-                return ['ok' => false, 'code' => 'internal_error', 'reason' => 'ai_timeout',
-                        'message' => sprintf('AI call exceeded %d seconds', $manifest->ai_timeout_seconds)];
+                return BridgeResult::error('internal_error',
+                    sprintf('AI call exceeded %d seconds', $manifest->ai_timeout_seconds),
+                    ['reason' => 'ai_timeout']);
             }
             if (!$resolver || !$resolver->has_ability_calls($message)) {
                 break;
@@ -110,18 +128,19 @@ final class AiBridge {
 
         if ($resolver && $resolver->has_ability_calls($message)) {
             self::log_telemetry($manifest->id, $start, 'tool_call_cap_exceeded', count($tool_calls));
-            return ['ok' => false, 'code' => 'internal_error', 'reason' => 'tool_call_cap_exceeded',
-                    'message' => sprintf('AI exceeded %d tool calls', $manifest->ai_max_tool_calls)];
+            return BridgeResult::error('internal_error',
+                sprintf('AI exceeded %d tool calls', $manifest->ai_max_tool_calls),
+                ['reason' => 'tool_call_cap_exceeded']);
         }
 
         $text  = self::extract_text($message);
         $usage = self::extract_usage($message);
         self::log_telemetry($manifest->id, $start, 'success', count($tool_calls));
-        return ['ok' => true, 'data' => [
+        return BridgeResult::ok([
             'content'    => $text,
             'usage'      => $usage,
             'tool_calls' => $tool_calls,
-        ]];
+        ]);
     }
 
     /**
@@ -229,14 +248,14 @@ final class AiBridge {
         return ['input_tokens' => 0, 'output_tokens' => 0];
     }
 
-    private static function map_wp_error(\WP_Error $err): array {
+    private static function map_wp_error(\WP_Error $err): BridgeResult {
         $code = $err->get_error_code();
         if ($code === 'wp_ai_no_provider' || $code === 'ai_no_provider') {
-            return ['ok' => false, 'code' => 'ai_not_configured',
-                    'message' => $err->get_error_message(), 'wp_error_code' => $code];
+            return BridgeResult::error('ai_not_configured', $err->get_error_message(),
+                ['wp_error_code' => $code]);
         }
-        return ['ok' => false, 'code' => 'internal_error',
-                'message' => $err->get_error_message(), 'wp_error_code' => $code];
+        return BridgeResult::error('internal_error', $err->get_error_message(),
+            ['wp_error_code' => $code]);
     }
 
     private static function default_factory(Manifest $manifest): array {

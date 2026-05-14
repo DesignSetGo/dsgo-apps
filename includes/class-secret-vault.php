@@ -154,18 +154,6 @@ final class Secret_Vault {
     }
 
     /**
-     * Derive the secretbox key from wp_salt('auth') + AUTH_KEY. Returns a
-     * SODIUM_CRYPTO_SECRETBOX_KEYBYTES-byte (32-byte) key. The key is
-     * deterministic per-site — two sites with different wp-config.php salts
-     * produce different keys, so a DB-only theft can't decrypt elsewhere.
-     *
-     * IMPORTANT: the `. AUTH_KEY` append is deliberate belt-and-suspenders
-     * — wp_salt('auth') already mixes AUTH_KEY + AUTH_SALT internally on
-     * modern WP, but the explicit append guards against a future WP change
-     * that drops one of those salts from the wp_salt() derivation. Do NOT
-     * "simplify" this away.
-     */
-    /**
      * Public accessor for the site-wide sodium secretbox key.
      *
      * Used by the async webhook queue (Task 11 of the cron+webhooks
@@ -182,6 +170,18 @@ final class Secret_Vault {
         return self::derive_key();
     }
 
+    /**
+     * Derive the secretbox key from wp_salt('auth') + AUTH_KEY. Returns a
+     * SODIUM_CRYPTO_SECRETBOX_KEYBYTES-byte (32-byte) key. The key is
+     * deterministic per-site — two sites with different wp-config.php salts
+     * produce different keys, so a DB-only theft can't decrypt elsewhere.
+     *
+     * IMPORTANT: the `. AUTH_KEY` append is deliberate belt-and-suspenders
+     * — wp_salt('auth') already mixes AUTH_KEY + AUTH_SALT internally on
+     * modern WP, but the explicit append guards against a future WP change
+     * that drops one of those salts from the wp_salt() derivation. Do NOT
+     * "simplify" this away.
+     */
     private static function derive_key(): string {
         $material = wp_salt('auth');
         if (defined('AUTH_KEY') && is_string(AUTH_KEY)) {
