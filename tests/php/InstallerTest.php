@@ -368,14 +368,17 @@ class InstallerTest extends WP_UnitTestCase {
             ]),
             'index.html' => '<!doctype html><html><head><title>x</title></head><body>x</body></html>',
         ]);
-        $result = \DSGo_Apps\Installer::install($zip, $this->admin_id);
+        // Consent HTML is a pre-install dialog concern: preview() returns the
+        // PreviewResult that carries rendered_html. install() returns the bare
+        // InstallResult (app_id/post_id/url) and has no such property.
+        $result = \DSGo_Apps\Installer::preview($zip, $this->admin_id);
         $this->assertStringContainsString('Uses WebAssembly modules', $result->rendered_html);
         $this->assertStringContainsString('Uses Web Workers', $result->rendered_html);
     }
 
     public function test_consent_html_omits_runtime_notes_when_not_declared(): void {
         $zip    = $this->build_minimal_zip('plain-app');
-        $result = \DSGo_Apps\Installer::install($zip, $this->admin_id);
+        $result = \DSGo_Apps\Installer::preview($zip, $this->admin_id);
         $this->assertStringNotContainsString('Uses WebAssembly modules', $result->rendered_html);
         $this->assertStringNotContainsString('Uses Web Workers', $result->rendered_html);
     }
