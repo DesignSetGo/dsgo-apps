@@ -37,6 +37,7 @@ final class Plugin {
         require_once $base . 'class-manifest.php';
         require_once $base . 'class-abilities-bridge.php';
         require_once $base . 'class-abilities-publisher.php';
+        require_once $base . 'class-dsgo-abilities.php';
         require_once $base . 'class-commerce-bridge.php';
         require_once $base . 'class-admin-publisher-loader.php';
         require_once $base . 'class-ai-bridge.php';
@@ -105,6 +106,8 @@ final class Plugin {
         add_action('init', [AdminPublisherLoader::class, 'register'], 9);
         Privacy::register();
         add_action('rest_api_init', [RestApi::class, 'register']);
+        // MCP Adapter publishes plugin-scoped abilities registered here.
+        add_action('wp_abilities_api_init', [DSGoAbilities::class, 'register']);
         add_action('rest_api_init', [BlockStyles::class, 'register']);
         // Webhook endpoint routes — Pro-gated inside the router. One
         // POST route per manifest-declared webhooks.endpoints[] entry.

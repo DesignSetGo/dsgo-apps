@@ -17,6 +17,7 @@
  *   - webhooks:           manifest webhooks.endpoints registration
  *   - dynamic_routes:     manifest routes[].dataset.source resolution
  *   - abilities_publish:  manifest abilities.publishes + dsgo.abilities.implement
+ *   - riff:               in-admin AI app generator + MCP generate/install path
  *
  * @package DSGo_Apps
  */
@@ -30,7 +31,7 @@ defined('ABSPATH') || exit;
 final class ProFeatureGate {
 
     /**
-     * @param string $feature One of: cli_deploy, cron, webhooks, dynamic_routes, abilities_publish
+     * @param string $feature One of: cli_deploy, cron, webhooks, dynamic_routes, abilities_publish, riff
      */
     public static function is_enabled(string $feature): bool {
         return (bool) apply_filters('dsgo_apps_pro_feature_enabled', false, $feature);
