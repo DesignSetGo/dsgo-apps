@@ -39,6 +39,11 @@ final class Bundle {
         'woff','woff2','ttf','otf',
         // Documents / web manifests / misc text
         'pdf','webmanifest','txt','md','map',
+        // WebAssembly — .wasm (binary module), .wat (text format),
+        // .data (Emscripten/Pyodide virtual-filesystem snapshots). Same
+        // threat model as JS already permitted by the sandbox; .so/.dll/
+        // .dylib/.elf native binaries stay rejected (no browser path).
+        'wasm','wat','data',
     ];
     public const MAX_FILE_COUNT = 500;
 

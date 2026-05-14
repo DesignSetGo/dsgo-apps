@@ -61,15 +61,15 @@
     "storage.app.get": {
         "signature": "dsgo.storage.app.get(key: string): Promise<unknown>",
         "description": "Per-app storage shared by all users — use for app-wide settings. No manifest permission required. Values are JSON-serialized; the bridge rejects non-serializable values.",
-        "errors": ["invalid_params", "storage_quota_exceeded"],
+        "errors": ["invalid_params"],
         "examples": [
             "const settings = await dsgo.storage.app.get('settings');"
         ]
     },
     "storage.app.set": {
         "signature": "dsgo.storage.app.set(key: string, value: unknown): Promise<void>",
-        "description": "Set per-app storage. Total quota: 64KB per app across all keys.",
-        "errors": ["invalid_params", "storage_quota_exceeded"],
+        "description": "Set per-app storage. Total quota: 256 KB per app per site, across all keys. Set a key to null to clear it (the key still occupies a slot — there is no delete in v1).",
+        "errors": ["invalid_params", "payload_too_large"],
         "examples": [
             "await dsgo.storage.app.set('settings', { theme: 'dark' });"
         ]
@@ -77,15 +77,15 @@
     "storage.user.get": {
         "signature": "dsgo.storage.user.get(key: string): Promise<unknown>",
         "description": "Per-user, per-app storage. Each user has their own values; use for in-app preferences. Returns null when no session is present.",
-        "errors": ["invalid_params", "storage_quota_exceeded"],
+        "errors": ["invalid_params"],
         "examples": [
             "const layout = await dsgo.storage.user.get('layout');"
         ]
     },
     "storage.user.set": {
         "signature": "dsgo.storage.user.set(key: string, value: unknown): Promise<void>",
-        "description": "Set per-user storage. Quota: 16KB per (user, app) pair. Requires a logged-in session.",
-        "errors": ["invalid_params", "not_authenticated", "storage_quota_exceeded"],
+        "description": "Set per-user storage. Quota: 256 KB per (app, user) pair. Requires a logged-in session. Set a key to null to clear it (no delete in v1).",
+        "errors": ["invalid_params", "not_authenticated", "payload_too_large"],
         "examples": [
             "await dsgo.storage.user.set('layout', 'compact');"
         ]
@@ -97,6 +97,14 @@
         "examples": [
             "const r = await dsgo.bridge.ping();",
             "console.log('bridge', r.bridge_version, 'at', r.server_time);"
+        ]
+    },
+    "bridge.requestResize": {
+        "signature": "dsgo.bridge.requestResize(height: number): void",
+        "description": "Fire-and-forget request that the host resize the app's iframe to `height` pixels. No response is returned. Honored only when the app runs in block mode with blockProps.autoResize === true; ignored in every other context. Height is clamped to [100, 2000] and rounded; non-finite values are dropped. Additive on bridge_version 1.",
+        "errors": [],
+        "examples": [
+            "dsgo.bridge.requestResize(document.body.scrollHeight);"
         ]
     },
     "abilities.list": {
@@ -116,6 +124,14 @@
             "const score = await dsgo.abilities.invoke('yoast/analyze-page-seo', { post_id: 42 });"
         ]
     },
+    "abilities.implement": {
+        "signature": "dsgo.abilities.implement<I = unknown, O = unknown>(name: string, handler: (input: I) => Promise<O> | O): void",
+        "description": "Pro-only. Registers a handler for an ability the app declares in manifest abilities.publishes, making the app callable by the site's AI agent and other plugins. Free sites do not load the publisher-side bridge runtime, so this method is unreachable there. Calling implement twice with the same name replaces the handler; handler errors surface to the caller as ability_handler_error. After the first call, the bridge emits dsgo:abilities:ready to the parent.",
+        "errors": ["ability_handler_error"],
+        "examples": [
+            "dsgo.abilities.implement('my-app/greet', async ({ name }) => ({ message: `Hello, ${name}` }));"
+        ]
+    },
     "ai.prompt": {
         "signature": "dsgo.ai.prompt(params: { messages: Array<{role: 'user'|'assistant'|'system', content: string}>; max_tokens?: number; tools?: 'auto'|string[] }): Promise<AiPromptResult>",
         "description": "Single-shot AI completion via the site's WP 7.0 Connector. Synchronous (no streaming). When tools is set, the model can call abilities the app declares in abilities.consumes — result.tool_calls echoes each invocation with its result.",
@@ -127,8 +143,8 @@
     },
     "email.send": {
         "signature": "dsgo.email.send(params: { to: 'admin'|'current_user'; subject: string; body: string; isHtml?: boolean; replyTo?: string }): Promise<{ sent: true }>",
-        "description": "Send transactional email through wp_mail(). The current stub only accepts symbolic recipients ('admin' → site admin email, 'current_user' → logged-in user's email) — arbitrary addresses ship with 2026-05-09-email-design.md. body is plain by default; pass isHtml: true for HTML (sanitized via wp_kses_post). Per-app daily cap enforced server-side.",
-        "errors": ["permission_denied", "not_authenticated", "email_recipient_invalid", "email_rate_limited", "email_send_failed"],
+        "description": "Send transactional email through wp_mail(). Recipients are symbolic only: 'admin' resolves to the site admin email, 'current_user' to the logged-in user's email — the app cannot pass an arbitrary address (arbitrary recipients are reserved for v2). The `to` value must also be listed in the manifest's email.recipients. body is plain by default (all tags stripped); pass isHtml: true for HTML (sanitized via wp_kses_post). subject 1–200 chars; body ≤ 64 KB. Per-app rate limit: 100 sends/hour/app/site.",
+        "errors": ["permission_denied", "not_authenticated", "invalid_params", "rate_limited", "internal_error"],
         "examples": [
             "await dsgo.email.send({ to: 'admin', subject: 'Order #42 confirmed', body: 'Thanks!' });"
         ]
@@ -149,6 +165,15 @@
         "errors": ["invalid_params"],
         "examples": [
             "await dsgo.router.navigate('/about');"
+        ]
+    },
+    "router.subscribe": {
+        "signature": "dsgo.router.subscribe(handler: (loc: { path: string; search: string; hash: string; state: unknown }) => void): () => void",
+        "description": "Register a handler that fires after every navigation — both programmatic (dsgo.router.navigate) and browser-driven (back/forward, address-bar edit). Returns an unsubscribe function. Multiple subscribers fire in registration order. The handler is NOT invoked synchronously at subscribe time: read dsgo.context.path/search/hash once after `await dsgo.ready` for the initial state, then subscribe for changes. Additive on bridge_version 1.",
+        "errors": [],
+        "examples": [
+            "const off = dsgo.router.subscribe((loc) => render(loc.path));",
+            "// later: off();"
         ]
     },
     "commerce.products.list": {

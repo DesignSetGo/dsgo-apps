@@ -623,13 +623,20 @@ final class Installer {
         // into the bundle's index.html), and browsers ignore frame-ancestors
         // when delivered via meta. The outer iframe-loader response handles
         // cross-origin framing protection at the HTTP-header level.
+        // `'wasm-unsafe-eval'` permits WebAssembly.compile / instantiate
+        // without enabling generic JS `eval()` — narrower than
+        // `'unsafe-eval'`, which is deliberately NOT added. `worker-src
+        // 'self'` lets bundles spawn Web Workers from their own assets;
+        // without it browsers fall back to `script-src`, which is
+        // inconsistent across implementations.
         return implode('; ', [
             "default-src 'none'",
-            "script-src $assets_url $bundle_url 'unsafe-inline'",
+            "script-src $assets_url $bundle_url 'unsafe-inline' 'wasm-unsafe-eval'",
             "style-src $bundle_url 'unsafe-inline'" . $block_origin,
             "img-src $bundle_url data: blob:" . $img_src_extra . $block_origin . $block_img_extra,
             "font-src $bundle_url" . $block_origin,
             "connect-src $connect_src",
+            "worker-src $bundle_url",
             "frame-src $frame_src",
         ]);
     }

@@ -68,4 +68,20 @@ defined('ABSPATH') || exit;
         // Passive storage footer (always shown — storage has no bucket).
         esc_html_e('This app uses per-app and per-user storage to persist state.', 'designsetgo-apps');
     ?></p>
+    <?php
+    // Informational runtime-capability notes. WASM and Web Workers are
+    // client-side compute with the same threat model as the JS the sandbox
+    // already runs, so they are NOT permission buckets — but the admin should
+    // still see that binary / background code is present.
+    if ($ctx['manifest']->raw_field('runtime.uses_wasm') === true) {
+        ?>
+        <p class="dsgo-install-dialog__runtime-note"><?php esc_html_e('Uses WebAssembly modules.', 'designsetgo-apps'); ?></p>
+        <?php
+    }
+    if ($ctx['manifest']->raw_field('runtime.uses_workers') === true) {
+        ?>
+        <p class="dsgo-install-dialog__runtime-note"><?php esc_html_e('Uses Web Workers for background processing.', 'designsetgo-apps'); ?></p>
+        <?php
+    }
+    ?>
 </div>

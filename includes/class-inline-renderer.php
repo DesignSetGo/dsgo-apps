@@ -153,6 +153,12 @@ final class InlineRenderer {
             'txt'  => 'text/plain; charset=utf-8',
             'md'   => 'text/markdown; charset=utf-8',
             'map'  => 'application/json',
+            // WebAssembly: browsers enforce `application/wasm` for
+            // streaming compilation. `.wat` is the human-readable text
+            // format (served as plain text); `.data` filesystem snapshots
+            // fall through to the octet-stream default, which is correct.
+            'wasm' => 'application/wasm',
+            'wat'  => 'text/plain; charset=utf-8',
         ];
         if (isset($map[$ext])) {
             return $map[$ext];

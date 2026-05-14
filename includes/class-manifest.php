@@ -340,6 +340,8 @@ final readonly class Manifest {
 
         $embeds = self::validate_embeds($raw);
 
+        self::validate_runtime_signals($raw);
+
         [$description, $author] = self::validate_metadata($raw);
 
         // Scheduled jobs + webhook endpoints — both surfaces cross-reference
@@ -1164,6 +1166,29 @@ final readonly class Manifest {
             $embeds = $raw['runtime']['embeds'];
         }
         return $embeds;
+    }
+
+    /**
+     * Validate the informational worker / WASM signals on `runtime`. These
+     * are optional booleans that gate nothing at runtime — they only surface
+     * a metadata line in the install dialog — but a malformed value is caught
+     * here rather than silently ignored. Service Workers are deferred from v1
+     * (see 2026-05-09-workers-design.md): the field is rejected outright so
+     * apps don't ship a manifest declaration that does nothing. Throws on a
+     * bad value; returns nothing.
+     */
+    private static function validate_runtime_signals(array $raw): void {
+        foreach (['uses_wasm', 'uses_workers'] as $bool_key) {
+            if (array_key_exists($bool_key, $raw['runtime']) && !is_bool($raw['runtime'][$bool_key])) {
+                throw new ManifestError("runtime.$bool_key", 'must be a boolean when provided');
+            }
+        }
+        if (array_key_exists('uses_service_worker', $raw['runtime']) && $raw['runtime']['uses_service_worker'] !== false) {
+            throw new ManifestError(
+                'runtime.uses_service_worker',
+                'Service Worker support is deferred from v1; use Web Workers + IndexedDB instead (sw_deferred_from_v1)'
+            );
+        }
     }
 
     /**
@@ -2145,6 +2170,16 @@ final readonly class Manifest {
         }
         if ($this->embeds !== []) {
             $out['runtime']['embeds'] = $this->embeds;
+        }
+        // Informational worker/WASM signals. Emitted only when true so the
+        // stored shape stays stable for the common case. Read from $raw —
+        // these are validate()-checked passthrough booleans without typed
+        // accessors (see the $raw property docblock and raw_field()).
+        if ($this->raw_field('runtime.uses_wasm') === true) {
+            $out['runtime']['uses_wasm'] = true;
+        }
+        if ($this->raw_field('runtime.uses_workers') === true) {
+            $out['runtime']['uses_workers'] = true;
         }
         $out['mount'] = ['mode' => $this->mount_mode->value];
         if ($this->abilities_consumes !== []) {

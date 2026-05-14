@@ -26,7 +26,12 @@ final class CSPBuilder {
      *                                 populate `frame-src`.
      */
     public static function build(array $csp, string $nonce, array $embed_origins = []): string {
-        $script_src = self::format_sources($csp['script_src']) . " 'nonce-" . $nonce . "'";
+        // `'wasm-unsafe-eval'` is appended unconditionally so WebAssembly
+        // works without every author declaring it. It permits
+        // WebAssembly.compile / instantiate only — NOT generic JS `eval()`
+        // (that would be `'unsafe-eval'`, deliberately never added). WASM
+        // has the same threat model as the JS already allowed here.
+        $script_src = self::format_sources($csp['script_src']) . " 'nonce-" . $nonce . "' 'wasm-unsafe-eval'";
         // Style: `'unsafe-inline'` covers both `<style>` blocks and `style=`
         // attributes. Per CSP3, listing both `'nonce-...'` and `'unsafe-inline'`
         // makes the browser ignore the `'unsafe-inline'`, so the nonce is
@@ -50,6 +55,11 @@ final class CSPBuilder {
             "connect-src $connect_src",
             "font-src $font_src",
             "media-src 'self'",
+            // `worker-src 'self'` lets inline-mode bundles spawn Web Workers
+            // from their own (same-origin) assets. Without it, browsers fall
+            // back to `script-src`, whose nonce requirement is inconsistently
+            // applied to Worker constructors across implementations.
+            "worker-src 'self'",
             $embed_origins !== []
                 ? "frame-src " . self::format_sources($embed_origins)
                 : "frame-src 'none'",

@@ -17,6 +17,10 @@ class CSPBuilderTest extends WP_UnitTestCase {
         ];
         $header = CSPBuilder::build($csp, 'NONCE123');
         $this->assertStringContainsString("script-src 'self' 'nonce-NONCE123'", $header);
+        // 'wasm-unsafe-eval' is appended unconditionally so WebAssembly
+        // works without per-author opt-in. It is the narrow WASM token,
+        // NOT the generic 'unsafe-eval'.
+        $this->assertStringContainsString("'wasm-unsafe-eval'", $header);
         // style-src uses 'unsafe-inline' (covers both <style> blocks and style=
         // attribute) instead of a nonce. Per CSP3 the two are mutually
         // exclusive; framework apps need the attribute path to work.
@@ -24,6 +28,8 @@ class CSPBuilderTest extends WP_UnitTestCase {
         $this->assertStringNotContainsString("'nonce-NONCE123'", explode("style-src", $header)[1] ?? '');
         $this->assertStringContainsString("img-src 'self'", $header);
         $this->assertStringContainsString("connect-src 'self'", $header);
+        // worker-src lets bundles spawn Web Workers from their own assets.
+        $this->assertStringContainsString("worker-src 'self'", $header);
         $this->assertStringContainsString("default-src 'none'", $header);
         $this->assertStringContainsString("base-uri 'none'", $header);
         $this->assertStringContainsString("frame-ancestors 'self'", $header);
@@ -114,7 +120,9 @@ class CSPBuilderTest extends WP_UnitTestCase {
         // Script execution is the high-leverage attack surface; the dangerous
         // CSP keywords MUST stay out of script-src. Style-src is permitted to
         // relax (covers the `style="..."` attribute frameworks emit for
-        // animation timing) — CSS does not reach JS.
+        // animation timing) — CSS does not reach JS. The one exception is
+        // 'wasm-unsafe-eval': it permits WebAssembly compile/instantiate ONLY,
+        // not generic JS eval(), so it is allowed and asserted for elsewhere.
         $csp = [
             'script_src' => ['self'],
             'style_src' => ['self'],
@@ -125,7 +133,10 @@ class CSPBuilderTest extends WP_UnitTestCase {
         $script_section = explode(';', $header)[1] ?? ''; // "script-src ..."
         $this->assertStringContainsString('script-src', $script_section);
         $this->assertStringNotContainsString('unsafe-inline', $script_section);
-        $unsafe_eval_kw = 'unsafe-' . 'eval';
-        $this->assertStringNotContainsString($unsafe_eval_kw, $script_section);
+        // The generic eval grant is the quoted token "'unsafe-eval'". The
+        // narrow "'wasm-unsafe-eval'" token contains the substring but is a
+        // distinct, safe keyword — match the quoted form to tell them apart.
+        $generic_eval_kw = "'unsafe-" . "eval'";
+        $this->assertStringNotContainsString($generic_eval_kw, $script_section);
     }
 }

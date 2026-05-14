@@ -345,6 +345,41 @@ class InstallerTest extends WP_UnitTestCase {
         $this->assertIsString($result->rendered_html);
     }
 
+    public function test_consent_html_surfaces_runtime_capability_notes(): void {
+        // runtime.uses_wasm / uses_workers are not permission buckets, but the
+        // install dialog must still surface them as informational notes so the
+        // admin knows binary / background code is present.
+        $zip = $this->build_zip([
+            'dsgo-app.json' => json_encode([
+                'manifest_version' => 1,
+                'id'               => 'wasm-app',
+                'name'             => 'WASM App',
+                'version'          => '0.1.0',
+                'entry'            => 'index.html',
+                'isolation'        => 'iframe',
+                'display'          => ['modes' => ['page'], 'default' => 'page'],
+                'permissions'      => ['read' => [], 'write' => []],
+                'runtime'          => [
+                    'sandbox'      => 'strict',
+                    'external_origins' => [],
+                    'uses_wasm'    => true,
+                    'uses_workers' => true,
+                ],
+            ]),
+            'index.html' => '<!doctype html><html><head><title>x</title></head><body>x</body></html>',
+        ]);
+        $result = \DSGo_Apps\Installer::install($zip, $this->admin_id);
+        $this->assertStringContainsString('Uses WebAssembly modules', $result->rendered_html);
+        $this->assertStringContainsString('Uses Web Workers', $result->rendered_html);
+    }
+
+    public function test_consent_html_omits_runtime_notes_when_not_declared(): void {
+        $zip    = $this->build_minimal_zip('plain-app');
+        $result = \DSGo_Apps\Installer::install($zip, $this->admin_id);
+        $this->assertStringNotContainsString('Uses WebAssembly modules', $result->rendered_html);
+        $this->assertStringNotContainsString('Uses Web Workers', $result->rendered_html);
+    }
+
     public function test_preview_detects_is_update_when_app_already_installed(): void {
         // First install — write meta as install would.
         $zip1 = $this->build_minimal_zip('my-app');

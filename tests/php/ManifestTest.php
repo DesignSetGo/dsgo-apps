@@ -632,6 +632,45 @@ class ManifestTest extends WP_UnitTestCase {
         $this->assertSame('always', $stored['routes'][1]['claim']);
     }
 
+    public function test_runtime_uses_wasm_round_trips_through_to_array(): void {
+        // uses_wasm / uses_workers are informational passthrough booleans:
+        // validated for type, surfaced in the install dialog, and read via
+        // raw_field(). to_array() must emit them so they survive into stored
+        // post meta and back through from_array_unchecked().
+        $m = Manifest::validate($this->inline_raw_with([
+            'runtime' => ['uses_wasm' => true, 'uses_workers' => true],
+        ]));
+        $stored = $m->to_array();
+        $this->assertTrue($stored['runtime']['uses_wasm']);
+        $this->assertTrue($stored['runtime']['uses_workers']);
+
+        $rehydrated = Manifest::from_array_unchecked($stored);
+        $this->assertTrue($rehydrated->raw_field('runtime.uses_wasm'));
+        $this->assertTrue($rehydrated->raw_field('runtime.uses_workers'));
+    }
+
+    public function test_to_array_omits_runtime_signals_when_absent(): void {
+        // Stored shape stays stable for the common case — neither key is
+        // emitted when the manifest doesn't declare it.
+        $stored = Manifest::validate($this->inline_raw_with([]))->to_array();
+        $this->assertArrayNotHasKey('uses_wasm', $stored['runtime']);
+        $this->assertArrayNotHasKey('uses_workers', $stored['runtime']);
+    }
+
+    public function test_validate_rejects_non_boolean_uses_wasm(): void {
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessage('runtime.uses_wasm');
+        Manifest::validate($this->inline_raw_with(['runtime' => ['uses_wasm' => 'yes']]));
+    }
+
+    public function test_validate_rejects_uses_service_worker(): void {
+        // Service Workers are deferred from v1; declaring the field is a hard
+        // rejection so apps don't ship a manifest declaration that does nothing.
+        $this->expectException(ManifestError::class);
+        $this->expectExceptionMessage('runtime.uses_service_worker');
+        Manifest::validate($this->inline_raw_with(['runtime' => ['uses_service_worker' => true]]));
+    }
+
     public function test_validate_mount_rejects_unknown_mode(): void {
         $this->expectException(ManifestError::class);
         $this->expectExceptionMessage('mount.mode');

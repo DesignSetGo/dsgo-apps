@@ -87,6 +87,18 @@ final class AbilitiesPublisher {
         $new_owned    = [];
         $new_inactive = [];
 
+        // Resolve every entry's registration args up front. registration_args()
+        // throws ManifestError when an execute_php method is declared on a
+        // loadable class but doesn't exist. Resolving the whole batch before
+        // any wp_register_ability (or category) side effect means a bad entry
+        // aborts with zero partial registration — no orphaned ability names,
+        // no owned-names option left inconsistent with what was registered.
+        $resolved = [];
+        foreach ($manifest->abilities_publishes as $entry) {
+            [$args, $is_inactive] = self::registration_args($entry);
+            $resolved[] = [$entry['name'], $args, $is_inactive];
+        }
+
         // Registration must happen inside the WP Abilities API action
         // contexts that wp_register_ability* require; Abilities_Context::run
         // handles the $wp_current_filter push/try/finally/pop.
@@ -107,36 +119,25 @@ final class AbilitiesPublisher {
             });
         }
 
-        // TODO: partial-registration leak. If a later entry throws
-        // ManifestError('execute_php_method_not_found'), earlier entries
-        // in this loop have already been registered via
-        // wp_register_ability but the owned-option write below is
-        // skipped — so the next install with the bad entry removed
-        // will think those names are unowned. Same-name retries
-        // self-heal via the wp_has_ability re-register guard, but a
-        // renamed-and-removed sequence would orphan the original name.
-        // The right fix is to call registration_args() for every entry
-        // FIRST (catching ManifestError), then commit the registrations
-        // only if all entries resolved. Deferring because the failure
-        // mode is narrow (method_not_found is an author bug surfaced
-        // before any user-facing version of the manifest) and the
-        // self-heal covers the common case.
-        Abilities_Context::run('wp_abilities_api_init', static function () use ($manifest, $previously_owned, &$new_owned, &$new_inactive): void {
-            $current_names = array_map(static fn (array $a): string => $a['name'], $manifest->abilities_publishes);
+        // Every entry is already resolved (see above), so this loop performs
+        // only side effects — each wp_register_ability call is guaranteed to
+        // run, which keeps the owned-names option below consistent with what
+        // was actually registered.
+        Abilities_Context::run('wp_abilities_api_init', static function () use ($resolved, $previously_owned, &$new_owned, &$new_inactive): void {
+            $current_names = array_map(static fn (array $r): string => $r[0], $resolved);
             foreach ($previously_owned as $old_name) {
                 if (!in_array($old_name, $current_names, true) && function_exists('wp_unregister_ability')) {
                     wp_unregister_ability($old_name);
                 }
             }
-            foreach ($manifest->abilities_publishes as $entry) {
-                if (function_exists('wp_has_ability') && wp_has_ability($entry['name']) && function_exists('wp_unregister_ability')) {
-                    wp_unregister_ability($entry['name']);
+            foreach ($resolved as [$name, $args, $is_inactive]) {
+                if (function_exists('wp_has_ability') && wp_has_ability($name) && function_exists('wp_unregister_ability')) {
+                    wp_unregister_ability($name);
                 }
-                [$args, $is_inactive] = self::registration_args($entry);
-                wp_register_ability($entry['name'], $args);
-                $new_owned[] = $entry['name'];
+                wp_register_ability($name, $args);
+                $new_owned[] = $name;
                 if ($is_inactive) {
-                    $new_inactive[] = $entry['name'];
+                    $new_inactive[] = $name;
                 }
             }
         });
