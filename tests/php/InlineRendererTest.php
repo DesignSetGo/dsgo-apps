@@ -137,6 +137,19 @@ class InlineRendererTest extends WP_UnitTestCase {
         $this->assertSame('application/octet-stream', InlineRenderer::mime_type('weird.xyz'));
     }
 
+    public function test_mime_type_maps_markdown(): void {
+        $this->assertSame('text/markdown; charset=utf-8', InlineRenderer::mime_type('how-it-works/index.md'));
+    }
+
+    public function test_mime_type_maps_well_known_api_catalog(): void {
+        $this->assertSame('application/linkset+json', InlineRenderer::mime_type('.well-known/api-catalog'));
+        $this->assertSame('application/linkset+json', InlineRenderer::mime_type('/abs/bundle/.well-known/api-catalog'));
+    }
+
+    public function test_mime_type_extensionless_non_catalog_is_octet_stream(): void {
+        $this->assertSame('application/octet-stream', InlineRenderer::mime_type('LICENSE'));
+    }
+
     public function test_render_emits_full_html_for_wrap_none(): void {
         $bundle_dir = sys_get_temp_dir() . '/dsgo-render-' . uniqid();
         mkdir($bundle_dir, 0755, true);
@@ -665,6 +678,87 @@ class InlineRendererTest extends WP_UnitTestCase {
         $result = InlineRenderer::render_dynamic_route($bundle_dir, $manifest, $route, ['slug' => 'hello-post'], $context, 'N');
         $this->assertNotNull($result, 'dynamic route must render when dynamic_routes gate is open');
         $this->assertStringContainsString('hello-post', $result);
+    }
+
+    // --- prefers_markdown / markdown_sibling (added 2026-05-14) ---
+
+    public function test_prefers_markdown_true_for_explicit_markdown_accept(): void {
+        $this->assertTrue(InlineRenderer::prefers_markdown('text/markdown'));
+        $this->assertTrue(InlineRenderer::prefers_markdown('text/markdown, text/html;q=0.9'));
+        $this->assertTrue(InlineRenderer::prefers_markdown('text/html;q=0.5, text/markdown;q=0.8'));
+    }
+
+    public function test_prefers_markdown_false_for_browser_accept(): void {
+        // Real Chrome Accept header — no text/markdown at all.
+        $this->assertFalse(InlineRenderer::prefers_markdown(
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
+        ));
+    }
+
+    public function test_prefers_markdown_false_when_html_outranks(): void {
+        $this->assertFalse(InlineRenderer::prefers_markdown('text/markdown;q=0.3, text/html;q=0.9'));
+    }
+
+    public function test_prefers_markdown_false_for_empty_or_wildcard(): void {
+        $this->assertFalse(InlineRenderer::prefers_markdown(''));
+        $this->assertFalse(InlineRenderer::prefers_markdown('*/*'));
+        $this->assertFalse(InlineRenderer::prefers_markdown('text/*'));
+    }
+
+    public function test_markdown_sibling_swaps_html_extension(): void {
+        $this->assertSame('index.md', InlineRenderer::markdown_sibling('index.html'));
+        $this->assertSame('how-it-works/index.md', InlineRenderer::markdown_sibling('how-it-works/index.html'));
+        $this->assertSame('page.md', InlineRenderer::markdown_sibling('page.htm'));
+    }
+
+    public function test_markdown_sibling_null_for_non_html_file(): void {
+        $this->assertNull(InlineRenderer::markdown_sibling('data.json'));
+        $this->assertNull(InlineRenderer::markdown_sibling('index'));
+    }
+
+    // --- api_catalog_link_header (added 2026-05-14) ---
+
+    public function test_api_catalog_link_header_emitted_for_root_mount_with_file(): void {
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-link-' . uniqid();
+        mkdir($bundle_dir . '/.well-known', 0755, true);
+        file_put_contents($bundle_dir . '/index.html', '<!doctype html><body>x</body>');
+        file_put_contents($bundle_dir . '/.well-known/api-catalog', '{"linkset":[]}');
+        \DSGo_Apps\Bundle::write_asset_index($bundle_dir);
+
+        $arr = $this->minimal_inline_manifest();
+        $arr['mount'] = ['mode' => 'root'];
+        $manifest = Manifest::validate($arr);
+
+        $this->assertSame(
+            '</.well-known/api-catalog>; rel="api-catalog"',
+            InlineRenderer::api_catalog_link_header($manifest, $bundle_dir)
+        );
+    }
+
+    public function test_api_catalog_link_header_null_when_file_absent(): void {
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-link-' . uniqid();
+        mkdir($bundle_dir, 0755, true);
+        file_put_contents($bundle_dir . '/index.html', '<!doctype html><body>x</body>');
+        \DSGo_Apps\Bundle::write_asset_index($bundle_dir);
+
+        $arr = $this->minimal_inline_manifest();
+        $arr['mount'] = ['mode' => 'root'];
+        $manifest = Manifest::validate($arr);
+
+        $this->assertNull(InlineRenderer::api_catalog_link_header($manifest, $bundle_dir));
+    }
+
+    public function test_api_catalog_link_header_null_for_prefixed_mount(): void {
+        $bundle_dir = sys_get_temp_dir() . '/dsgo-link-' . uniqid();
+        mkdir($bundle_dir . '/.well-known', 0755, true);
+        file_put_contents($bundle_dir . '/index.html', '<!doctype html><body>x</body>');
+        file_put_contents($bundle_dir . '/.well-known/api-catalog', '{"linkset":[]}');
+        \DSGo_Apps\Bundle::write_asset_index($bundle_dir);
+
+        // minimal_inline_manifest() has no mount override -> prefixed mount.
+        $manifest = Manifest::validate($this->minimal_inline_manifest());
+
+        $this->assertNull(InlineRenderer::api_catalog_link_header($manifest, $bundle_dir));
     }
 
     private function publishing_inline_manifest(): array {

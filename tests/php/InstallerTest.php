@@ -22,7 +22,7 @@ class InstallerTest extends WP_UnitTestCase {
             'marketing-site', 'first-root', 'second-root', 'updatable-root',
             'concurrent-test', 'stale-lock-test', 'lock-release-test',
             'vault-recon', 'vault-stable', 'vault-first', 'vault-deleted',
-            'publish-app',
+            'publish-app', 'well-known-app',
         ] as $id) {
             \DSGo_Apps\Bundle::recursive_delete($uploads_base . $id);
             // Also remove any stash dirs (e.g. rollback-test.previous-XXXXXX).
@@ -670,6 +670,94 @@ class InstallerTest extends WP_UnitTestCase {
         $this->assertNotNull(get_page_by_path('my-app', OBJECT, PostType::SLUG));
         Installer::install($this->build_minimal_zip('csp-test'), $this->admin_id);
         $this->assertNotNull(get_page_by_path('csp-test', OBJECT, PostType::SLUG));
+    }
+
+    // --- .well-known/ extension-gate exemption ---
+
+    public function test_install_accepts_extensionless_well_known_file(): void {
+        $tmp = tempnam(sys_get_temp_dir(), 'dsgo-zip-');
+        $zip = new ZipArchive();
+        $zip->open($tmp, ZipArchive::OVERWRITE);
+        $zip->addFromString('dsgo-app.json', json_encode([
+            'manifest_version' => 1,
+            'id'               => 'well-known-app',
+            'name'             => 'WK App',
+            'version'          => '0.1.0',
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'permissions'      => ['read' => [], 'write' => []],
+            'runtime'          => ['sandbox' => 'strict', 'external_origins' => []],
+        ]));
+        $zip->addFromString('index.html', '<!doctype html><html><head><title>x</title></head><body>x</body></html>');
+        $zip->addFromString('.well-known/api-catalog', '{"linkset":[]}');
+        $zip->addFromString('.well-known/agent-skills/index.json', '{"skills":[]}');
+        $zip->addFromString('.well-known/agent-skills/build-a-dsgo-app/SKILL.md', "---\nname: build-a-dsgo-app\n---\n");
+        $zip->close();
+
+        $result = Installer::install($tmp, $this->admin_id);
+        $this->assertSame('well-known-app', $result->app_id);
+
+        $bundle_dir = wp_upload_dir()['basedir'] . '/designsetgo-apps/well-known-app';
+        $this->assertFileExists($bundle_dir . '/.well-known/api-catalog');
+        $this->assertFileExists($bundle_dir . '/.well-known/agent-skills/index.json');
+        $this->assertFileExists($bundle_dir . '/.well-known/agent-skills/build-a-dsgo-app/SKILL.md');
+    }
+
+    public function test_install_still_rejects_forbidden_extension_outside_well_known(): void {
+        $tmp = tempnam(sys_get_temp_dir(), 'dsgo-zip-');
+        $zip = new ZipArchive();
+        $zip->open($tmp, ZipArchive::OVERWRITE);
+        $zip->addFromString('dsgo-app.json', json_encode([
+            'manifest_version' => 1,
+            'id'               => 'well-known-app',
+            'name'             => 'WK App',
+            'version'          => '0.1.0',
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'permissions'      => ['read' => [], 'write' => []],
+            'runtime'          => ['sandbox' => 'strict', 'external_origins' => []],
+        ]));
+        $zip->addFromString('index.html', '<!doctype html><html><head><title>x</title></head><body>x</body></html>');
+        $zip->addFromString('evil.exe', 'MZ');
+        $zip->close();
+
+        $this->expectException(\DSGo_Apps\InstallerError::class);
+        Installer::install($tmp, $this->admin_id);
+    }
+
+    /**
+     * @dataProvider forbidden_well_known_entries
+     */
+    public function test_install_rejects_forbidden_files_inside_well_known(string $entry, string $contents): void {
+        $tmp = tempnam(sys_get_temp_dir(), 'dsgo-zip-');
+        $zip = new ZipArchive();
+        $zip->open($tmp, ZipArchive::OVERWRITE);
+        $zip->addFromString('dsgo-app.json', json_encode([
+            'manifest_version' => 1,
+            'id'               => 'well-known-app',
+            'name'             => 'WK App',
+            'version'          => '0.1.0',
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'permissions'      => ['read' => [], 'write' => []],
+            'runtime'          => ['sandbox' => 'strict', 'external_origins' => []],
+        ]));
+        $zip->addFromString('index.html', '<!doctype html><html><head><title>x</title></head><body>x</body></html>');
+        $zip->addFromString($entry, $contents);
+        $zip->close();
+
+        $this->expectException(\DSGo_Apps\InstallerError::class);
+        Installer::install($tmp, $this->admin_id);
+    }
+
+    public function forbidden_well_known_entries(): array {
+        return [
+            'php'      => ['.well-known/evil.php', '<?php echo "pwn";'],
+            'htaccess' => ['.well-known/.htaccess', 'AddType application/x-httpd-php .txt'],
+        ];
     }
 
     private function build_zip_with_secrets(string $id, array $secrets): string {

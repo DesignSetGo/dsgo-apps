@@ -151,9 +151,80 @@ final class InlineRenderer {
             'woff' => 'font/woff',
             'woff2' => 'font/woff2',
             'txt'  => 'text/plain; charset=utf-8',
+            'md'   => 'text/markdown; charset=utf-8',
             'map'  => 'application/json',
         ];
-        return $map[$ext] ?? 'application/octet-stream';
+        if (isset($map[$ext])) {
+            return $map[$ext];
+        }
+        // RFC 8615 well-known URIs are routinely extensionless; the api-catalog
+        // (RFC 9727) is served as a linkset document.
+        if ($ext === '' && basename($filename) === 'api-catalog') {
+            return 'application/linkset+json';
+        }
+        return 'application/octet-stream';
+    }
+
+    /**
+     * The `Link: rel="api-catalog"` header value for a route response, or null
+     * when it should not be emitted. RFC 8615 requires `.well-known` resources
+     * at the origin root, so this only fires for root-mounted apps, and only
+     * when the bundle actually ships `.well-known/api-catalog`.
+     */
+    public static function api_catalog_link_header(Manifest $manifest, string $bundle_dir): ?string {
+        if ($manifest->mount_mode !== MountMode::Root) {
+            return null;
+        }
+        $index = Bundle::load_asset_index($bundle_dir);
+        if ($index === null || !isset($index['.well-known/api-catalog'])) {
+            return null;
+        }
+        return '</.well-known/api-catalog>; rel="api-catalog"';
+    }
+
+    /**
+     * True when the client explicitly prefers `text/markdown` over `text/html`.
+     * Wildcard ranges (star/star, text/star) do NOT count as markdown — only an
+     * exact `text/markdown` media range does. Browsers never send `text/markdown`,
+     * so they always get HTML; agents that send `Accept: text/markdown` get markdown.
+     */
+    public static function prefers_markdown(string $accept): bool {
+        if ($accept === '') {
+            return false;
+        }
+        $md_q   = -1.0;
+        $html_q = 0.0;
+        foreach (explode(',', $accept) as $part) {
+            $segments = explode(';', trim($part));
+            $type = strtolower(trim($segments[0]));
+            $q = 1.0;
+            foreach (array_slice($segments, 1) as $param) {
+                $param = trim($param);
+                if (stripos($param, 'q=') === 0) {
+                    $q = (float) substr($param, 2);
+                }
+            }
+            if ($type === 'text/markdown') {
+                $md_q = max($md_q, $q);
+            } elseif ($type === 'text/html') {
+                $html_q = max($html_q, $q);
+            }
+        }
+        return $md_q > 0.0 && $md_q >= $html_q;
+    }
+
+    /**
+     * The bundle-relative `.md` sibling for a static route's `file`, or null when
+     * the file is not an `.html`/`.htm` document. Does not check existence — the
+     * caller resolves it against the asset index.
+     */
+    public static function markdown_sibling(string $route_file): ?string {
+        foreach (['.html', '.htm'] as $ext) {
+            if (str_ends_with($route_file, $ext)) {
+                return substr($route_file, 0, -strlen($ext)) . '.md';
+            }
+        }
+        return null;
     }
 
     /**
@@ -774,6 +845,37 @@ final class InlineRenderer {
     // Request dispatcher (hooked to template_redirect at priority 5)
     // -------------------------------------------------------------------------
 
+    /**
+     * If the request prefers markdown and the matched static route has a `.md`
+     * sibling in the bundle, stream that sibling and return true (caller exits).
+     * Dynamic routes (path contains `:`) are never negotiated — they have no
+     * static `file`. Returns false to fall through to the HTML render path.
+     */
+    private static function maybe_stream_markdown(string $bundle_dir, array $route): bool {
+        if (str_contains((string) ($route['path'] ?? ''), ':')) {
+            return false;
+        }
+        $accept = isset($_SERVER['HTTP_ACCEPT'])
+            ? sanitize_text_field(wp_unslash((string) $_SERVER['HTTP_ACCEPT']))
+            : '';
+        if (!self::prefers_markdown($accept)) {
+            return false;
+        }
+        $sibling = self::markdown_sibling((string) ($route['file'] ?? ''));
+        if ($sibling === null) {
+            return false;
+        }
+        $md_abs = self::resolve_asset($bundle_dir, $sibling);
+        if ($md_abs === null) {
+            return false;
+        }
+        if (!headers_sent()) {
+            status_header(200);
+        }
+        self::stream_asset($md_abs);
+        return true;
+    }
+
     public static function maybe_dispatch(): void {
         $app_id = get_query_var(Rewrite::QUERY_VAR);
         if ($app_id === '' || $app_id === null) {
@@ -811,6 +913,9 @@ final class InlineRenderer {
         $resolved = self::resolve_route($manifest, $route_path);
         if ($resolved !== null) {
             [$route, $params] = $resolved;
+            if (self::maybe_stream_markdown($bundle_dir, $route)) {
+                exit;
+            }
             self::stream_route($bundle_dir, $manifest, $route, $params);
             exit;
         }
@@ -960,6 +1065,9 @@ final class InlineRenderer {
         $resolved = self::resolve_route($manifest, $request_path);
         if ($resolved !== null) {
             [$route, $params] = $resolved;
+            if (self::maybe_stream_markdown($bundle_dir, $route)) {
+                exit;
+            }
             status_header(200);
             self::stream_route($bundle_dir, $manifest, $route, $params);
             exit;
@@ -1069,6 +1177,10 @@ final class InlineRenderer {
             header('Referrer-Policy: strict-origin-when-cross-origin');
             header('Permissions-Policy: interest-cohort=()');
             header('Content-Security-Policy: ' . CSPBuilder::build(self::csp_for_route_response($manifest), $nonce, $manifest->embeds));
+            $link = self::api_catalog_link_header($manifest, $bundle_dir);
+            if ($link !== null) {
+                header('Link: ' . $link, false);
+            }
         }
 
         if ($manifest->theme_wrap === 'header_footer') {

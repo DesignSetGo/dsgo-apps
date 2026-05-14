@@ -468,12 +468,25 @@ final class Installer {
     }
 
     private const LOCK_TIMEOUT_SECONDS = 120;
+    private const ALLOWED_EXTENSIONLESS_WELL_KNOWN = [
+        '.well-known/api-catalog' => true,
+    ];
 
     private static function install_url_path(Manifest $manifest): string {
         if ($manifest->mount_mode === MountMode::Root) {
             return '/';
         }
         return Settings::app_base_path($manifest->id);
+    }
+
+    private static function is_allowed_zip_entry_extension(string $name, string $ext): bool {
+        if (Bundle::is_allowed_extension($ext)) {
+            return true;
+        }
+        if ($ext !== '') {
+            return false;
+        }
+        return isset(self::ALLOWED_EXTENSIONLESS_WELL_KNOWN[$name]);
     }
 
     private static function validate_zip_contents(\ZipArchive $zip): void {
@@ -488,7 +501,7 @@ final class Installer {
                 throw new InstallerError('unsafe_path', sprintf('zip entry "%s" rejected', $name));
             }
             $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-            if (!Bundle::is_allowed_extension($ext)) {
+            if (!self::is_allowed_zip_entry_extension($name, $ext)) {
                 throw new InstallerError('forbidden_extension', sprintf('zip entry "%s" has disallowed extension', $name));
             }
             $total += (int) $stat['size'];
