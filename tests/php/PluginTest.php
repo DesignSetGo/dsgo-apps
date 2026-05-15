@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace DSGo_Apps\Tests;
 
 use DSGo_Apps\InlineRenderer;
+use DSGo_Apps\IframeLoader;
 use DSGo_Apps\Plugin;
 use DSGo_Apps\PostType;
 use WP_UnitTestCase;
@@ -19,6 +20,20 @@ class PluginTest extends WP_UnitTestCase {
         $this->assertTrue(defined('DSGO_APPS_VERSION'));
         $this->assertTrue(defined('DSGO_APPS_PATH'));
         $this->assertTrue(defined('DSGO_APPS_URL'));
+    }
+
+    public function test_editor_preview_dispatch_runs_before_root_app_dispatch(): void {
+        Plugin::get_instance();
+
+        $block_preview_priority = has_action('template_redirect', [IframeLoader::class, 'maybe_render_block']);
+        $inline_root_priority   = has_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch_root']);
+        $iframe_root_priority   = has_action('template_redirect', [IframeLoader::class, 'maybe_dispatch_root']);
+
+        $this->assertIsInt($block_preview_priority);
+        $this->assertIsInt($inline_root_priority);
+        $this->assertIsInt($iframe_root_priority);
+        $this->assertLessThan($inline_root_priority, $block_preview_priority);
+        $this->assertLessThan($iframe_root_priority, $block_preview_priority);
     }
 
     public function test_woocommerce_update_product_bumps_cache_for_subscribed_apps(): void {
