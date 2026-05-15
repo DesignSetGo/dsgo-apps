@@ -538,6 +538,9 @@ final class Installer {
         $meta->setAttribute('http-equiv', 'Content-Security-Policy');
         $meta->setAttribute('content', $csp);
 
+        $compat = $doc->createElement('script', self::artifact_compatibility_script());
+        $compat->setAttribute('data-dsgo-artifact-compat', '');
+
         $bridge_client_path = DSGO_APPS_PATH . 'assets/bridge-client.js';
         $bridge_client_ver  = file_exists($bridge_client_path) ? (string) filemtime($bridge_client_path) : DSGO_APPS_VERSION;
         $bridge_client_url  = add_query_arg('ver', $bridge_client_ver, plugins_url('assets/bridge-client.js', DSGO_APPS_FILE));
@@ -548,8 +551,10 @@ final class Installer {
         $first = $head->firstChild;
         if ($first !== null) {
             $head->insertBefore($meta, $first);
+            $head->insertBefore($compat, $meta);
             $head->insertBefore($script, $meta);
         } else {
+            $head->appendChild($compat);
             $head->appendChild($meta);
             $head->appendChild($script);
         }
@@ -632,13 +637,83 @@ final class Installer {
         return implode('; ', [
             "default-src 'none'",
             "script-src $assets_url $bundle_url 'unsafe-inline' 'wasm-unsafe-eval'",
-            "style-src $bundle_url 'unsafe-inline'" . $block_origin,
+            "style-src $bundle_url https://fonts.googleapis.com 'unsafe-inline'" . $block_origin,
             "img-src $bundle_url data: blob:" . $img_src_extra . $block_origin . $block_img_extra,
-            "font-src $bundle_url" . $block_origin,
+            "font-src $bundle_url https://fonts.gstatic.com data:" . $block_origin,
             "connect-src $connect_src",
             "worker-src $bundle_url",
             "frame-src $frame_src",
         ]);
+    }
+
+    private static function artifact_compatibility_script(): string {
+        return <<<'JS'
+(function () {
+  function makeStorage() {
+    var data = Object.create(null);
+    return {
+      get length() { return Object.keys(data).length; },
+      key: function (index) { return Object.keys(data)[index] || null; },
+      getItem: function (key) {
+        key = String(key);
+        return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
+      },
+      setItem: function (key, value) { data[String(key)] = String(value); },
+      removeItem: function (key) { delete data[String(key)]; },
+      clear: function () { data = Object.create(null); }
+    };
+  }
+  function storageWorks(name) {
+    try {
+      var storage = window[name];
+      var key = '__dsgo_probe__';
+      storage.setItem(key, '1');
+      storage.removeItem(key);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function installStorageFallback(name) {
+    if (storageWorks(name)) return;
+    try {
+      Object.defineProperty(window, name, {
+        configurable: true,
+        value: makeStorage()
+      });
+    } catch (e) {}
+  }
+  function installCookieFallback() {
+    try {
+      void document.cookie;
+      document.cookie = '__dsgo_probe__=1';
+      return;
+    } catch (e) {}
+    var jar = Object.create(null);
+    try {
+      Object.defineProperty(document, 'cookie', {
+        configurable: true,
+        get: function () {
+          return Object.keys(jar).map(function (key) {
+            return key + '=' + jar[key];
+          }).join('; ');
+        },
+        set: function (value) {
+          var pair = String(value).split(';', 1)[0];
+          var eq = pair.indexOf('=');
+          if (eq < 1) return;
+          var key = pair.slice(0, eq).trim();
+          if (!key) return;
+          jar[key] = pair.slice(eq + 1);
+        }
+      });
+    } catch (e) {}
+  }
+  installStorageFallback('localStorage');
+  installStorageFallback('sessionStorage');
+  installCookieFallback();
+})();
+JS;
     }
 
     /**

@@ -103,7 +103,27 @@ class InstallerTest extends WP_UnitTestCase {
         $entry_path = \DSGo_Apps\Bundle::dir_for('inject-test') . 'index.html';
         $html = file_get_contents($entry_path);
         $this->assertStringContainsString('bridge-client.js', $html);
-        $this->assertMatchesRegularExpression('#<head>[^<]*<script[^>]+bridge-client\.js#is', $html);
+        $compat_pos = strpos($html, 'data-dsgo-artifact-compat');
+        $bridge_pos = strpos($html, 'bridge-client.js');
+        $this->assertNotFalse($compat_pos);
+        $this->assertNotFalse($bridge_pos);
+        $this->assertLessThan($bridge_pos, $compat_pos, 'artifact compatibility shim should run before the deferred bridge client');
+    }
+
+    public function test_iframe_install_injects_artifact_storage_shim_before_author_scripts(): void {
+        $zip = $this->build_minimal_zip(
+            'artifact-shim',
+            '<!doctype html><html><head><script>localStorage.setItem("best","1"); document.cookie = "x=1";</script></head><body>x</body></html>',
+        );
+        Installer::install($zip, $this->admin_id);
+
+        $html = file_get_contents(\DSGo_Apps\Bundle::dir_for('artifact-shim') . 'index.html');
+
+        $shim_pos = strpos($html, 'data-dsgo-artifact-compat');
+        $author_pos = strpos($html, 'localStorage.setItem');
+        $this->assertNotFalse($shim_pos);
+        $this->assertNotFalse($author_pos);
+        $this->assertLessThan($author_pos, $shim_pos, 'storage/cookie shim must run before author scripts');
     }
 
     public function test_install_injects_csp_meta(): void {
@@ -113,6 +133,19 @@ class InstallerTest extends WP_UnitTestCase {
         $html = file_get_contents($entry_path);
         $this->assertMatchesRegularExpression('#<meta[^>]+http-equiv="Content-Security-Policy"[^>]+content="[^"]*default-src \'none\'[^"]*"#i', $html);
         $this->assertStringContainsString('script-src', $html);
+    }
+
+    public function test_iframe_csp_allows_google_font_stylesheets_and_font_files(): void {
+        $zip = $this->build_minimal_zip(
+            'font-csp',
+            '<!doctype html><html><head><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&display=swap"></head><body>x</body></html>',
+        );
+        Installer::install($zip, $this->admin_id);
+
+        $html = file_get_contents(\DSGo_Apps\Bundle::dir_for('font-csp') . 'index.html');
+
+        $this->assertMatchesRegularExpression('#style-src[^"]*https://fonts\.googleapis\.com#', $html);
+        $this->assertMatchesRegularExpression('#font-src[^"]*https://fonts\.gstatic\.com#', $html);
     }
 
     public function test_install_does_not_leak_xml_pi(): void {

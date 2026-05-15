@@ -163,6 +163,7 @@ final class Plugin {
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch'], 5);
         add_action('template_redirect', [InlineRenderer::class, 'maybe_dispatch_root'], 7);
         add_action('template_redirect', [IframeLoader::class, 'maybe_dispatch_root'], 8);
+        add_action('template_redirect', [IframeLoader::class, 'maybe_render_block'], 9);
         add_action('template_redirect', [IframeLoader::class, 'maybe_render'], 10);
         add_action('wp_sitemaps_init', function (\WP_Sitemaps $sitemaps): void {
             // Slug must be all-lowercase letters; see SitemapProvider::$name.

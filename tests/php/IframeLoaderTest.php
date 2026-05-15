@@ -141,6 +141,20 @@ class IframeLoaderTest extends WP_UnitTestCase {
         $this->assertStringNotContainsString('aiTimeoutSeconds', $html);
     }
 
+    public function test_render_block_host_outputs_block_context_for_editor_preview(): void {
+        $this->install('editor-preview', ['page', 'block']);
+
+        ob_start();
+        \DSGo_Apps\IframeLoader::render_block_host('editor-preview', 640, true);
+        $html = ob_get_clean();
+
+        $this->assertStringContainsString('data-dsgo-embed-config="1"', $html);
+        $this->assertMatchesRegularExpression('/"mode":\s*"block"/', $html);
+        $this->assertMatchesRegularExpression('/"blockProps":\s*\{"height":640,"autoResize":true\}/', str_replace(' ', '', $html));
+        $this->assertStringContainsString('"mountPrefix":null', str_replace(' ', '', $html));
+        $this->assertStringContainsString('parent-bridge.js', $html);
+    }
+
     private function install(string $id, array $modes): void {
         $post_id = wp_insert_post([
             'post_type'   => PostType::SLUG,

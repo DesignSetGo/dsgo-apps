@@ -278,7 +278,7 @@ final class AiContextPack {
         $lines[] = '';
         $lines[] = "Constraints:";
         $lines[] = "- One file. Inline all CSS in `<style>` and all JS in `<script>`. No external `<link>` or `<script src>`.";
-        $lines[] = "- Sandboxed iframe with `allow-scripts` only — no cookies, no localStorage of the parent, no top-level navigation, opaque origin. `fetch()` to other origins works (CORS allowing) but most apps shouldn't need it — use the bridge for site data.";
+        $lines[] = "- Sandboxed iframe with an opaque origin — no parent DOM, real cookies, or real origin storage. The runtime shims `localStorage`, `sessionStorage`, and `document.cookie` in memory so common artifacts do not crash, but persistent state should use `dsgo.storage.*` through the bridge.";
         $lines[] = "- No frameworks unless you inline them (`<script type=\"module\">` + vanilla JS / preact-from-CDN-inlined is fine; React via JSX needs a build step → not viable here).";
         return implode("\n", $lines);
     }

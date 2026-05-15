@@ -117,6 +117,22 @@ describe('edit.tsx', () => {
     expect(container.querySelector('iframe')).not.toBeNull();
   });
 
+  it('live preview iframe allows same-origin for the DSGo host page only', async () => {
+    (apiFetch as unknown as jest.Mock).mockResolvedValueOnce([
+      { id: 'block-app', name: 'Block App', version: '0.2.0', modes: ['block'], isolation: 'iframe' },
+    ]);
+    const { container } = render(
+      <Edit attributes={{ ...baseAttrs, appId: 'block-app' }} setAttributes={noopSet} />,
+    );
+
+    await waitFor(() => screen.getByTestId('toggle-show-live-preview'));
+    fireEvent.click(screen.getByTestId('toggle-show-live-preview'));
+
+    const iframe = container.querySelector('iframe');
+    expect(iframe).toHaveAttribute('src', '/?dsgo_embed=block-app&dsgo_h=480&dsgo_ar=0');
+    expect(iframe).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin');
+  });
+
   it('clamps height value when slider goes out of range', async () => {
     (apiFetch as unknown as jest.Mock).mockResolvedValueOnce([
       { id: 'block-app', name: 'Block App', version: '0.2.0', modes: ['block'], isolation: 'iframe' },

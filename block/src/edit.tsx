@@ -101,7 +101,7 @@ export default function Edit({ attributes, setAttributes }: EditProps): JSX.Elem
       {showPreview && attributes.appId ? (
         <iframe
           src={`/?dsgo_embed=${encodeURIComponent(attributes.appId)}&dsgo_h=${attributes.height}&dsgo_ar=${attributes.autoResize ? 1 : 0}`}
-          sandbox="allow-scripts"
+          sandbox="allow-scripts allow-same-origin"
           style={{ width: '100%', height: attributes.height, border: 0, display: 'block' }}
         />
       ) : (

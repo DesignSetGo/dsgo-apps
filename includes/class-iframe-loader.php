@@ -22,6 +22,20 @@ final class IframeLoader {
         exit;
     }
 
+    public static function maybe_render_block(): void {
+        $app_id = isset($_GET['dsgo_embed']) ? sanitize_key(wp_unslash((string) $_GET['dsgo_embed'])) : '';
+        if ($app_id === '') {
+            return;
+        }
+
+        $height_raw = isset($_GET['dsgo_h']) ? (int) $_GET['dsgo_h'] : 480;
+        $height     = max(100, min(2000, $height_raw));
+        $auto_resize = isset($_GET['dsgo_ar']) && (string) $_GET['dsgo_ar'] === '1';
+
+        self::render_block_host($app_id, $height, $auto_resize);
+        exit;
+    }
+
     /**
      * Root-mount dispatcher for iframe-mode apps. Only fires for the exact
      * site root URL; any other path falls through. Iframe-mode home apps
@@ -66,6 +80,20 @@ final class IframeLoader {
     }
 
     public static function render(string $app_id): void {
+        self::render_host($app_id, 'page', null);
+    }
+
+    public static function render_block_host(string $app_id, int $height, bool $auto_resize): void {
+        self::render_host($app_id, 'block', [
+            'height'     => max(100, min(2000, $height)),
+            'autoResize' => $auto_resize,
+        ]);
+    }
+
+    /**
+     * @param array{height:int,autoResize:bool}|null $block_props
+     */
+    private static function render_host(string $app_id, string $mode, ?array $block_props): void {
         $post = get_page_by_path($app_id, OBJECT, PostType::SLUG);
         if (!$post || $post->post_status !== 'publish') {
             self::render_error_page(
@@ -88,11 +116,13 @@ final class IframeLoader {
             );
             return;
         }
-        if (!in_array('page', Manifest::display_modes_for_runtime($manifest), true)) {
+        if (!in_array($mode, Manifest::display_modes_for_runtime($manifest), true)) {
             self::render_error_page(
                 404,
                 __('App not available here', 'designsetgo-apps'),
-                __('This app is installed but does not support page-mode display.', 'designsetgo-apps'),
+                $mode === 'block'
+                    ? __('This app is installed but does not support block-mode display.', 'designsetgo-apps')
+                    : __('This app is installed but does not support page-mode display.', 'designsetgo-apps'),
             );
             return;
         }
@@ -100,17 +130,19 @@ final class IframeLoader {
         $context = [
             'bridgeVersion' => 1,
             'appId'         => $app_id,
-            'mode'          => 'page',
+            'mode'          => $mode,
             'locale'        => get_locale(),
             'theme'         => 'light',
-            'blockProps'    => null,
+            'blockProps'    => $block_props,
             'routeParams'   => (object) [],
-            'path'          => self::iframe_app_relative_path($app_id),
-            'search'        => self::iframe_search_string(),
+            'path'          => $mode === 'block' ? '/' : self::iframe_app_relative_path($app_id),
+            'search'        => $mode === 'block' ? '' : self::iframe_search_string(),
             'hash'          => '',
-            'mountPrefix'   => Settings::get_root_app_id() === $app_id
+            'mountPrefix'   => $mode === 'block'
+                ? null
+                : (Settings::get_root_app_id() === $app_id
                 ? ''
-                : Settings::app_base_path($app_id),
+                : Settings::app_base_path($app_id)),
         ];
         if (in_array('ai', $manifest['permissions']['read'] ?? [], true)) {
             $context['aiTimeoutSeconds'] = (int) ($manifest['ai']['timeout_seconds'] ?? 60);
