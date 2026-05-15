@@ -109,7 +109,7 @@
         open.href = appUrl;
 
         var embed = panel.querySelector('[data-dsgo-success-embed]');
-        embed.href = cfg.newPostUrl || '/wp-admin/post-new.php';
+        embed.href = cfg.newPostUrl || '/wp-admin/post-new.php?post_type=page';
 
         var home = panel.querySelector('[data-dsgo-success-home]');
         home.addEventListener('click', function () { ns.setSiteHome(appId, home); });

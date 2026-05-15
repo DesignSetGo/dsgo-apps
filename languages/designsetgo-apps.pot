@@ -321,7 +321,7 @@ msgid "Open app"
 msgstr ""
 
 #: includes/class-admin-page.php:480
-msgid "Embed in a post"
+msgid "Embed in a page"
 msgstr ""
 
 #: includes/class-admin-page.php:481

@@ -337,7 +337,7 @@ npx designsetgo apps deploy --build</code></pre>
                 </div>
                 <div class="dsgo-success__actions">
                     <a class="button button-primary" data-dsgo-success-open target="_blank" rel="noopener noreferrer"><?php esc_html_e('Open app', 'designsetgo-apps'); ?></a>
-                    <a class="button" data-dsgo-success-embed><?php esc_html_e('Embed in a post', 'designsetgo-apps'); ?></a>
+                    <a class="button" data-dsgo-success-embed><?php esc_html_e('Embed in a page', 'designsetgo-apps'); ?></a>
                     <button type="button" class="button" data-dsgo-success-home><?php esc_html_e('Set as site home', 'designsetgo-apps'); ?></button>
                     <button type="button" class="button" data-dsgo-success-copy><?php esc_html_e('Copy URL', 'designsetgo-apps'); ?></button>
                 </div>

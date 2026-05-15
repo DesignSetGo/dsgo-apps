@@ -157,7 +157,7 @@ final class AdminPage {
             'maxFileCount'     => Bundle::MAX_FILE_COUNT,
             'docsUrl'          => 'https://designsetgo.dev/docs',
             'settingsUrl'      => admin_url('admin.php?page=designsetgo-apps-settings'),
-            'newPostUrl'       => admin_url('post-new.php'),
+            'newPostUrl'       => admin_url('post-new.php?post_type=page'),
             'pricingUrl'       => (string) apply_filters('dsgo_apps_pro_pricing_url', 'https://designsetgo.dev/pricing'),
             'aiContext'        => [
                 'permissions'        => AiContextPack::all_permissions(),

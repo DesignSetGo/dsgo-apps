@@ -46,6 +46,22 @@ class AdminPageTest extends WP_UnitTestCase {
         wp_dequeue_script('dsgo-admin-page');
     }
 
+    public function test_success_embed_url_opens_new_page_editor(): void {
+        wp_set_current_user($this->admin_id);
+        AdminPage::enqueue_assets('toplevel_page_' . AdminPage::MENU_SLUG);
+
+        global $wp_scripts;
+        $registered = $wp_scripts->registered['dsgo-admin-page'] ?? null;
+        $this->assertNotNull($registered);
+
+        $data = (string) ($registered->extra['data'] ?? '');
+        $this->assertStringContainsString('"newPostUrl":"' . admin_url('post-new.php?post_type=page'), $data);
+        $this->assertStringNotContainsString('"newPostUrl":"' . admin_url('post-new.php') . '"', $data);
+
+        wp_dequeue_style('dsgo-admin-page');
+        wp_dequeue_script('dsgo-admin-page');
+    }
+
     public function test_enqueue_assets_falls_back_to_version_when_css_missing(): void {
         // The filemtime() guard must not throw a warning when the css is absent.
         wp_set_current_user($this->admin_id);
@@ -91,6 +107,8 @@ class AdminPageTest extends WP_UnitTestCase {
         $this->assertStringContainsString('data-dsgo-success-embed', $html);
         $this->assertStringContainsString('data-dsgo-success-home', $html);
         $this->assertStringContainsString('data-dsgo-success-copy', $html);
+        $this->assertStringContainsString('Embed in a page', $html);
+        $this->assertStringNotContainsString('Embed in a post', $html);
     }
 
     public function test_reading_notice_skipped_for_non_admin(): void {
