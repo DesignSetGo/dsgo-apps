@@ -104,6 +104,7 @@
 /* Has-apps state: list is primary; install card is collapsed behind a toggle. */
 .dsgo-admin--has-apps .dsgo-card--install { display: none; }
 .dsgo-admin--has-apps .dsgo-card--install.is-open { display: block; }
+.dsgo-card--install { scroll-margin-top: 56px; }
 
 /* Toggle is only meaningful in the has-apps view. */
 .dsgo-install-toggle { display: none; }

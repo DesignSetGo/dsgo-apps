@@ -31,15 +31,44 @@
     var installToggle = dom.installToggle;
     var successTemplate = dom.successTemplate;
 
+    function focusInstallTarget() {
+        var activeDropzone = installPanel.querySelector('[data-dsgo-panel]:not([hidden]) .dsgo-dropzone');
+        if (!activeDropzone) activeDropzone = installPanel.querySelector('.dsgo-dropzone');
+        if (!activeDropzone) return;
+        try {
+            activeDropzone.focus({ preventScroll: true });
+        } catch (e) {
+            activeDropzone.focus();
+        }
+    }
+
+    function scrollToInstallPanel() {
+        var reduceMotion = window.matchMedia
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (installPanel.id) {
+            var hash = '#' + installPanel.id;
+            if (window.location.hash !== hash && window.history && window.history.pushState) {
+                window.history.pushState(null, '', hash);
+            } else if (window.location.hash !== hash) {
+                window.location.hash = installPanel.id;
+            }
+        }
+        installPanel.scrollIntoView({
+            behavior: reduceMotion ? 'auto' : 'smooth',
+            block: 'start',
+        });
+    }
+
     if (installToggle && installPanel) {
         installToggle.addEventListener('click', function () {
             var open = installPanel.classList.toggle('is-open');
             installToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
             if (open) {
-                // Move focus into the panel for keyboard users so they don't
-                // have to tab past the toggle to reach the dropzone.
+                scrollToInstallPanel();
+                // Move focus into the visible panel for keyboard users so they
+                // don't have to tab past the toggle to reach the dropzone.
                 window.setTimeout(function () {
-                    if (dropzone) dropzone.focus();
+                    focusInstallTarget();
                 }, 0);
             }
         });
