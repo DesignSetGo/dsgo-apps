@@ -4,7 +4,6 @@
   "name": "designsetgo-apps/embed",
   "title": "DesignSetGo App",
   "category": "embed",
-  "icon": "screenoptions",
   "description": "Embed an installed DesignSetGo App inline in a post or page.",
   "keywords": [
     "dsgo",
