@@ -1,8 +1,8 @@
 === DesignSetGo Apps ===
-Contributors: designsetgo
-Tags: ai, sandbox, iframe, app
+Contributors: justinnealey
+Tags: ai, ai-app, sandbox, iframe, no-code
 Requires at least: 6.9
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 8.2
 Stable tag: 1.0.0
 License: GPL-2.0-or-later

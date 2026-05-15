@@ -5,7 +5,7 @@
  * Description:       Drop in any AI-built static bundle and run it as a sandboxed app on your WordPress site at /apps/{slug}, wired to your posts, pages, and users via a permissioned bridge.
  * Version:           1.0.0
  * Requires at least: 6.9
- * Tested up to:      6.9
+ * Tested up to:      7.0
  * Requires PHP:      8.2
  * Author:            DesignSetGo
  * Author URI:        https://designsetgo.dev/author/

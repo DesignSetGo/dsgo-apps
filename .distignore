@@ -14,9 +14,13 @@ phpunit.xml
 phpunit.xml.dist
 .phpunit.result.cache
 
-# Composer dev manifests (vendor/ ships; composer install --no-dev runs first)
+# Composer manifests — plugin runtime never loads vendor/autoload.php,
+# and composer.json declares only dev deps. Drop the whole vendor/ tree
+# (composer install --no-dev runs in CI but produces only autoload
+# scaffolding nothing reads) along with the manifests themselves.
 composer.json
 composer.lock
+vendor
 
 # Monorepo docs — readme.txt is the only doc shipped to .org
 *.md
