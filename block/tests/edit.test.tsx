@@ -55,13 +55,13 @@ beforeEach(() => {
 });
 
 describe('edit.tsx', () => {
-  it('shows empty state when no apps with block mode are installed', async () => {
+  it('shows empty state when no embeddable iframe apps are installed', async () => {
     (apiFetch as unknown as jest.Mock).mockResolvedValueOnce([
-      { id: 'page-only', name: 'Page Only', version: '0.1.0', modes: ['page'], isolation: 'iframe' },
+      { id: 'inline-app', name: 'Inline App', version: '0.1.0', modes: ['page'], isolation: 'inline' },
     ]);
     render(<Edit attributes={baseAttrs} setAttributes={noopSet} />);
     await waitFor(() => {
-      expect(screen.getByText(/no.*block-mode.*apps installed/i)).toBeInTheDocument();
+      expect(screen.getByText(/no.*embeddable iframe.*apps installed/i)).toBeInTheDocument();
     });
     expect(screen.getByRole('link', { name: /install one/i })).toHaveAttribute(
       'href',
@@ -69,17 +69,19 @@ describe('edit.tsx', () => {
     );
   });
 
-  it('lists only block-capable apps in the picker', async () => {
+  it('lists iframe apps in the picker', async () => {
     (apiFetch as unknown as jest.Mock).mockResolvedValueOnce([
       { id: 'page-only', name: 'Page Only', version: '0.1.0', modes: ['page'], isolation: 'iframe' },
       { id: 'block-app', name: 'Block App', version: '0.2.0', modes: ['page', 'block'], isolation: 'iframe' },
+      { id: 'inline-app', name: 'Inline App', version: '0.3.0', modes: ['page'], isolation: 'inline' },
     ]);
     render(<Edit attributes={baseAttrs} setAttributes={noopSet} />);
     await waitFor(() => {
       const picker = screen.getByTestId('app-picker') as HTMLSelectElement;
       const ids = Array.from(picker.options).map((o) => o.value);
+      expect(ids).toContain('page-only');
       expect(ids).toContain('block-app');
-      expect(ids).not.toContain('page-only');
+      expect(ids).not.toContain('inline-app');
     });
   });
 

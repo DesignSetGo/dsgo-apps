@@ -311,7 +311,7 @@ final class RestApi {
             $isolation  = is_array($manifest) ? ($manifest['isolation'] ?? 'inline') : 'inline';
             $mount_mode = is_array($manifest) ? ($manifest['mount']['mode'] ?? 'prefixed') : 'prefixed';
             $base_path  = $mount_mode === 'root' ? '/' : Settings::app_base_path($p->post_name);
-            $modes      = is_array($manifest) ? ($manifest['display']['modes'] ?? []) : [];
+            $modes      = is_array($manifest) ? Manifest::display_modes_for_runtime($manifest) : [];
             // has_secrets drives the per-row "Secrets" link in the apps list;
             // no Manifest::validate round-trip in the hot path. The Secrets
             // tab itself reads the manifest directly to render the form.
@@ -776,17 +776,14 @@ final class RestApi {
     }
 
     /**
-     * An app is home-eligible iff it can render at the site root URL — which
-     * means its `display.modes` includes `page`. Inline apps are constrained
-     * to page-only by the manifest validator, so this only filters out
-     * iframe-mode apps that opted out of page rendering (e.g. block-only
-     * embeds).
+     * An app is home-eligible iff its runtime display modes include `page`.
+     * Iframe manifests resolve to page + block here even when the authored
+     * manifest only named one of those surfaces.
      *
      * @param array<string, mixed> $manifest
      */
     private static function is_home_eligible_manifest(array $manifest): bool {
-        $modes = $manifest['display']['modes'] ?? [];
-        return is_array($modes) && in_array('page', $modes, true);
+        return in_array('page', Manifest::display_modes_for_runtime($manifest), true);
     }
 
     public const USER_STORAGE_CLEANUP_HOOK = 'dsgo_apps_cleanup_user_storage';

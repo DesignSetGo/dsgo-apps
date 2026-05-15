@@ -35,6 +35,8 @@ class ArtifactNormalizerTest extends WP_UnitTestCase {
         $this->assertSame('0.1.0', $manifest['version']);
         $this->assertSame('iframe', $manifest['isolation']);
         $this->assertSame('index.html', $manifest['entry']);
+        $this->assertSame(['page', 'block'], $manifest['display']['modes']);
+        $this->assertSame('page', $manifest['display']['default']);
 
         // Synthesized manifest must pass server-side validation — this is the
         // contract guarantee that lets the endpoint reuse Installer::install.
@@ -152,6 +154,8 @@ class ArtifactNormalizerTest extends WP_UnitTestCase {
         $this->assertSame('design-app', $manifest['id']);
         $this->assertSame('Design App', $manifest['name']);
         $this->assertSame('0.2.0', $manifest['version']);
+        $this->assertSame(['page', 'block'], $manifest['display']['modes']);
+        $this->assertSame('page', $manifest['display']['default']);
 
         // Original tree preserved (not flattened).
         $this->assertNotFalse($zip->getFromName('home.html'));

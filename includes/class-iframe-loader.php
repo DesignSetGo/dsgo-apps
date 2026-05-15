@@ -88,7 +88,7 @@ final class IframeLoader {
             );
             return;
         }
-        if (!in_array('page', $manifest['display']['modes'] ?? [], true)) {
+        if (!in_array('page', Manifest::display_modes_for_runtime($manifest), true)) {
             self::render_error_page(
                 404,
                 __('App not available here', 'designsetgo-apps'),
@@ -177,8 +177,7 @@ final class IframeLoader {
         if (!is_array($manifest)) {
             return sprintf('App "%s" is misconfigured (missing manifest).', $app_id);
         }
-        $modes = $manifest['display']['modes'] ?? [];
-        if (!is_array($modes) || !in_array('block', $modes, true)) {
+        if (!in_array('block', Manifest::display_modes_for_runtime($manifest), true)) {
             return sprintf('App "%s" does not support block embedding.', $app_id);
         }
         return true;
@@ -200,7 +199,7 @@ final class IframeLoader {
         if (!is_array($manifest)) {
             return self::render_block_placeholder(sprintf('App "%s" is misconfigured (missing manifest).', $app_id), $height, $align_class);
         }
-        if (!in_array('block', $manifest['display']['modes'] ?? [], true)) {
+        if (!in_array('block', Manifest::display_modes_for_runtime($manifest), true)) {
             return self::render_block_placeholder(sprintf('App "%s" does not support block embedding.', $app_id), $height, $align_class);
         }
 

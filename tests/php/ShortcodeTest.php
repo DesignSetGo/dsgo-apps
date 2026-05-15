@@ -21,11 +21,11 @@ class ShortcodeTest extends WP_UnitTestCase {
         $this->assertStringNotContainsString('<iframe', $html);
     }
 
-    public function test_page_only_app_renders_does_not_support_placeholder(): void {
+    public function test_page_only_iframe_app_renders_iframe_embed(): void {
         $this->install('page-only', ['page']);
         $html = do_shortcode('[' . Shortcode::TAG . ' id="page-only"]');
-        $this->assertStringContainsString('does not support block embedding', $html);
-        $this->assertStringNotContainsString('<iframe', $html);
+        $this->assertStringContainsString('<iframe', $html);
+        $this->assertStringContainsString('data-dsgo-app-id="page-only"', $html);
     }
 
     public function test_block_app_renders_iframe_embed(): void {

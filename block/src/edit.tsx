@@ -36,7 +36,7 @@ export default function Edit({ attributes, setAttributes }: EditProps): JSX.Elem
     return () => { cancelled = true; };
   }, []);
 
-  const blockApps = (apps ?? []).filter((a) => Array.isArray(a.modes) && a.modes.includes('block'));
+  const blockApps = (apps ?? []).filter((a) => a.isolation === 'iframe');
   const selected = blockApps.find((a) => a.id === attributes.appId) ?? null;
   const blockProps = useBlockProps();
 
@@ -55,7 +55,7 @@ export default function Edit({ attributes, setAttributes }: EditProps): JSX.Elem
           {error && <Notice status="error">Could not load apps: {error}</Notice>}
           {apps !== null && blockApps.length === 0 && (
             <Notice status="info">
-              No block-mode apps installed. <a href="/wp-admin/admin.php?page=designsetgo-apps">Install one →</a>
+              No embeddable iframe apps installed. <a href="/wp-admin/admin.php?page=designsetgo-apps">Install one →</a>
             </Notice>
           )}
           {blockApps.length > 0 && (

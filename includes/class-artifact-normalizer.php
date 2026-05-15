@@ -110,7 +110,7 @@ final class ArtifactNormalizer {
             'version'          => $version,
             'entry'            => $entry,
             'isolation'        => 'iframe',
-            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'display'          => ['modes' => ['page', 'block'], 'default' => 'page'],
             'permissions'      => ['read' => [], 'write' => []],
             'runtime'          => ['sandbox' => 'strict', 'external_origins' => []],
         ], JSON_PRETTY_PRINT);

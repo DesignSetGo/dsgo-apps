@@ -16,19 +16,17 @@ use WP_UnitTestCase;
  */
 class ElementorWidgetTest extends WP_UnitTestCase {
 
-    public function test_block_apps_filters_to_block_mode_only(): void {
+    public function test_block_apps_includes_iframe_apps(): void {
         $this->install_app('only-page',   ['page'],            'Page Only');
         $this->install_app('only-block',  ['block'],           'Block Only');
         $this->install_app('both-modes',  ['page', 'block'],   'Both Modes');
-        $this->install_app('inline-only', ['inline'],          'Inline Only');
 
         $apps = ElementorWidget::block_apps();
         $ids  = array_map(static fn (array $a): string => $a['id'], $apps);
 
+        $this->assertContains('only-page', $ids);
         $this->assertContains('only-block', $ids);
         $this->assertContains('both-modes', $ids);
-        $this->assertNotContains('only-page', $ids);
-        $this->assertNotContains('inline-only', $ids);
     }
 
     public function test_block_apps_label_includes_version(): void {

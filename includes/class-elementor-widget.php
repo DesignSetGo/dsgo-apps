@@ -37,7 +37,7 @@ final class ElementorWidget {
     }
 
     /**
-     * Return installed apps that declare block-mode support. Used by the
+     * Return installed iframe apps that can render as embeds. Used by the
      * widget's app picker; also reusable for any future Elementor controls
      * (e.g. a route-specific dropdown).
      *
@@ -69,8 +69,7 @@ final class ElementorWidget {
             if (!$post instanceof \WP_Post) continue;
             $manifest = get_post_meta($post->ID, 'dsgo_apps_manifest', true);
             if (!is_array($manifest)) continue;
-            $modes = $manifest['display']['modes'] ?? [];
-            if (!is_array($modes) || !in_array('block', $modes, true)) continue;
+            if (!in_array('block', Manifest::display_modes_for_runtime($manifest), true)) continue;
 
             $version = isset($manifest['version']) ? (string) $manifest['version'] : '';
             $label   = $post->post_title;

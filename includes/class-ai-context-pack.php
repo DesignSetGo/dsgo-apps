@@ -207,7 +207,7 @@ final class AiContextPack {
         $lines[] = "  \"version\": \"0.1.0\",";
         $lines[] = "  \"entry\": \"index.html\",";
         $lines[] = "  \"isolation\": \"iframe\",";
-        $lines[] = "  \"display\": { \"modes\": [\"page\"], \"default\": \"page\" },";
+        $lines[] = "  \"display\": { \"modes\": [\"page\", \"block\"], \"default\": \"page\" },";
         $lines[] = "  \"permissions\": { \"read\": {$perm_json}, \"write\": [] }";
         $lines[] = "}";
         $lines[] = "```";

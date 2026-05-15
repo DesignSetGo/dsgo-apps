@@ -60,7 +60,7 @@ final class ElementorAppWidget extends \Elementor\Widget_Base {
                     'type'            => \Elementor\Controls_Manager::RAW_HTML,
                     'raw'             => sprintf(
                         '<div class="elementor-panel-alert elementor-panel-alert-info">%s <a href="%s" target="_blank">%s</a></div>',
-                        esc_html__('No block-mode apps are installed yet.', 'designsetgo-apps'),
+                        esc_html__('No embeddable iframe apps are installed yet.', 'designsetgo-apps'),
                         esc_url(admin_url('admin.php?page=designsetgo-apps')),
                         esc_html__('Install one →', 'designsetgo-apps'),
                     ),
@@ -79,7 +79,7 @@ final class ElementorAppWidget extends \Elementor\Widget_Base {
                     'type'        => \Elementor\Controls_Manager::SELECT,
                     'options'     => $options,
                     'default'     => '',
-                    'description' => __('Only apps that declare "block" in their display modes appear here.', 'designsetgo-apps'),
+                    'description' => __('Iframe apps are available for page views and embeds.', 'designsetgo-apps'),
                 ],
             );
         }

@@ -277,6 +277,7 @@ class RestApiTest extends WP_UnitTestCase {
             $this->assertSame('Imported', $post->post_title);
             $manifest = get_post_meta($post->ID, 'dsgo_apps_manifest', true);
             $this->assertSame('iframe', $manifest['isolation']);
+            $this->assertSame(['page', 'block'], $manifest['display']['modes']);
         } finally {
             $this->cleanup_bundle('imported-app');
         }
@@ -872,16 +873,18 @@ class RestApiTest extends WP_UnitTestCase {
 
         $this->assertFalse($by_id['regular-app']['is_site_home']);
         $this->assertTrue($by_id['regular-app']['home_eligible']);
+        $this->assertSame(['page', 'block'], $by_id['regular-app']['modes']);
     }
 
-    public function test_list_apps_block_only_app_is_not_home_eligible(): void {
+    public function test_list_apps_block_only_iframe_app_is_home_eligible(): void {
         $this->seed_app('block-only', [
             'display' => ['modes' => ['block'], 'default' => 'block'],
         ]);
         wp_set_current_user($this->admin_id);
         $resp = $this->server->dispatch(new WP_REST_Request('GET', '/dsgo/v1/apps'));
         $items = $resp->get_data();
-        $this->assertFalse($items[0]['home_eligible']);
+        $this->assertTrue($items[0]['home_eligible']);
+        $this->assertSame(['page', 'block'], $items[0]['modes']);
         $this->assertFalse($items[0]['is_site_home']);
     }
 
@@ -957,7 +960,7 @@ class RestApiTest extends WP_UnitTestCase {
         $this->assertSame('not_found', $resp->get_data()['code']);
     }
 
-    public function test_set_site_home_rejects_app_without_page_mode(): void {
+    public function test_set_site_home_accepts_block_only_iframe_app(): void {
         $this->seed_app('block-only', [
             'display' => ['modes' => ['block'], 'default' => 'block'],
         ]);
@@ -966,8 +969,8 @@ class RestApiTest extends WP_UnitTestCase {
         $req->set_header('Content-Type', 'application/json');
         $req->set_body(json_encode(['app_id' => 'block-only']));
         $resp = $this->server->dispatch($req);
-        $this->assertSame(422, $resp->get_status());
-        $this->assertSame('not_eligible', $resp->get_data()['code']);
+        $this->assertSame(200, $resp->get_status());
+        $this->assertSame('block-only', $resp->get_data()['home_id']);
     }
 
     public function test_set_site_home_rejects_invalid_app_id_shape(): void {

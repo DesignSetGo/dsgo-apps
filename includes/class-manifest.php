@@ -189,6 +189,42 @@ final readonly class Manifest {
     ) {}
 
     /**
+     * Resolve the display modes callers should expose from a stored manifest.
+     * Iframe apps are inherently usable as full pages and block embeds because
+     * both surfaces render the same sandboxed bundle iframe.
+     *
+     * @param array<string, mixed> $manifest
+     * @return string[]
+     */
+    public static function display_modes_for_runtime(array $manifest): array {
+        $declared = $manifest['display']['modes'] ?? [];
+        $seen     = [];
+        $modes    = [];
+
+        if (is_array($declared)) {
+            foreach ($declared as $mode) {
+                if (!is_string($mode) || !in_array($mode, ['page', 'block', 'admin'], true)) {
+                    continue;
+                }
+                $seen[$mode] = true;
+            }
+        }
+
+        if (($manifest['isolation'] ?? 'inline') === 'iframe') {
+            $seen['page']  = true;
+            $seen['block'] = true;
+        }
+
+        foreach (['page', 'block', 'admin'] as $mode) {
+            if (isset($seen[$mode])) {
+                $modes[] = $mode;
+            }
+        }
+
+        return $modes;
+    }
+
+    /**
      * Read a dot-pathed field from $this->raw. Returns null if any segment is
      * missing or if an intermediate value is not an array.
      *

@@ -54,14 +54,14 @@ class BlockRenderTest extends WP_UnitTestCase {
         $this->assertStringNotContainsString('dsgo_embed=', $output);
     }
 
-    public function test_renders_placeholder_when_app_does_not_support_block_mode(): void {
+    public function test_renders_iframe_for_page_only_iframe_app(): void {
         $this->install_app('page-only', ['page']);
 
         $output = $this->render([
             'appId' => 'page-only', 'height' => 480, 'autoResize' => false,
         ]);
-        $this->assertStringContainsString('does not support', $output);
-        $this->assertStringNotContainsString('<iframe', $output);
+        $this->assertStringContainsString('<iframe', $output);
+        $this->assertStringContainsString('data-dsgo-app-id="page-only"', $output);
     }
 
     public function test_clamps_height_to_range(): void {

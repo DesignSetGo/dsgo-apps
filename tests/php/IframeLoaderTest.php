@@ -91,11 +91,9 @@ class IframeLoaderTest extends WP_UnitTestCase {
         $this->assertStringContainsString('not installed', $msg);
     }
 
-    public function test_can_render_for_block_returns_string_for_page_only_app(): void {
+    public function test_can_render_for_block_accepts_page_only_iframe_app(): void {
         $this->install('app-page', ['page']);
-        $msg = IframeLoader::can_render_for_block('app-page');
-        $this->assertIsString($msg);
-        $this->assertStringContainsString('does not support', $msg);
+        $this->assertSame(true, IframeLoader::can_render_for_block('app-page'));
     }
 
     public function test_render_includes_ai_timeout_in_embed_config_when_ai_permission_present(): void {
