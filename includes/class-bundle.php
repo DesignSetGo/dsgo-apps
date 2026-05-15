@@ -79,7 +79,7 @@ final class Bundle {
     }
 
     public static function is_safe_zip_entry(string $path): bool {
-        if ($path === '' || str_starts_with($path, '/') || str_starts_with($path, '\\')) {
+        if ($path === '' || str_contains($path, '\\') || str_starts_with($path, '/')) {
             return false;
         }
         $segments = explode('/', $path);

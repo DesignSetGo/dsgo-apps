@@ -158,7 +158,7 @@ final class AdminPage {
             'docsUrl'          => 'https://designsetgo.dev/docs',
             'settingsUrl'      => admin_url('admin.php?page=designsetgo-apps-settings'),
             'newPostUrl'       => admin_url('post-new.php?post_type=page'),
-            'pricingUrl'       => (string) apply_filters('dsgo_apps_pro_pricing_url', 'https://designsetgo.dev/pricing'),
+            'pricingUrl'       => (string) apply_filters('dsgo_apps_pro_pricing_url', 'https://designsetgo.dev/pricing/'),
             'aiContext'        => [
                 'permissions'        => AiContextPack::all_permissions(),
                 'defaultPermissions' => AiContextPack::default_permissions(),
@@ -240,10 +240,10 @@ final class AdminPage {
                 self::render_per_app_tab_link($app_id, 'secrets', __('Secrets', 'designsetgo-apps'), $tab);
                 // Cron + Webhooks tabs only appear when the manifest
                 // actually declares them — empty tabs are noise.
-                if ($manifest->scheduled_jobs() !== []) {
+                if ($manifest->scheduled_jobs() !== [] && class_exists(CronLog::class)) {
                     self::render_per_app_tab_link($app_id, 'cron', __('Cron', 'designsetgo-apps'), $tab);
                 }
-                if ($manifest->webhook_endpoints() !== []) {
+                if ($manifest->webhook_endpoints() !== [] && class_exists(WebhookLog::class)) {
                     self::render_per_app_tab_link($app_id, 'webhooks', __('Webhooks', 'designsetgo-apps'), $tab);
                 }
                 ?>
@@ -256,10 +256,10 @@ final class AdminPage {
                         self::render_secrets_tab($manifest);
                         break;
                     case 'cron':
-                        self::render_cron_tab($manifest);
+                        class_exists(CronLog::class) ? self::render_cron_tab($manifest) : self::render_pro_runtime_unavailable();
                         break;
                     case 'webhooks':
-                        self::render_webhooks_tab($manifest);
+                        class_exists(WebhookLog::class) ? self::render_webhooks_tab($manifest) : self::render_pro_runtime_unavailable();
                         break;
                     default:
                         echo '<p>' . esc_html__('Unknown tab.', 'designsetgo-apps') . '</p>';
@@ -282,6 +282,15 @@ final class AdminPage {
             $is_active ? ' is-active' : '',
             $is_active ? 'true' : 'false',
             esc_html($label),
+        );
+    }
+
+    private static function render_pro_runtime_unavailable(): void {
+        printf(
+            '<p>%s <a href="%s" target="_blank" rel="noopener noreferrer">%s</a></p>',
+            esc_html__('This feature is available in DesignSetGo Apps Pro.', 'designsetgo-apps'),
+            esc_url((string) apply_filters('dsgo_apps_pro_pricing_url', 'https://designsetgo.dev/pricing/')),
+            esc_html__('View pricing', 'designsetgo-apps'),
         );
     }
 
@@ -369,9 +378,9 @@ final class AdminPage {
         // dsgoCronWebhooks global. Both tabs share the same token.
         wp_enqueue_script(
             'dsgo-apps-cron-tab',
-            plugins_url('assets/admin/cron-tab.js', DSGO_APPS_PATH . 'designsetgo-apps.php'),
+            plugins_url('assets/admin/cron-tab.js', DSGO_APPS_PRO_FILE),
             [],
-            DSGO_APPS_VERSION,
+            DSGO_APPS_PRO_VERSION,
             true,
         );
         wp_localize_script('dsgo-apps-cron-tab', 'dsgoCronWebhooks', [
@@ -388,7 +397,7 @@ final class AdminPage {
             'log_rows' => CronLog::query($manifest->id, ['per_page' => 50]),
         ];
         // phpcs:enable WordPress.PHP.DontExtract
-        require DSGO_APPS_PATH . 'templates/cron-tab.php';
+        require DSGO_APPS_PRO_PATH . 'templates/cron-tab.php';
     }
 
     /**
@@ -403,9 +412,9 @@ final class AdminPage {
     private static function render_webhooks_tab(Manifest $manifest): void {
         wp_enqueue_script(
             'dsgo-apps-webhooks-tab',
-            plugins_url('assets/admin/webhooks-tab.js', DSGO_APPS_PATH . 'designsetgo-apps.php'),
+            plugins_url('assets/admin/webhooks-tab.js', DSGO_APPS_PRO_FILE),
             [],
-            DSGO_APPS_VERSION,
+            DSGO_APPS_PRO_VERSION,
             true,
         );
         wp_localize_script('dsgo-apps-webhooks-tab', 'dsgoCronWebhooks', [
@@ -423,7 +432,7 @@ final class AdminPage {
             'pro_gate'  => ProFeatureGate::is_enabled('webhooks'),
         ];
         // phpcs:enable WordPress.PHP.DontExtract
-        require DSGO_APPS_PATH . 'templates/webhooks-tab.php';
+        require DSGO_APPS_PRO_PATH . 'templates/webhooks-tab.php';
     }
 
     private static function render_secrets_tab(Manifest $manifest): void {

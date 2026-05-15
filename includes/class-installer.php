@@ -361,7 +361,9 @@ final class Installer {
             Settings::refresh_root_app_id();
             InlineRenderer::bump_cache_version($manifest->id);
             SitemapProvider::invalidate_cache();
-            AbilitiesPublisher::register_for_app($manifest);
+            if (class_exists(AbilitiesPublisher::class) && ProFeatureGate::is_enabled('abilities_publish')) {
+                AbilitiesPublisher::register_for_app($manifest);
+            }
             MediaPublisher::publish_for_app($manifest, $bundle_dir);
 
             // Cron + webhook surface activation (Task 15 of the cron+webhooks plan).
@@ -370,12 +372,16 @@ final class Installer {
             // jobs whose schedule/time/day_of_week changed — unchanged
             // jobs keep their next-fire timer, so re-installs of the same
             // manifest don't reset cron clocks.
-            CronScheduler::reconcile($manifest->id, $manifest, $prev_manifest);
+            if (class_exists(CronScheduler::class) && ProFeatureGate::is_enabled('cron')) {
+                CronScheduler::reconcile($manifest->id, $manifest, $prev_manifest);
+            }
             // WebhookRouter::register is a no-op when the Pro gate is
             // closed (enforcement lives inside the router). When open,
             // newly added endpoints become callable on the next REST
             // request without waiting for rest_api_init's full sweep.
-            WebhookRouter::register($manifest->id, $manifest->webhook_endpoints());
+            if (class_exists(WebhookRouter::class) && ProFeatureGate::is_enabled('webhooks')) {
+                WebhookRouter::register($manifest->id, $manifest->webhook_endpoints());
+            }
 
             self::release_install_lock($manifest->id);
 

@@ -269,8 +269,6 @@ final class RestApi {
         add_action('wp_ajax_dsgo_apps_secret_set',         [self::class, 'ajax_secret_set']);
         add_action('wp_ajax_dsgo_apps_secret_clear',       [self::class, 'ajax_secret_clear']);
         add_action('wp_ajax_dsgo_apps_http_test',          [self::class, 'ajax_http_test']);
-        add_action('wp_ajax_dsgo_apps_cron_run_now',       [self::class, 'ajax_cron_run_now']);
-        add_action('wp_ajax_dsgo_apps_webhook_send_test',  [self::class, 'ajax_webhook_send_test']);
     }
 
     public static function mark_app_password_auth(): void {
@@ -386,7 +384,7 @@ final class RestApi {
                 'message' => __('CLI deploys require a DesignSetGo Apps Pro license. The wp-admin upload importer is free and unlimited.', 'designsetgo-apps'),
                 'data'    => [
                     'status'      => 402,
-                    'pricing_url' => apply_filters('dsgo_apps_pro_pricing_url', 'https://designsetgo.dev/pricing'),
+                    'pricing_url' => apply_filters('dsgo_apps_pro_pricing_url', 'https://designsetgo.dev/pricing/'),
                 ],
             ], 402);
         }
@@ -667,7 +665,9 @@ final class RestApi {
         // table is drained.
         self::cleanup_user_storage_batch((int) $post->ID);
 
-        AbilitiesPublisher::unregister_for_app($id);
+        if (class_exists(AbilitiesPublisher::class)) {
+            AbilitiesPublisher::unregister_for_app($id);
+        }
         // Unschedule any cron events bound to this app's jobs (Task 15
         // of the cron+webhooks plan). Without this, deleting an app
         // leaves orphan cron events that fire and log cron_app_not_found
@@ -683,7 +683,7 @@ final class RestApi {
                     $job_ids[] = $job['id'];
                 }
             }
-            if ($job_ids !== []) {
+            if ($job_ids !== [] && class_exists(CronScheduler::class)) {
                 CronScheduler::unschedule_all($id, $job_ids);
             }
         }
@@ -1444,6 +1444,9 @@ final class RestApi {
      * the outcome inline without a second round-trip.
      */
     public static function ajax_cron_run_now(): void {
+        if (!ProFeatureGate::is_enabled('cron')) {
+            wp_send_json_error(['code' => 'cron_requires_pro', 'message' => 'Scheduled jobs require DesignSetGo Apps Pro.'], 403);
+        }
         $ctx = self::require_cron_webhooks_ajax_context();
         // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared to regex below
         $job_id = isset($_POST['job_id']) ? (string) wp_unslash((string) $_POST['job_id']) : '';
@@ -1487,6 +1490,9 @@ final class RestApi {
      * WP_REST_Response (status + body) is returned to the JS verbatim.
      */
     public static function ajax_webhook_send_test(): void {
+        if (!ProFeatureGate::is_enabled('webhooks')) {
+            wp_send_json_error(['code' => 'webhooks_require_pro', 'message' => 'Webhook endpoints require DesignSetGo Apps Pro.'], 403);
+        }
         $ctx = self::require_cron_webhooks_ajax_context();
         // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared to regex below
         $endpoint_id = isset($_POST['endpoint_id']) ? (string) wp_unslash((string) $_POST['endpoint_id']) : '';

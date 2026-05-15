@@ -103,7 +103,7 @@ DesignSetGo Apps Pro adds:
 * **GitHub Action** for CI deploy
 * **White-label** (Agency tier)
 
-Pro is distributed at https://designsetgo.dev/pricing with a 14-day free
+Pro is distributed at https://designsetgo.dev/pricing/ with a 14-day free
 trial on every plan.
 
 = What happens if my app declares Pro features and I'm on the free plugin? =
@@ -127,7 +127,7 @@ When an app does call `dsgo.ai.prompt()` or invokes an AI-backed ability, the ca
 
 = Is the source open? =
 
-Yes. The plugin runtime, bridge client, CLI, and bridge protocol are open source under GPL-2.0-or-later.
+Yes. The plugin runtime, bridge client, CLI, bridge protocol, and block source/build tooling are open source under GPL-2.0-or-later at https://github.com/DesignSetGo/dsgo-apps.
 
 = What personal data does the plugin store? =
 

@@ -26,6 +26,7 @@ class BundleTest extends WP_UnitTestCase {
     public function test_safe_zip_entry_rejects_unsafe(): void {
         $this->assertFalse(Bundle::is_safe_zip_entry('../escape'));
         $this->assertFalse(Bundle::is_safe_zip_entry('/abs/path'));
+        $this->assertFalse(Bundle::is_safe_zip_entry('assets\\..\\escape.txt'));
         $this->assertFalse(Bundle::is_safe_zip_entry('a/../../escape'));
         $this->assertFalse(Bundle::is_safe_zip_entry('.hidden'));
         $this->assertFalse(Bundle::is_safe_zip_entry(''));

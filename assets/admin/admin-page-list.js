@@ -140,7 +140,7 @@
             );
             badge.appendChild(badgeText);
             var upgradeLink = document.createElement('a');
-            upgradeLink.href = cfg.pricingUrl || 'https://designsetgo.dev/pricing';
+            upgradeLink.href = cfg.pricingUrl || 'https://designsetgo.dev/pricing/';
             upgradeLink.textContent = __('Activate Pro →', 'designsetgo-apps');
             badge.appendChild(upgradeLink);
             node.querySelector('.dsgo-applist__main').appendChild(badge);

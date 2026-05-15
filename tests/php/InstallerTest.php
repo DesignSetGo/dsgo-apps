@@ -541,36 +541,6 @@ class InstallerTest extends WP_UnitTestCase {
         $this->assertSame(['ai'],           $result->removed_buckets);
     }
 
-    public function test_install_registers_published_abilities(): void {
-        add_filter('dsgo_apps_pro_feature_enabled', '__return_true');
-        $zip = $this->build_zip_with_publishes('publish-test', [
-            ['name' => 'publish-test/foo', 'label' => 'Foo', 'description' => 'd', 'category' => 'content'],
-        ]);
-        Installer::install($zip, $this->admin_id);
-
-        $this->assertTrue(wp_has_ability('publish-test/foo'));
-        \DSGo_Apps\AbilitiesPublisher::unregister_for_app('publish-test');  // cleanup
-        remove_all_filters('dsgo_apps_pro_feature_enabled');
-    }
-
-    public function test_install_reinstall_diffs_published_abilities(): void {
-        add_filter('dsgo_apps_pro_feature_enabled', '__return_true');
-        $zip1 = $this->build_zip_with_publishes('publish-diff', [
-            ['name' => 'publish-diff/old', 'label' => 'Old', 'description' => 'd', 'category' => 'content'],
-        ]);
-        Installer::install($zip1, $this->admin_id);
-
-        $zip2 = $this->build_zip_with_publishes('publish-diff', [
-            ['name' => 'publish-diff/new', 'label' => 'New', 'description' => 'd', 'category' => 'content'],
-        ]);
-        Installer::install($zip2, $this->admin_id);
-
-        $this->assertFalse(wp_has_ability('publish-diff/old'));
-        $this->assertTrue(wp_has_ability('publish-diff/new'));
-        \DSGo_Apps\AbilitiesPublisher::unregister_for_app('publish-diff');
-        remove_all_filters('dsgo_apps_pro_feature_enabled');
-    }
-
     public function test_install_publishes_manifest_declared_images_to_media_library(): void {
         $admin_id = self::factory()->user->create(['role' => 'administrator']);
 
@@ -627,23 +597,6 @@ class InstallerTest extends WP_UnitTestCase {
         foreach ($files as $name => $contents) {
             $zip->addFromString($name, $contents);
         }
-        $zip->close();
-        return $tmp;
-    }
-
-    private function build_zip_with_publishes(string $id, array $publishes): string {
-        $tmp = tempnam(sys_get_temp_dir(), 'dsgo-zip-');
-        $zip = new \ZipArchive();
-        $zip->open($tmp, \ZipArchive::OVERWRITE);
-        $zip->addFromString('dsgo-app.json', json_encode([
-            'manifest_version' => 1, 'id' => $id, 'name' => $id, 'version' => '0.1.0',
-            'entry' => 'index.html', 'isolation' => 'iframe',
-            'display' => ['modes' => ['page'], 'default' => 'page'],
-            'permissions' => ['read' => [], 'write' => []],
-            'runtime' => ['sandbox' => 'strict', 'external_origins' => []],
-            'abilities' => ['publishes' => $publishes],
-        ]));
-        $zip->addFromString('index.html', '<!doctype html><html><head><title>x</title></head><body>x</body></html>');
         $zip->close();
         return $tmp;
     }

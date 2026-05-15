@@ -68,14 +68,9 @@ final class CliDeployGateTest extends WP_UnitTestCase {
 
         $this->assertSame(402, $response->get_status());
         $this->assertArrayHasKey('data', $data);
-        // The pricing_url passes through dsgo_apps_pro_pricing_url. Lite filters
-        // it to Freemius's in-admin checkout when the SDK is loaded; the original
-        // designsetgo.dev/pricing URL is the fallback when neither Lite nor Pro
-        // has registered a filter. Either is acceptable — assert it's a valid
-        // URL pointing at a pricing/checkout surface rather than pinning to the
-        // exact string.
-        $this->assertIsString($data['data']['pricing_url']);
-        $this->assertNotFalse(filter_var($data['data']['pricing_url'], FILTER_VALIDATE_URL));
+        // Lite links to the public pricing page; the free plugin does not load
+        // a license SDK or deep-link into a checkout flow.
+        $this->assertSame('https://designsetgo.dev/pricing/', $data['data']['pricing_url']);
     }
 
     // ---- Cookie auth (wp-admin importer path) -- gate must not apply ------

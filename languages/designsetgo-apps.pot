@@ -55,22 +55,8 @@ msgstr ""
 msgid "DesignSetGo Apps requires WordPress 6.9 or higher. You are running %s."
 msgstr ""
 
-#: designsetgo-apps.php:170
-msgid "DesignSetGo Apps: Freemius SDK is missing (composer dependencies not installed). Apps will continue to run, but the in-admin Pricing/Upgrade page is unavailable."
-msgstr ""
-
 #. translators: %s: class name
-#: includes/class-abilities-publisher.php:201
-#, php-format
-msgid "Companion plugin not installed: class %s is not loadable."
-msgstr ""
-
 #. translators: %s: ability name
-#: includes/class-abilities-publisher.php:247
-#, php-format
-msgid "Ability \"%s\" is published by a DesignSetGo app and can only be invoked from a browser context. Use @wordpress/abilities executeAbility() in JS, not server-side wp_ai_client_prompt()."
-msgstr ""
-
 #: includes/class-admin-page.php:48
 msgid "Your site home is a DSGo App."
 msgstr ""
@@ -525,14 +511,6 @@ msgstr ""
 msgid "Reads and modifies your store data."
 msgstr ""
 
-#: includes/class-cron-scheduler.php:41
-msgid "Every 15 minutes (DesignSetGo Apps)"
-msgstr ""
-
-#: includes/class-cron-scheduler.php:45
-msgid "Every 5 minutes (DesignSetGo Apps)"
-msgstr ""
-
 #: includes/class-dsgo-abilities.php:52
 msgid "Generate a DSGo app from a natural-language prompt (Pro)"
 msgstr ""
@@ -918,84 +896,11 @@ msgstr ""
 msgid "Save changes"
 msgstr ""
 
-#: includes/class-webhook-auth.php:80
-msgid "Webhook secret is not configured. Set it in the Secrets tab."
-msgstr ""
-
-#: includes/class-webhook-auth.php:202
-msgid "Webhook authentication failed."
-msgstr ""
-
-#: templates/cron-tab.php:35
-msgid "Scheduled jobs"
-msgstr ""
-
-#: templates/cron-tab.php:37
-msgid "WP-cron fires approximately at the scheduled time, depending on site traffic. Low-traffic sites should consider configuring a server-side cron pointed at wp-cron.php."
-msgstr ""
-
-#: templates/cron-tab.php:46
-msgid "Job ID"
-msgstr ""
-
-#: templates/cron-tab.php:47
-#: templates/webhooks-tab.php:57
-msgid "Ability"
-msgstr ""
-
-#: templates/cron-tab.php:48
-msgid "Schedule"
-msgstr ""
-
-#: templates/cron-tab.php:49
-msgid "Next fire"
-msgstr ""
-
-#: templates/cron-tab.php:50
 #: templates/secrets-tab.php:93
 msgid "Actions"
 msgstr ""
 
-#: templates/cron-tab.php:59
-msgid "— not scheduled"
-msgstr ""
-
-#: templates/cron-tab.php:79
-msgid "Run now"
-msgstr ""
-
-#: templates/cron-tab.php:90
-msgid "Recent runs"
-msgstr ""
-
-#: templates/cron-tab.php:92
-msgid "No cron runs recorded yet."
-msgstr ""
-
-#: templates/cron-tab.php:97
-msgid "Fired"
-msgstr ""
-
-#: templates/cron-tab.php:98
-msgid "Job"
-msgstr ""
-
-#: templates/cron-tab.php:99
 #: templates/secrets-tab.php:92
-#: templates/webhooks-tab.php:132
-msgid "Status"
-msgstr ""
-
-#: templates/cron-tab.php:100
-#: templates/webhooks-tab.php:134
-msgid "Duration"
-msgstr ""
-
-#: templates/cron-tab.php:101
-#: templates/webhooks-tab.php:135
-msgid "Error"
-msgstr ""
-
 #: templates/secrets-tab.php:54
 msgid "Sodium extension unavailable."
 msgstr ""
@@ -1091,76 +996,5 @@ msgstr ""
 msgid "Run test fetch"
 msgstr ""
 
-#: templates/webhooks-tab.php:40
-msgid "Webhook endpoints"
-msgstr ""
-
-#: templates/webhooks-tab.php:45
-msgid "Webhook delivery requires DesignSetGo Apps Pro. Endpoints declared in the manifest will not receive requests until a Pro license is active."
-msgstr ""
-
-#: templates/webhooks-tab.php:56
-msgid "Endpoint ID"
-msgstr ""
-
-#: templates/webhooks-tab.php:58
-msgid "Auth"
-msgstr ""
-
-#: templates/webhooks-tab.php:59
-msgid "Async"
-msgstr ""
-
-#: templates/webhooks-tab.php:60
-msgid "Callback URL"
-msgstr ""
-
-#: templates/webhooks-tab.php:71
-#: templates/webhooks-tab.php:143
-msgid "queued"
-msgstr ""
-
-#: templates/webhooks-tab.php:72
-#: templates/webhooks-tab.php:143
-msgid "inline"
-msgstr ""
-
-#: templates/webhooks-tab.php:93
-msgid "Send a test payload"
-msgstr ""
-
-#: templates/webhooks-tab.php:96
-msgid "Body (JSON or raw text)"
-msgstr ""
-
-#: templates/webhooks-tab.php:105
-msgid "The handler signs this body with your configured secret and dispatches it through the full pipeline. The endpoint must already have its secret set on the Secrets tab."
-msgstr ""
-
-#: templates/webhooks-tab.php:111
-msgid "Send test payload"
-msgstr ""
-
-#: templates/webhooks-tab.php:122
-msgid "Recent deliveries"
-msgstr ""
-
-#: templates/webhooks-tab.php:124
-msgid "No webhook deliveries recorded yet."
-msgstr ""
-
-#: templates/webhooks-tab.php:129
-msgid "Received"
-msgstr ""
-
-#: templates/webhooks-tab.php:130
-msgid "Endpoint"
-msgstr ""
-
-#: templates/webhooks-tab.php:131
-msgid "Mode"
-msgstr ""
-
-#: templates/webhooks-tab.php:133
 msgid "HTTP"
 msgstr ""

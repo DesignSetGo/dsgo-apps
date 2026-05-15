@@ -792,40 +792,6 @@ class RestApiTest extends WP_UnitTestCase {
         \DSGo_Apps\AiBridge::reset_factory_for_tests();
     }
 
-    public function test_delete_app_unregisters_published_abilities(): void {
-        add_filter('dsgo_apps_pro_feature_enabled', '__return_true');
-        $this->install_test_app_for_abilities('publish-delete', ['read' => []]);
-        update_post_meta(
-            get_page_by_path('publish-delete', OBJECT, \DSGo_Apps\PostType::SLUG)->ID,
-            'dsgo_apps_manifest',
-            [
-                'manifest_version' => 1, 'id' => 'publish-delete', 'name' => 'P', 'version' => '0.1.0',
-                'entry' => 'index.html', 'isolation' => 'iframe',
-                'display' => ['modes' => ['page'], 'default' => 'page'],
-                'permissions' => ['read' => [], 'write' => []],
-                'runtime' => ['sandbox' => 'strict', 'external_origins' => []],
-                'abilities' => ['publishes' => [
-                    ['name' => 'publish-delete/x', 'label' => 'X', 'description' => 'd',
-                     'category' => 'content', 'annotations' => [], 'timeout_seconds' => 30],
-                ]],
-            ],
-        );
-        $manifest = \DSGo_Apps\Manifest::validate(get_post_meta(
-            get_page_by_path('publish-delete', OBJECT, \DSGo_Apps\PostType::SLUG)->ID,
-            'dsgo_apps_manifest', true,
-        ));
-        \DSGo_Apps\AbilitiesPublisher::register_for_app($manifest);
-        $this->assertTrue(wp_has_ability('publish-delete/x'));
-
-        wp_set_current_user($this->factory->user->create(['role' => 'administrator']));
-        $req = new \WP_REST_Request('DELETE', '/dsgo/v1/apps/publish-delete');
-        $resp = rest_get_server()->dispatch($req);
-        $this->assertSame(200, $resp->get_status());
-
-        $this->assertFalse(wp_has_ability('publish-delete/x'));
-        remove_all_filters('dsgo_apps_pro_feature_enabled');
-    }
-
     /**
      * Seed an installed-app post with the meta keys list_apps and the
      * site-home REST handler depend on. Mirrors the shape Installer writes

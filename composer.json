@@ -4,8 +4,7 @@
   "type": "wordpress-plugin",
   "license": "GPL-2.0-or-later",
   "require": {
-    "php": ">=8.2",
-    "freemius/wordpress-sdk": "^2.11"
+    "php": ">=8.2"
   },
   "require-dev": {
     "phpunit/phpunit": "^9.6",
