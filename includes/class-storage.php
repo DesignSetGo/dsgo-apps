@@ -105,6 +105,13 @@ final class Storage {
         if ($projected !== $running) {
             update_user_meta($user_id, $size_key, (string) $projected);
         }
+
+        do_action('dsgo_apps_storage_user_set', [
+            'app_post_id' => $app_post_id,
+            'user_id'     => $user_id,
+            'key'         => $key,
+            'bytes'       => $new_bytes,
+        ]);
     }
 
     private static function assert_key(string $key): void {

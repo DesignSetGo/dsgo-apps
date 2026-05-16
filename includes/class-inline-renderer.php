@@ -1153,6 +1153,15 @@ final class InlineRenderer {
             }
         }
 
+        do_action('dsgo_apps_inline_app_loaded', [
+            'app_id'      => $manifest->id,
+            'app_post_id' => 0,
+            'mode'        => 'inline',
+            'user_id'     => get_current_user_id(),
+            'referrer'    => isset($_SERVER['HTTP_REFERER']) ? (string) $_SERVER['HTTP_REFERER'] : '',
+            'path'        => isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '',
+        ]);
+
         if ($manifest->theme_wrap === 'header_footer') {
             $body  = self::extract_body_content($rendered);
             $reset = self::inject_route_meta($route['title'] ?? null, $route['description'] ?? null);

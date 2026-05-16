@@ -195,13 +195,20 @@ final class EmailBridge {
     }
 
     private static function record_send(string $app_id, EmailRecipient $to_type, string $resolved, string $subject, bool $ok): void {
+        // recipient_hash is the durable join key for the GDPR exporter/eraser
+        // (it survives even when the resolved address rotates). recipient_email
+        // is added alongside so the Pro Submissions inbox can show the actual
+        // address — that's the lead's email for admin-recipient sends and the
+        // visitor's own address for current_user sends, which is the only
+        // detail a site owner actually wants out of "an app sent an email".
         $entry = [
-            'app_id'         => $app_id,
-            'recipient_type' => $to_type->value,
-            'recipient_hash' => hash('sha256', $resolved),
-            'subject'        => $subject,
-            'sent'           => $ok,
-            'timestamp'      => time(),
+            'app_id'          => $app_id,
+            'recipient_type'  => $to_type->value,
+            'recipient_email' => $resolved,
+            'recipient_hash'  => hash('sha256', $resolved),
+            'subject'         => $subject,
+            'sent'            => $ok,
+            'timestamp'       => time(),
         ];
         // Trim the audit log to the most recent 200 entries per app to avoid
         // unbounded growth — site admins doing forensics can also pull from

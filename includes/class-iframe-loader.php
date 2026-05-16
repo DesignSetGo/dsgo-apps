@@ -168,6 +168,15 @@ final class IframeLoader {
             header('X-Frame-Options: SAMEORIGIN');
         }
 
+        do_action('dsgo_apps_inline_app_loaded', [
+            'app_id'    => $app_id,
+            'app_post_id' => $post->ID,
+            'mode'      => $mode === 'block' ? 'block' : 'iframe',
+            'user_id'   => get_current_user_id(),
+            'referrer'  => isset($_SERVER['HTTP_REFERER']) ? (string) $_SERVER['HTTP_REFERER'] : '',
+            'path'      => isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '',
+        ]);
+
         require DSGO_APPS_PATH . 'templates/iframe-loader.php';
     }
 
