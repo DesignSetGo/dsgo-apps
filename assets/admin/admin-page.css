@@ -719,6 +719,36 @@
     border-color: rgba(164, 51, 42, 0.3);
 }
 
+/* Pro-injected primary action — "Edit in Riff" on installed app rows,
+   "Open in Riff" on draft rows. Shares the pill geometry of __home and
+   __delete so the action row reads as a consistent rhythm; tints with the
+   accent color to mark this as the primary verb. The class lives here
+   (not in a Pro-only stylesheet) so the row's button family stays
+   co-located and any future free-tier consumer can reuse it. */
+.dsgo-applist__edit {
+    appearance: none;
+    background: none;
+    border: 1px solid var(--dsgo-rule);
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--dsgo-accent);
+    border-radius: 999px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+.dsgo-applist__edit:hover,
+.dsgo-applist__edit:focus-visible {
+    color: var(--dsgo-accent);
+    border-color: var(--dsgo-accent);
+    background: rgba(31, 91, 74, 0.06);
+    text-decoration: none;
+}
+
 /* Consent panel — appended inline to a row when promoting/stepping down. */
 .dsgo-consent {
     grid-column: 1 / -1;
