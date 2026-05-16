@@ -153,6 +153,71 @@ class ManifestTest extends WP_UnitTestCase {
         $this->assertSame([DisplayMode::Page], $m->display_modes);
     }
 
+    public function test_validate_accepts_manifest_with_write_omitted_in_v1(): void {
+        // permissions.write is optional in v1 — missing and `[]` are
+        // semantically identical (no write either way). Generation pipelines
+        // that reason about "must be empty" sometimes drop the key entirely;
+        // the validator should let them through rather than bounce them into
+        // a second round of error correction.
+        $raw = [
+            'manifest_version' => 1,
+            'id'               => 'sample-app',
+            'name'             => 'Sample',
+            'version'          => '0.1.0',
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'permissions'      => ['read' => []], // write key intentionally absent
+            'runtime'          => ['sandbox' => 'strict'],
+        ];
+        $m = Manifest::validate($raw);
+        $this->assertSame('sample-app', $m->id);
+    }
+
+    public function test_validate_rejects_non_empty_permissions_write_with_migration_hint(): void {
+        $raw = [
+            'manifest_version' => 1,
+            'id'               => 'sample-app',
+            'name'             => 'Sample',
+            'version'          => '0.1.0',
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'permissions'      => ['read' => [], 'write' => ['posts']],
+            'runtime'          => ['sandbox' => 'strict'],
+        ];
+        try {
+            Manifest::validate($raw);
+            $this->fail('Manifest with non-empty permissions.write should have been rejected.');
+        } catch (\DSGo_Apps\ManifestError $e) {
+            $this->assertSame('permissions.write', $e->field);
+            $msg = $e->getMessage();
+            // The migration hint MUST point the reader at the alternative
+            // paths (email + dsgo.storage) — otherwise the error is just a
+            // wall and the model/dev has to guess the recovery.
+            $this->assertStringContainsString('email', $msg);
+            $this->assertStringContainsString('dsgo.storage', $msg);
+            $this->assertStringContainsString('v2', $msg);
+        }
+    }
+
+    public function test_validate_rejects_non_array_permissions_write(): void {
+        $raw = [
+            'manifest_version' => 1,
+            'id'               => 'sample-app',
+            'name'             => 'Sample',
+            'version'          => '0.1.0',
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'permissions'      => ['read' => [], 'write' => 'nope'],
+            'runtime'          => ['sandbox' => 'strict'],
+        ];
+        $this->expectException(\DSGo_Apps\ManifestError::class);
+        $this->expectExceptionMessage('permissions.write');
+        Manifest::validate($raw);
+    }
+
     public function test_validate_rejects_wrong_manifest_version(): void {
         $this->expectException(ManifestError::class);
         $this->expectExceptionMessage('manifest_version');

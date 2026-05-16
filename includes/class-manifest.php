@@ -307,9 +307,26 @@ final readonly class Manifest {
         self::assert_array($raw['display'], 'modes', 'display.modes');
         self::assert_string($raw['display'], 'default', 'display.default');
         self::assert_array($raw['permissions'], 'read',  'permissions.read');
-        self::assert_array($raw['permissions'], 'write', 'permissions.write');
-        if ($raw['permissions']['write'] !== []) {
-            throw new ManifestError('permissions.write', 'must be empty in v1');
+        // permissions.write is OPTIONAL in v1. It MUST be `[]` when present;
+        // a missing key is treated as semantically equivalent to `[]` (no
+        // write either way). This lenience was added because some generation
+        // pipelines (notably LLMs reading "must be `[]`" instructions) would
+        // interpret the constraint as "omit the field" and end up bouncing
+        // between two validator errors. Defaulting fixes that without
+        // changing runtime behavior — write is unreachable in v1 regardless.
+        // v2's write capability will require the field again.
+        if (!array_key_exists('write', $raw['permissions'])) {
+            $raw['permissions']['write'] = [];
+        } elseif (!is_array($raw['permissions']['write'])) {
+            throw new ManifestError('permissions.write', 'must be an array (or omitted entirely in v1)');
+        } elseif ($raw['permissions']['write'] !== []) {
+            throw new ManifestError(
+                'permissions.write',
+                'must be `[]` or omitted in v1 — apps cannot mutate WordPress data yet. '
+                . 'For user submissions, use `permissions.read: ["email"]` + an `email` block. '
+                . 'For app-private state, use `dsgo.storage.*` (no permission needed). '
+                . 'Writes ship in v2.'
+            );
         }
         $permissions_run = self::validate_permissions_run($raw['permissions']['run'] ?? null);
         $permissions_http = self::validate_permissions_http($raw['permissions']['http'] ?? null);
