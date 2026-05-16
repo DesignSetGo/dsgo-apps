@@ -64,6 +64,19 @@ final readonly class PreviewResult {
 final class Installer {
 
     /**
+     * Maximum bundle-history entries retained per app. When a new install
+     * would push the count past this, the OLDEST entry's directory is
+     * deleted and its meta row removed. 5 is the balance: enough to cover
+     * 2-3 "I want to roll back the last Riff edit" cases plus the most
+     * recent CLI deploy, without letting an aggressively iterating
+     * session balloon disk usage. Filter via `dsgo_apps_max_bundle_history`.
+     */
+    public const MAX_HISTORY_ENTRIES = 5;
+
+    /** Post meta key carrying the bundle-history list. */
+    public const HISTORY_META_KEY = 'dsgo_apps_bundle_history';
+
+    /**
      * Validate a zip and compute bucket activation without installing. The
      * REST `POST /apps/preview` endpoint uses this to drive the install
      * dialog's consent panel before the user re-uploads the same zip to
@@ -348,7 +361,21 @@ final class Installer {
                 self::reconcile_vault_against_manifest($manifest);
             }
 
-            if ($rollback !== null) {
+            // Bundle history: instead of deleting the rollback stash on
+            // success, rename it into a permanent .history-{ts} directory
+            // and record it in post meta. Lets the user revert to any of
+            // the last MAX_HISTORY_ENTRIES versions if a Riff edit (or
+            // any install path) silently dropped behavior. The free
+            // plugin owns this because install/update lives here and
+            // every code path (HTML upload, CLI deploy, Riff, webhooks)
+            // benefits — safety, not premium.
+            if ($rollback !== null && $prev_manifest !== null) {
+                self::archive_to_history((int) $post_id, $rollback, $prev_manifest);
+            } elseif ($rollback !== null) {
+                // No prev_manifest means we couldn't parse the prior
+                // install's metadata — archive without it would be
+                // unrevertable (no version label, no schema check on
+                // revert). Fall back to the old delete-stash behavior.
                 Bundle::recursive_delete($rollback);
             }
 
@@ -498,6 +525,230 @@ final class Installer {
         $max = Bundle::max_total_bytes();
         if ($total > $max) {
             throw new InstallerError('bundle_too_large', sprintf('bundle is %d bytes (max %d)', $total, $max));
+        }
+    }
+
+    /**
+     * Rename the rollback stash into a permanent .history-{ts} directory
+     * and record it in post meta. Called once per successful install
+     * where the prior bundle was parseable. Idempotent on the meta side
+     * (skips duplicate ts entries). Prunes oldest when count > cap.
+     *
+     * Layout on disk:
+     *   uploads/designsetgo-apps/{app_id}/                 ← current bundle
+     *   uploads/designsetgo-apps/{app_id}.history-{ts1}/   ← prior version 1
+     *   uploads/designsetgo-apps/{app_id}.history-{ts2}/   ← prior version 2
+     *
+     * Meta shape (list, newest-last):
+     *   [
+     *     { ts: 1715800000, version: "1.0.0", dir: "{app_id}.history-{ts}",
+     *       manifest_snapshot: { ...full manifest array... } },
+     *   ]
+     */
+    private static function archive_to_history(int $post_id, string $rollback_dir, Manifest $prev_manifest): void {
+        if (!is_dir($rollback_dir)) {
+            return; // stash was already moved/deleted; nothing to archive
+        }
+        $bundle_dir = Bundle::dir_for($prev_manifest->id);
+        $parent     = dirname(rtrim($bundle_dir, '/'));
+        $ts         = time();
+        $basename   = basename(rtrim($bundle_dir, '/')) . '.history-' . $ts;
+        $history_dir = $parent . '/' . $basename;
+
+        // Collision guard: two installs in the same second would otherwise
+        // try to rename to the same path. uniqid suffix only kicks in on
+        // collision so the common case stays predictable (ts-only).
+        if (is_dir($history_dir)) {
+            $basename    .= '-' . substr(uniqid(), -6);
+            $history_dir  = $parent . '/' . $basename;
+        }
+
+        if (!@rename($rollback_dir, $history_dir)) { // phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename
+            // Rename failed (cross-filesystem, perms, race) — fall back
+            // to the original delete-stash behavior so install still
+            // succeeds. History feature is best-effort, not load-bearing.
+            Bundle::recursive_delete($rollback_dir);
+            return;
+        }
+
+        $entry = [
+            'ts'                => $ts,
+            'version'           => $prev_manifest->version,
+            'dir'               => $basename,
+            'manifest_snapshot' => $prev_manifest->to_array(),
+        ];
+
+        $existing = get_post_meta($post_id, self::HISTORY_META_KEY, true);
+        $list     = is_array($existing) ? array_values($existing) : [];
+        $list[]   = $entry;
+
+        $list = self::prune_history($list, $parent);
+        update_post_meta($post_id, self::HISTORY_META_KEY, $list);
+    }
+
+    /**
+     * Trim the history list to MAX_HISTORY_ENTRIES (filterable), deleting
+     * the dropped entries' on-disk directories. Returns the kept list.
+     *
+     * @param list<array{ts:int,version:string,dir:string,manifest_snapshot:array<string,mixed>}> $list
+     */
+    private static function prune_history(array $list, string $parent): array {
+        $cap = (int) \apply_filters('dsgo_apps_max_bundle_history', self::MAX_HISTORY_ENTRIES);
+        $cap = max(1, $cap);
+        while (count($list) > $cap) {
+            $dropped = array_shift($list);
+            if (isset($dropped['dir']) && is_string($dropped['dir']) && $dropped['dir'] !== '') {
+                $path = $parent . '/' . $dropped['dir'];
+                // Defense-in-depth: only delete if the resolved path is
+                // actually inside the parent dir AND has the .history-
+                // marker. Prevents a poisoned meta row from triggering a
+                // delete somewhere unexpected.
+                if (str_contains($dropped['dir'], '.history-') && is_dir($path)) {
+                    Bundle::recursive_delete($path);
+                }
+            }
+        }
+        return array_values($list);
+    }
+
+    /**
+     * Return the history list for an app. Used by the per-app admin page
+     * and by revert_to to look up the target.
+     *
+     * @return list<array{ts:int,version:string,dir:string,manifest_snapshot:array<string,mixed>}>
+     */
+    public static function list_history(int $post_id): array {
+        $raw = get_post_meta($post_id, self::HISTORY_META_KEY, true);
+        if (!is_array($raw)) return [];
+        $out = [];
+        foreach ($raw as $entry) {
+            if (!is_array($entry)) continue;
+            if (!isset($entry['ts'], $entry['version'], $entry['dir'])) continue;
+            $out[] = $entry;
+        }
+        return $out;
+    }
+
+    /**
+     * Revert an installed app to a prior history entry. The current
+     * bundle becomes a new history entry (so revert is itself
+     * reversible). The chosen entry's directory is renamed back into
+     * place as the active bundle, and the post's manifest meta is
+     * updated to the historical snapshot.
+     *
+     * Caller is responsible for capability checks (manage_options).
+     *
+     * @throws InstallerError On lock contention, missing entry, fs error,
+     *                        or unparseable manifest snapshot.
+     */
+    public static function revert_to(int $post_id, int $ts): void {
+        $post = \get_post($post_id);
+        if (!$post instanceof \WP_Post || $post->post_type !== PostType::SLUG) {
+            throw new InstallerError('not_found', sprintf('post %d is not a dsgo_app', $post_id));
+        }
+        $app_id = (string) $post->post_name;
+
+        $history = self::list_history($post_id);
+        $target  = null;
+        foreach ($history as $entry) {
+            if ((int) $entry['ts'] === $ts) { $target = $entry; break; }
+        }
+        if ($target === null) {
+            throw new InstallerError('not_found', sprintf('no history entry with ts=%d for %s', $ts, $app_id));
+        }
+
+        try {
+            $target_manifest = Manifest::from_array_unchecked((array) $target['manifest_snapshot']);
+        } catch (\Throwable) {
+            throw new InstallerError('invalid_snapshot', 'stored manifest snapshot is unparseable');
+        }
+
+        if (!self::acquire_install_lock($app_id)) {
+            throw new InstallerError('install_in_progress', sprintf('another install for "%s" is in progress', $app_id));
+        }
+
+        try {
+            $bundle_dir  = Bundle::dir_for($app_id);
+            $parent      = dirname(rtrim($bundle_dir, '/'));
+            $target_path = $parent . '/' . (string) $target['dir'];
+
+            if (!is_dir($target_path)) {
+                throw new InstallerError('not_found', sprintf('history directory %s is missing on disk', $target['dir']));
+            }
+
+            // Stash the current bundle (will become a new history entry).
+            $rollback = self::stash_existing($bundle_dir);
+
+            // Move the target history dir into the active slot. Atomic.
+            if (!@rename($target_path, $bundle_dir)) { // phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename
+                if ($rollback !== null) {
+                    @rename($rollback, $bundle_dir); // phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename
+                }
+                throw new InstallerError('fs_error', 'cannot move history dir into active position');
+            }
+
+            // Update post meta to match the reverted manifest.
+            update_post_meta($post_id, 'dsgo_apps_manifest', wp_slash($target_manifest->to_array()));
+            update_post_meta($post_id, 'dsgo_apps_bundle_path', $bundle_dir);
+            update_post_meta($post_id, 'dsgo_apps_installed_version', $target_manifest->version);
+            update_post_meta($post_id, 'dsgo_apps_mount_mode', $target_manifest->mount_mode->value);
+            update_post_meta($post_id, 'dsgo_apps_isolation', $target_manifest->isolation);
+
+            // Drop the target from history (it's now active), and add the
+            // pre-revert state as a new history entry so the user can
+            // re-revert if they change their mind.
+            $remaining = array_values(array_filter(
+                $history,
+                static fn(array $e) => (int) $e['ts'] !== $ts,
+            ));
+            if ($rollback !== null) {
+                // Get the current manifest (the one we just stashed) for
+                // the new history entry.
+                $current_raw = get_post_meta($post_id, 'dsgo_apps_manifest', true);
+                // ^ that's now the TARGET manifest (we just updated it).
+                // We need the PRE-revert manifest. Read from the stashed
+                // dir's dsgo-app.json.
+                $stash_manifest_json = @file_get_contents($rollback . '/dsgo-app.json');
+                $stash_manifest      = null;
+                if (is_string($stash_manifest_json)) {
+                    try {
+                        $decoded = json_decode($stash_manifest_json, true);
+                        if (is_array($decoded)) {
+                            $stash_manifest = Manifest::from_array_unchecked($decoded);
+                        }
+                    } catch (\Throwable) { /* keep null */ }
+                }
+                if ($stash_manifest !== null) {
+                    $new_ts        = time();
+                    $new_basename  = basename(rtrim($bundle_dir, '/')) . '.history-' . $new_ts;
+                    $new_dir       = $parent . '/' . $new_basename;
+                    if (is_dir($new_dir)) { $new_basename .= '-' . substr(uniqid(), -6); $new_dir = $parent . '/' . $new_basename; }
+                    if (@rename($rollback, $new_dir)) { // phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename
+                        $remaining[] = [
+                            'ts'                => $new_ts,
+                            'version'           => $stash_manifest->version,
+                            'dir'               => $new_basename,
+                            'manifest_snapshot' => $stash_manifest->to_array(),
+                        ];
+                    } else {
+                        Bundle::recursive_delete($rollback);
+                    }
+                } else {
+                    // Couldn't read the pre-revert manifest — delete the
+                    // stash rather than archive an unrevertable entry.
+                    Bundle::recursive_delete($rollback);
+                }
+            }
+
+            $remaining = self::prune_history($remaining, $parent);
+            update_post_meta($post_id, self::HISTORY_META_KEY, $remaining);
+
+            // Refresh caches that depend on installed bundle state.
+            Settings::refresh_root_app_id();
+            InlineRenderer::bump_cache_version($app_id);
+            SitemapProvider::invalidate_cache();
+        } finally {
+            self::release_install_lock($app_id);
         }
     }
 

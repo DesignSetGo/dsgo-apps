@@ -24,6 +24,10 @@ final class AdminPage {
         add_action('admin_menu', [self::class, 'register_menu']);
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_assets']);
         add_action('admin_notices', [self::class, 'maybe_render_reading_notice']);
+        // admin-post.php handler for the per-app History tab's "revert"
+        // form. Form posts (not REST) keep the surface dependency-free
+        // for a feature that's already gated on manage_options + nonce.
+        add_action('admin_post_dsgo_apps_revert_history', [self::class, 'handle_revert_post']);
     }
 
     /**
@@ -246,6 +250,11 @@ final class AdminPage {
                 if ($manifest->webhook_endpoints() !== [] && class_exists(WebhookLog::class)) {
                     self::render_per_app_tab_link($app_id, 'webhooks', __('Webhooks', 'designsetgo-apps'), $tab);
                 }
+                // History tab only appears when there's actually history to
+                // show. First-install apps don't have any.
+                if (\DSGo_Apps\Installer::list_history($post->ID) !== []) {
+                    self::render_per_app_tab_link($app_id, 'history', __('History', 'designsetgo-apps'), $tab);
+                }
                 ?>
             </nav>
 
@@ -260,6 +269,9 @@ final class AdminPage {
                         break;
                     case 'webhooks':
                         class_exists(WebhookLog::class) ? self::render_webhooks_tab($manifest) : self::render_pro_runtime_unavailable();
+                        break;
+                    case 'history':
+                        self::render_history_tab($post->ID, $manifest);
                         break;
                     default:
                         echo '<p>' . esc_html__('Unknown tab.', 'designsetgo-apps') . '</p>';
@@ -433,6 +445,76 @@ final class AdminPage {
         ];
         // phpcs:enable WordPress.PHP.DontExtract
         require DSGO_APPS_PRO_PATH . 'templates/webhooks-tab.php';
+    }
+
+    private static function render_history_tab(int $post_id, Manifest $manifest): void {
+        $history = Installer::list_history($post_id);
+        // Most recent first for display (storage list is newest-last).
+        $history = array_reverse($history);
+
+        $admin_post_url = admin_url('admin-post.php');
+        $back_url       = add_query_arg(
+            ['page' => self::MENU_SLUG, 'app_id' => $manifest->id, 'tab' => 'history'],
+            admin_url('admin.php'),
+        );
+
+        // phpcs:disable WordPress.PHP.DontExtract
+        $ctx = [
+            'app_id'         => $manifest->id,
+            'app_name'       => $manifest->name,
+            'current_version' => $manifest->version,
+            'history'        => $history,
+            'admin_post_url' => $admin_post_url,
+            'back_url'       => $back_url,
+            'nonce_action'   => self::history_revert_nonce_action($manifest->id),
+        ];
+        // phpcs:enable WordPress.PHP.DontExtract
+        require DSGO_APPS_PATH . 'templates/per-app-history-tab.php';
+    }
+
+    /**
+     * Stable per-app nonce action for the revert form. Used both at the
+     * form site (render_history_tab) and the handler (handle_revert_post).
+     */
+    public static function history_revert_nonce_action(string $app_id): string {
+        return 'dsgo_apps_revert_history_' . $app_id;
+    }
+
+    /**
+     * admin-post.php handler for the "Revert to this version" form. Wired
+     * up by Settings::register_admin_post_hooks (or the equivalent boot
+     * path that registers our other admin-post handlers).
+     */
+    public static function handle_revert_post(): void {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Unauthorized.', 'designsetgo-apps'), 403);
+        }
+        $app_id = isset($_POST['app_id']) ? sanitize_key(wp_unslash((string) $_POST['app_id'])) : '';
+        $ts     = isset($_POST['ts']) ? (int) $_POST['ts'] : 0;
+        if ($app_id === '' || $ts <= 0) {
+            wp_die(esc_html__('Missing required parameters.', 'designsetgo-apps'), 400);
+        }
+        check_admin_referer(self::history_revert_nonce_action($app_id));
+
+        $post = get_page_by_path($app_id, OBJECT, PostType::SLUG);
+        if (!$post instanceof \WP_Post) {
+            wp_die(esc_html__('App not found.', 'designsetgo-apps'), 404);
+        }
+
+        try {
+            Installer::revert_to($post->ID, $ts);
+            $redirect = add_query_arg(
+                ['page' => self::MENU_SLUG, 'app_id' => $app_id, 'tab' => 'history', 'reverted' => $ts],
+                admin_url('admin.php'),
+            );
+        } catch (InstallerError $e) {
+            $redirect = add_query_arg(
+                ['page' => self::MENU_SLUG, 'app_id' => $app_id, 'tab' => 'history', 'revert_error' => $e->error_code],
+                admin_url('admin.php'),
+            );
+        }
+        wp_safe_redirect($redirect);
+        exit;
     }
 
     private static function render_secrets_tab(Manifest $manifest): void {

@@ -341,6 +341,147 @@ class InstallerTest extends WP_UnitTestCase {
         delete_option($opt);
     }
 
+    // -------------------------------------------------------------------------
+    // Bundle history + revert (REWRITE safety)
+    // -------------------------------------------------------------------------
+
+    public function test_first_install_creates_no_history_entry(): void {
+        // First-time install has no prior bundle to archive. History
+        // starts empty so the per-app UI knows to hide the History tab.
+        $zip = $this->build_versioned_zip('history-test', '0.1.0', '<p>v1</p>');
+        Installer::install($zip, $this->admin_id);
+        $post = get_page_by_path('history-test', OBJECT, PostType::SLUG);
+        $this->assertNotNull($post);
+        $this->assertSame([], Installer::list_history($post->ID),
+            'first install must not create a history entry');
+    }
+
+    public function test_update_archives_prior_bundle_as_history_entry(): void {
+        // Install v1, then v2: v1 should land in history with its version
+        // + manifest snapshot so revert_to has everything it needs.
+        Installer::install($this->build_versioned_zip('history-test', '0.1.0', '<p>v1 body</p>'), $this->admin_id);
+        Installer::install($this->build_versioned_zip('history-test', '0.2.0', '<p>v2 body</p>'), $this->admin_id);
+
+        $post = get_page_by_path('history-test', OBJECT, PostType::SLUG);
+        $history = Installer::list_history($post->ID);
+        $this->assertCount(1, $history, 'one history entry per prior install');
+        $this->assertSame('0.1.0', $history[0]['version']);
+        $this->assertGreaterThan(0, $history[0]['ts']);
+        $this->assertArrayHasKey('manifest_snapshot', $history[0]);
+        $this->assertSame('history-test', $history[0]['manifest_snapshot']['id']);
+
+        // The history directory exists on disk.
+        $parent     = dirname(rtrim(\DSGo_Apps\Bundle::dir_for('history-test'), '/'));
+        $history_dir = $parent . '/' . $history[0]['dir'];
+        $this->assertDirectoryExists($history_dir);
+        $this->assertFileExists($history_dir . '/dsgo-app.json');
+
+        // Cleanup
+        \DSGo_Apps\Bundle::recursive_delete(\DSGo_Apps\Bundle::dir_for('history-test'));
+        \DSGo_Apps\Bundle::recursive_delete($history_dir);
+    }
+
+    public function test_history_prunes_oldest_past_cap(): void {
+        // Install 1 + MAX_HISTORY_ENTRIES times; the oldest archived
+        // version must be pruned (both from meta and from disk).
+        $id   = 'prune-test';
+        $cap  = Installer::MAX_HISTORY_ENTRIES;
+        $count = $cap + 2;
+        for ($i = 1; $i <= $count; $i++) {
+            $version = sprintf('0.%d.0', $i);
+            // Bump each install's ts by 1s by sleeping or by using a different
+            // basename strategy. The installer uses time() which is second
+            // resolution — collision is handled via uniqid suffix.
+            Installer::install($this->build_versioned_zip($id, $version, "<p>v$i</p>"), $this->admin_id);
+        }
+        $post = get_page_by_path($id, OBJECT, PostType::SLUG);
+        $history = Installer::list_history($post->ID);
+        $this->assertCount($cap, $history,
+            sprintf('history capped at MAX_HISTORY_ENTRIES (%d)', $cap));
+        // The oldest entries (v0.1.0, v0.2.0) must have been dropped.
+        $versions = array_column($history, 'version');
+        $this->assertNotContains('0.1.0', $versions, 'oldest version pruned');
+        $this->assertContains('0.6.0', $versions, 'newer versions retained');
+
+        // The pruned dirs are gone from disk too.
+        $parent = dirname(rtrim(\DSGo_Apps\Bundle::dir_for($id), '/'));
+        $all_history_dirs = glob($parent . '/' . $id . '.history-*') ?: [];
+        $this->assertCount($cap, $all_history_dirs,
+            'on-disk history dirs must match retained meta entries');
+
+        // Cleanup
+        \DSGo_Apps\Bundle::recursive_delete(\DSGo_Apps\Bundle::dir_for($id));
+        foreach ($all_history_dirs as $d) {
+            \DSGo_Apps\Bundle::recursive_delete($d);
+        }
+    }
+
+    public function test_revert_swaps_history_dir_into_active_position(): void {
+        // Install v1, then v2. Revert to v1's ts: the active bundle must
+        // now serve v1's content AND the pre-revert state (v2) must
+        // become a new history entry so the user can re-revert.
+        $id = 'revert-test';
+        Installer::install($this->build_versioned_zip($id, '0.1.0', '<p>v1 unique marker</p>'), $this->admin_id);
+        Installer::install($this->build_versioned_zip($id, '0.2.0', '<p>v2 unique marker</p>'), $this->admin_id);
+
+        $post    = get_page_by_path($id, OBJECT, PostType::SLUG);
+        $history = Installer::list_history($post->ID);
+        $this->assertCount(1, $history);
+        $v1_ts = (int) $history[0]['ts'];
+
+        Installer::revert_to($post->ID, $v1_ts);
+
+        // Active bundle now contains v1's content.
+        $active_index = file_get_contents(\DSGo_Apps\Bundle::dir_for($id) . 'index.html');
+        $this->assertStringContainsString('v1 unique marker', $active_index);
+
+        // Post meta reflects the reverted version.
+        $this->assertSame('0.1.0', get_post_meta($post->ID, 'dsgo_apps_installed_version', true));
+
+        // History now has the pre-revert v2 as the new entry.
+        $new_history = Installer::list_history($post->ID);
+        $this->assertCount(1, $new_history,
+            'pre-revert state archived; reverted entry removed');
+        $this->assertSame('0.2.0', $new_history[0]['version']);
+
+        // Cleanup
+        \DSGo_Apps\Bundle::recursive_delete(\DSGo_Apps\Bundle::dir_for($id));
+        $parent = dirname(rtrim(\DSGo_Apps\Bundle::dir_for($id), '/'));
+        foreach (glob($parent . '/' . $id . '.history-*') ?: [] as $d) {
+            \DSGo_Apps\Bundle::recursive_delete($d);
+        }
+    }
+
+    public function test_revert_to_unknown_ts_throws(): void {
+        Installer::install($this->build_versioned_zip('revert-test', '0.1.0', '<p>v1</p>'), $this->admin_id);
+        $post = get_page_by_path('revert-test', OBJECT, PostType::SLUG);
+
+        $this->expectException(\DSGo_Apps\InstallerError::class);
+        Installer::revert_to($post->ID, 999999); // no such entry
+
+        // Cleanup (won't reach here if expectException catches)
+    }
+
+    protected function build_versioned_zip(string $id, string $version, string $body): string {
+        $tmp = tempnam(sys_get_temp_dir(), 'dsgo-zip-');
+        $zip = new ZipArchive();
+        $zip->open($tmp, ZipArchive::OVERWRITE);
+        $zip->addFromString('dsgo-app.json', json_encode([
+            'manifest_version' => 1,
+            'id'               => $id,
+            'name'             => 'Versioned App',
+            'version'          => $version,
+            'entry'            => 'index.html',
+            'isolation'        => 'iframe',
+            'display'          => ['modes' => ['page'], 'default' => 'page'],
+            'permissions'      => ['read' => [], 'write' => []],
+            'runtime'          => ['sandbox' => 'strict', 'external_origins' => []],
+        ]));
+        $zip->addFromString('index.html', '<!doctype html><html><head><title>x</title></head><body>' . $body . '</body></html>');
+        $zip->close();
+        return $tmp;
+    }
+
     protected function build_minimal_zip(string $id, string $entry_html = null): string {
         $tmp = tempnam(sys_get_temp_dir(), 'dsgo-zip-');
         $zip = new ZipArchive();
