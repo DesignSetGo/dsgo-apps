@@ -501,6 +501,18 @@ final class Installer {
         return isset(self::ALLOWED_EXTENSIONLESS_WELL_KNOWN[$name]);
     }
 
+    /**
+     * Validate the contents of an opened zip before extraction. Public so the
+     * preview-deploy path can run the same dotfile / traversal / extension /
+     * size checks the install path uses, without re-implementing them.
+     *
+     * Throws InstallerError on any violation. The zip is *not* closed; the
+     * caller still owns its lifecycle.
+     */
+    public static function validate_zip_contents_for_preview(\ZipArchive $zip): void {
+        self::validate_zip_contents($zip);
+    }
+
     private static function validate_zip_contents(\ZipArchive $zip): void {
         $count = 0;
         $total = 0;

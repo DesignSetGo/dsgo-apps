@@ -108,7 +108,10 @@ final class RestApi {
             'permission_callback' => '__return_true',
         ]);
 
-        $app_id_re = '(?P<app_id>[a-z][a-z0-9-]{2,63})';
+        // The leading `[a-z_]` accepts underscore so the bridge-proxy can route
+        // synthetic `_dev_<slug>` ids. Real installed apps still use the stricter
+        // pattern `^[a-z][a-z0-9-]{2,63}$` enforced by the manifest validator.
+        $app_id_re = '(?P<app_id>[a-z_][a-z0-9_-]{2,63})';
         $key_re    = '(?P<key>[a-zA-Z0-9._-]{1,128})';
 
         register_rest_route(self::NAMESPACE, "/apps/$app_id_re/storage/app/$key_re", [
@@ -848,6 +851,27 @@ final class RestApi {
      */
     public static function permit_storage(\WP_REST_Request $req): bool|\WP_Error {
         $app_id = (string) $req['app_id'];
+        // Bridge-proxy calls use synthetic `_dev_<slug>` ids that have no real
+        // WP post. Admit them when the request authenticated via Application
+        // Password (the CLI method) AND the user holds manage_options.
+        if (str_starts_with($app_id, '_dev_') && self::$authed_via_app_password && current_user_can('manage_options')) {
+            return true;
+        }
+        // Preview apps (`_preview_<id>`) have no WP post; admit them when the
+        // request carries a valid per-(user, app) nonce minted by the preview
+        // renderer (same action as regular apps: dsgo_app_<user>_<app_id>).
+        if (str_starts_with($app_id, '_preview_')) {
+            $nonce   = $req->get_header('X-DSGo-App-Nonce');
+            $user_id = get_current_user_id();
+            if (is_string($nonce) && $nonce !== '' && wp_verify_nonce($nonce, self::app_nonce_action($user_id, $app_id))) {
+                return true;
+            }
+            return new \WP_Error(
+                'rest_forbidden',
+                'X-DSGo-App-Nonce missing or invalid for preview app',
+                ['status' => 403],
+            );
+        }
         $post = get_page_by_path($app_id, OBJECT, PostType::SLUG);
         if (!$post) {
             return new \WP_Error('not_found', 'app does not exist', ['status' => 404]);
@@ -906,7 +930,7 @@ final class RestApi {
     }
 
     public static function storage_app_get(\WP_REST_Request $req): \WP_REST_Response {
-        $post = get_page_by_path($req['app_id'], OBJECT, PostType::SLUG);
+        $post = self::resolve_post_by_app_id((string) $req['app_id']);
         if (!$post) {
             return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
         }
@@ -914,7 +938,7 @@ final class RestApi {
     }
 
     public static function storage_app_set(\WP_REST_Request $req): \WP_REST_Response {
-        $post = get_page_by_path($req['app_id'], OBJECT, PostType::SLUG);
+        $post = self::resolve_post_by_app_id((string) $req['app_id']);
         if (!$post) {
             return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
         }
@@ -927,7 +951,7 @@ final class RestApi {
     }
 
     public static function storage_user_get(\WP_REST_Request $req): \WP_REST_Response {
-        $post = get_page_by_path($req['app_id'], OBJECT, PostType::SLUG);
+        $post = self::resolve_post_by_app_id((string) $req['app_id']);
         if (!$post) {
             return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
         }
@@ -935,7 +959,7 @@ final class RestApi {
     }
 
     public static function storage_user_set(\WP_REST_Request $req): \WP_REST_Response {
-        $post = get_page_by_path($req['app_id'], OBJECT, PostType::SLUG);
+        $post = self::resolve_post_by_app_id((string) $req['app_id']);
         if (!$post) {
             return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
         }
@@ -1362,8 +1386,19 @@ final class RestApi {
     private static function load_manifest_for_request(\WP_REST_Request $req): ?Manifest {
         $app_id = (string) ($req['app_id'] ?? '');
         if ($app_id === '') return null;
-        $post = get_page_by_path($app_id, OBJECT, PostType::SLUG);
-        if (!$post || $post->post_status !== 'publish') return null;
+        $post = self::resolve_post_by_app_id($app_id);
+        if ($post === null) return null;
+        // Synthetic app records (e.g. `_dev_<slug>` from the bridge proxy) carry
+        // their manifest as a property rather than in post meta.
+        if (!$post instanceof \WP_Post) {
+            $raw = $post->manifest ?? null;
+            if (!is_array($raw)) return null;
+            try {
+                return Manifest::from_array_unchecked($raw);
+            } catch (\Throwable $e) {
+                return null;
+            }
+        }
         $raw = get_post_meta($post->ID, 'dsgo_apps_manifest', true);
         if (!is_array($raw)) return null;
         try {
@@ -1371,6 +1406,27 @@ final class RestApi {
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    /**
+     * Resolve an installed (or synthetic) app post by slug / app-id.
+     *
+     * Returns the published WP_Post for an installed app, or the result of the
+     * `dsgo_apps_resolve_app` filter when normal lookup fails. Pro can use this
+     * filter to inject ephemeral records (e.g. `_dev_<slug>` for the bridge
+     * proxy) without polluting the real apps catalog.
+     *
+     * Filter: apply_filters('dsgo_apps_resolve_app', null, string $app_id) : mixed
+     *
+     * @return \WP_Post|object|null
+     */
+    private static function resolve_post_by_app_id(string $app_id): mixed {
+        $post = get_page_by_path($app_id, OBJECT, PostType::SLUG);
+        if ($post instanceof \WP_Post && $post->post_status === 'publish') {
+            return $post;
+        }
+        // Allow Pro (and tests) to inject a synthetic post for ids like `_dev_<slug>`.
+        return apply_filters('dsgo_apps_resolve_app', null, $app_id);
     }
 
     /**
