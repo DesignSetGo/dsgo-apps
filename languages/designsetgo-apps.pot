@@ -146,11 +146,11 @@ msgid "Need something custom?"
 msgstr ""
 
 #: includes/class-admin-page.php:248
-msgid "Build with AI"
+msgid "Copy an AI prompt"
 msgstr ""
 
 #: includes/class-admin-page.php:249
-msgid "Generate a bridge-aware prompt for your AI chat, then upload the HTML it creates."
+msgid "Copy a bridge-aware prompt for Claude or ChatGPT, then upload the HTML it creates."
 msgstr ""
 
 #: includes/class-admin-page.php:251
@@ -693,7 +693,7 @@ msgstr ""
 #. translators: 1: URL to install page
 #: includes/class-plugin.php:404
 #, php-format
-msgid "Install your first app at <a href=\"%1$s\">DSGo Apps</a>, or run <code>npx designsetgo apps deploy</code> from a project directory."
+msgid "Install the starter app or upload an HTML artifact from <a href=\"%1$s\">DSGo Apps</a>. You can deploy from the CLI later with DesignSetGo Apps Pro."
 msgstr ""
 
 #: includes/class-privacy.php:125

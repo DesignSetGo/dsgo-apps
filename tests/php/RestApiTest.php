@@ -554,6 +554,10 @@ class RestApiTest extends WP_UnitTestCase {
             $this->assertSame(201, $resp->get_status(), 'response: ' . wp_json_encode($resp->get_data()));
             $body = $resp->get_data();
             $this->assertSame('dsgo-starter', $body['id']);
+            $this->assertSame('DSGo Starter', $body['name']);
+            $this->assertSame('inline', $body['isolation']);
+            $this->assertSame(['page'], $body['modes']);
+            $this->assertTrue($body['home_eligible']);
             $this->assertNotEmpty($body['url']);
             $post = get_page_by_path('dsgo-starter', OBJECT, PostType::SLUG);
             $this->assertNotNull($post);

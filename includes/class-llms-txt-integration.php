@@ -8,7 +8,7 @@
  * never apply_filters() if it isn't running). When Blocks isn't
  * installed there is nothing to render against, so this is a no-op.
  *
- * Content is sourced from AiContextPack so the in-admin "Build with AI"
+ * Content is sourced from AiContextPack so the in-admin "Copy an AI prompt"
  * panel and the public /llms.txt advertise the same brief.
  *
  * @package DSGo_Apps

@@ -22,6 +22,20 @@ class PluginTest extends WP_UnitTestCase {
         $this->assertTrue(defined('DSGO_APPS_URL'));
     }
 
+    public function test_activation_notice_points_to_starter_and_artifact_paths(): void {
+        $admin_id = self::factory()->user->create(['role' => 'administrator']);
+        wp_set_current_user($admin_id);
+        set_transient('dsgo_apps_activation_notice', '1', 60);
+
+        ob_start();
+        Plugin::maybe_render_activation_notice();
+        $html = (string) ob_get_clean();
+
+        $this->assertStringContainsString('Install the starter app', $html);
+        $this->assertStringContainsString('upload an HTML artifact', $html);
+        $this->assertStringNotContainsString('npx designsetgo apps deploy', $html);
+    }
+
     public function test_editor_preview_dispatch_runs_before_root_app_dispatch(): void {
         Plugin::get_instance();
 

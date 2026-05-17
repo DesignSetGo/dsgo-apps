@@ -226,10 +226,10 @@ final class Plugin {
                 echo wp_kses(
                     sprintf(
                         /* translators: 1: URL to install page */
-                        __('Install your first app at <a href="%1$s">DSGo Apps</a>, or run <code>npx designsetgo apps deploy</code> from a project directory.', 'designsetgo-apps'),
+                        __('Install the starter app or upload an HTML artifact from <a href="%1$s">DSGo Apps</a>. You can deploy from the CLI later with DesignSetGo Apps Pro.', 'designsetgo-apps'),
                         esc_url($url),
                     ),
-                    ['a' => ['href' => true], 'code' => []],
+                    ['a' => ['href' => true]],
                 );
                 ?>
             </p>

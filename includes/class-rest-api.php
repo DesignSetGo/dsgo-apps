@@ -418,6 +418,10 @@ final class RestApi {
     private static function shape_install_response(InstallResult $result): array {
         $needs_secrets = false;
         $secrets_url   = null;
+        $name          = $result->app_id;
+        $isolation     = 'iframe';
+        $modes         = [];
+        $home_eligible = false;
 
         // Read the just-installed manifest to compute the redirect signal.
         // Reading post meta is cheaper than re-validating the manifest, and
@@ -425,6 +429,14 @@ final class RestApi {
         $post = get_post($result->post_id);
         if ($post instanceof \WP_Post) {
             $raw = get_post_meta($post->ID, 'dsgo_apps_manifest', true);
+            if (is_array($raw)) {
+                $name = isset($raw['name']) && is_string($raw['name']) ? $raw['name'] : $post->post_title;
+                $isolation = isset($raw['isolation']) && is_string($raw['isolation']) ? $raw['isolation'] : 'iframe';
+                $modes = Manifest::display_modes_for_runtime($raw);
+                $home_eligible = in_array('page', $modes, true);
+            } else {
+                $name = $post->post_title;
+            }
             $required = is_array($raw) && is_array($raw['required_secrets'] ?? null)
                 ? array_values(array_filter($raw['required_secrets'], 'is_string'))
                 : [];
@@ -456,8 +468,12 @@ final class RestApi {
 
         return [
             'id'            => $result->app_id,
+            'name'          => $name,
             'url'           => $result->url,
             'post_id'       => $result->post_id,
+            'isolation'     => $isolation,
+            'modes'         => $modes,
+            'home_eligible' => $home_eligible,
             'needs_secrets' => $needs_secrets,
             'secrets_url'   => $secrets_url,
         ];

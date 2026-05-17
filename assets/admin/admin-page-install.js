@@ -93,6 +93,11 @@
         var appId = body && body.id ? body.id : '';
         var appUrl = body && body.url ? body.url : '';
         if (!appId || !appUrl) return;
+        var successApp = {
+            id: appId,
+            name: body && body.name ? body.name : fallbackName || appId,
+            isolation: body && body.isolation ? body.isolation : 'iframe',
+        };
 
         ns.closeSuccess();
         if (installPanel) installPanel.classList.add('is-open');
@@ -101,7 +106,7 @@
         panel.querySelector('[data-dsgo-success-title]').textContent = sprintf(
             /* translators: %s: app name */
             __('%s is ready.', 'designsetgo-apps'),
-            body.name || appId || fallbackName,
+            successApp.name,
         );
         panel.querySelector('[data-dsgo-success-url]').textContent = appUrl;
 
@@ -112,7 +117,7 @@
         embed.href = cfg.newPostUrl || '/wp-admin/post-new.php?post_type=page';
 
         var home = panel.querySelector('[data-dsgo-success-home]');
-        home.addEventListener('click', function () { ns.setSiteHome(appId, home); });
+        home.addEventListener('click', function () { ns.openPromoteConsent(successApp, panel); });
 
         var copy = panel.querySelector('[data-dsgo-success-copy]');
         var copyDefault = copy.textContent;
@@ -404,7 +409,8 @@
             if (action === 'starter') return;
             if (action === 'artifact') {
                 switchTab('html');
-                if (htmlDropzone) htmlDropzone.focus();
+                if (htmlInput) htmlInput.click();
+                else if (htmlDropzone) htmlDropzone.focus();
                 return;
             }
             if (action === 'ai') {

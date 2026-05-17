@@ -105,8 +105,8 @@ use DSGo_Apps\Settings;
                         </article>
                         <article class="dsgo-first-run__card">
                             <p class="dsgo-first-run__eyebrow"><?php esc_html_e('Need something custom?', 'designsetgo-apps'); ?></p>
-                            <h3><?php esc_html_e('Build with AI', 'designsetgo-apps'); ?></h3>
-                            <p><?php esc_html_e('Generate a bridge-aware prompt for your AI chat, then upload the HTML it creates.', 'designsetgo-apps'); ?></p>
+                            <h3><?php esc_html_e('Copy an AI prompt', 'designsetgo-apps'); ?></h3>
+                            <p><?php esc_html_e('Copy a bridge-aware prompt for Claude or ChatGPT, then upload the HTML it creates.', 'designsetgo-apps'); ?></p>
                             <button type="button" class="button" data-dsgo-quick-action="ai">
                                 <?php esc_html_e('Open prompt builder', 'designsetgo-apps'); ?>
                             </button>

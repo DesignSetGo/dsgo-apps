@@ -96,6 +96,17 @@ class AdminPageTest extends WP_UnitTestCase {
         $this->assertStringContainsString('class="dsgo-panel" data-dsgo-panel="upload" hidden', $html);
     }
 
+    public function test_empty_admin_page_labels_lite_ai_path_as_prompt_copy(): void {
+        wp_set_current_user($this->admin_id);
+        ob_start();
+        AdminPage::render();
+        $html = (string) ob_get_clean();
+
+        $this->assertStringContainsString('Copy an AI prompt', $html);
+        $this->assertStringContainsString('Open prompt builder', $html);
+        $this->assertStringNotContainsString('<h3>Build with AI</h3>', $html);
+    }
+
     public function test_admin_page_renders_post_install_success_actions_template(): void {
         wp_set_current_user($this->admin_id);
         ob_start();
@@ -109,6 +120,19 @@ class AdminPageTest extends WP_UnitTestCase {
         $this->assertStringContainsString('data-dsgo-success-copy', $html);
         $this->assertStringContainsString('Embed in a page', $html);
         $this->assertStringNotContainsString('Embed in a post', $html);
+    }
+
+    public function test_install_admin_js_artifact_shortcut_opens_file_picker(): void {
+        $js = (string) file_get_contents(DSGO_APPS_PATH . 'assets/admin/admin-page-install.js');
+
+        $this->assertStringContainsString("if (htmlInput) htmlInput.click();", $js);
+    }
+
+    public function test_install_admin_js_success_home_uses_promote_consent(): void {
+        $js = (string) file_get_contents(DSGO_APPS_PATH . 'assets/admin/admin-page-install.js');
+
+        $this->assertStringContainsString('ns.openPromoteConsent(successApp, panel)', $js);
+        $this->assertStringNotContainsString('ns.setSiteHome(appId, home)', $js);
     }
 
     public function test_reading_notice_skipped_for_non_admin(): void {
