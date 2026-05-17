@@ -61,6 +61,10 @@ When an app calls `dsgo.ai.prompt()` or invokes an AI-backed ability, the call r
 
 Apps can also publish abilities the site's AI agent, and any other plugin using the WP 7.0 Abilities API, can invoke. This "Apps-as-Abilities" model turns every installed app into a callable tool the rest of the site's AI surface knows about. Abilities consumption (`dsgo.abilities.list/invoke`) is free; abilities publishing via `abilities.publishes` in the manifest requires Pro.
 
+= Drive DSGo from your AI client of choice =
+
+The free plugin registers WordPress abilities for app management, so any AI tool connected through the WordPress MCP Adapter (Claude Desktop, Cursor, Claude.ai on Team or Enterprise, ChatGPT Plus and above) can list, view, and uninstall your DSGo apps over MCP. Pro extends the same surface to *building* and *installing* new apps from those tools — the same Harness that powers in-admin Riff runs underneath, so cross-surface quality is consistent. No DSGo-hosted MCP server, no separate auth. Setup walkthrough at https://designsetgo.dev/connect/.
+
 = What's shipped =
 
 * Iframe and inline runtimes
