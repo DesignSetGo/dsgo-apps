@@ -158,7 +158,16 @@ final class AbilitiesBridge {
                 ['reason' => 'invoker_policy'],
             );
         }
-        $result = $ability->execute(empty($args) ? null : $args);
+        $input = empty($args) ? null : $args;
+        if (class_exists(AbilitiesPublisher::class) && is_callable([AbilitiesPublisher::class, 'with_execution_context'])) {
+            $result = AbilitiesPublisher::with_execution_context(
+                $name,
+                'bridge',
+                static fn () => $ability->execute($input),
+            );
+        } else {
+            $result = $ability->execute($input);
+        }
         if (is_wp_error($result)) {
             $code = $result->get_error_code();
             if ($code === 'ability_invalid_permissions') {

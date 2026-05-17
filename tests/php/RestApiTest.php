@@ -1081,6 +1081,7 @@ class RestApiTest extends WP_UnitTestCase {
         $this->seed_http_app('no-http', []);
         wp_set_current_user($this->admin_id);
         $req = new WP_REST_Request('POST', '/dsgo/v1/apps/no-http/http/fetch');
+        $req->set_header('X-DSGo-App-Nonce', $this->app_nonce_for($this->admin_id, 'no-http'));
         $req->set_body_params(['url' => 'https://api.stripe.com/v1/charges']);
         $resp = $this->server->dispatch($req);
         $this->assertSame(403, $resp->get_status());
@@ -1096,10 +1097,43 @@ class RestApiTest extends WP_UnitTestCase {
         $this->assertSame(404, $resp->get_status());
     }
 
+    public function test_http_fetch_rejects_missing_app_nonce_before_secret_substitution(): void {
+        $this->seed_http_app('secret-proxy', ['api.stripe.com'], [
+            ['alias' => 'SK', 'description' => 'Stripe secret key for charges API.'],
+        ]);
+        \DSGo_Apps\Secret_Vault::set('secret-proxy', 'SK', 'sk_test_xyz');
+        wp_set_current_user($this->admin_id);
+
+        $transport_called = false;
+        \DSGo_Apps\Http_Proxy_Bridge::set_transport_factory_for_tests(static function () use (&$transport_called) {
+            $transport_called = true;
+            return [
+                'response' => ['code' => 200, 'message' => 'OK'],
+                'body'     => '{}',
+                'headers'  => ['content-type' => 'application/json'],
+            ];
+        });
+
+        $req = new WP_REST_Request('POST', '/dsgo/v1/apps/secret-proxy/http/fetch');
+        $req->set_body_params([
+            'url'     => 'https://api.stripe.com/v1/charges',
+            'headers' => ['Authorization' => 'Bearer {{SK}}'],
+        ]);
+        $resp = $this->server->dispatch($req);
+
+        $this->assertSame(403, $resp->get_status());
+        $this->assertSame('rest_forbidden', $resp->get_data()['code']);
+        $this->assertFalse($transport_called, 'secret-backed proxy requests without the app nonce must not reach transport');
+
+        \DSGo_Apps\Secret_Vault::delete_all('secret-proxy');
+        $this->tear_down_http_proxy();
+    }
+
     public function test_http_fetch_returns_422_for_disallowed_host(): void {
         $this->seed_http_app('stripe-only', ['api.stripe.com']);
         wp_set_current_user($this->admin_id);
         $req = new WP_REST_Request('POST', '/dsgo/v1/apps/stripe-only/http/fetch');
+        $req->set_header('X-DSGo-App-Nonce', $this->app_nonce_for($this->admin_id, 'stripe-only'));
         $req->set_body_params(['url' => 'https://api.notion.com/v1/pages']);
         $resp = $this->server->dispatch($req);
         $this->assertSame(422, $resp->get_status());
@@ -1116,6 +1150,7 @@ class RestApiTest extends WP_UnitTestCase {
             'headers'  => ['content-type' => 'application/json'],
         ]);
         $req = new WP_REST_Request('POST', '/dsgo/v1/apps/stripe-ok/http/fetch');
+        $req->set_header('X-DSGo-App-Nonce', $this->app_nonce_for($this->admin_id, 'stripe-ok'));
         $req->set_body_params([
             'url'     => 'https://api.stripe.com/v1/charges',
             'method'  => 'GET',
@@ -1141,10 +1176,12 @@ class RestApiTest extends WP_UnitTestCase {
         ]);
 
         $req = new WP_REST_Request('POST', '/dsgo/v1/apps/rate-test/http/fetch');
+        $req->set_header('X-DSGo-App-Nonce', $this->app_nonce_for($this->admin_id, 'rate-test'));
         $req->set_body_params(['url' => 'https://api.stripe.com/v1/charges']);
         $this->server->dispatch($req);   // 1st: within budget
 
         $req2 = new WP_REST_Request('POST', '/dsgo/v1/apps/rate-test/http/fetch');
+        $req2->set_header('X-DSGo-App-Nonce', $this->app_nonce_for($this->admin_id, 'rate-test'));
         $req2->set_body_params(['url' => 'https://api.stripe.com/v1/charges']);
         $resp = $this->server->dispatch($req2);
         $this->assertSame(429, $resp->get_status());

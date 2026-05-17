@@ -1198,6 +1198,18 @@ final class RestApi {
      * ai_prompt / email_send pattern.
      */
     public static function http_fetch(\WP_REST_Request $req): \WP_REST_Response {
+        $manifest = self::load_manifest_for_request($req);
+        if ($manifest === null) {
+            return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
+        }
+        $permission = self::permit_storage($req);
+        if (is_wp_error($permission)) {
+            $data = $permission->get_error_data();
+            return new \WP_REST_Response([
+                'code'    => $permission->get_error_code(),
+                'message' => $permission->get_error_message(),
+            ], is_array($data) && isset($data['status']) ? (int) $data['status'] : 403);
+        }
         if (!Secret_Vault::is_available()) {
             // Without libsodium we cannot decrypt vaulted secrets, so any
             // app that uses `{{ALIAS}}` substitution would fail mid-flight.
@@ -1207,10 +1219,6 @@ final class RestApi {
                 'code'    => 'sodium_unavailable',
                 'message' => 'HTTP proxy requires the sodium PHP extension — contact your host',
             ], 503);
-        }
-        $manifest = self::load_manifest_for_request($req);
-        if ($manifest === null) {
-            return new \WP_REST_Response(['code' => 'not_found', 'message' => 'app not found'], 404);
         }
         $init = [
             'method'     => (string) ($req->get_param('method') ?? 'GET'),
