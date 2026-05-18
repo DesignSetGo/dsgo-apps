@@ -20,6 +20,8 @@ class DataSourcesTest extends WP_UnitTestCase {
     public function tear_down(): void {
         remove_all_filters('dsgo_apps_dataset_resolver');
         remove_all_filters('dsgo_apps_pro_feature_enabled');
+        remove_all_filters('dsgo_apps_related_posts');
+        remove_all_filters('dsgo_apps_related_posts_count');
         parent::tear_down();
     }
 
@@ -199,5 +201,107 @@ class DataSourcesTest extends WP_UnitTestCase {
         $entries = DataSources::resolve('wp:posts');
         $this->assertCount(1, $entries);
         $this->assertSame('override', $entries[0]['slug']);
+    }
+
+    // --- related_for_post --------------------------------------------------
+
+    public function test_related_for_post_returns_same_category_siblings(): void {
+        $cat = self::factory()->category->create(['name' => 'Recipes', 'slug' => 'recipes']);
+        $main    = self::factory()->post->create(['post_title' => 'Main',     'post_status' => 'publish', 'post_category' => [$cat]]);
+        $sibling = self::factory()->post->create(['post_title' => 'Sibling',  'post_status' => 'publish', 'post_category' => [$cat]]);
+        self::factory()->post->create(['post_title' => 'Unrelated', 'post_status' => 'publish']);
+
+        $related = DataSources::related_for_post(['id' => $main]);
+        $this->assertIsArray($related);
+        $ids = array_map(static fn ($r) => $r['id'], $related);
+        $this->assertContains($sibling, $ids);
+        $this->assertNotContains($main, $ids, 'self must be excluded');
+    }
+
+    public function test_related_for_post_falls_back_to_recent_when_no_category_siblings(): void {
+        $main   = self::factory()->post->create(['post_title' => 'Lonely',  'post_status' => 'publish']);
+        $recent = self::factory()->post->create(['post_title' => 'Recent',  'post_status' => 'publish']);
+
+        $related = DataSources::related_for_post(['id' => $main]);
+        $ids = array_map(static fn ($r) => $r['id'], $related);
+        $this->assertContains($recent, $ids, 'fallback returns recent posts when no category siblings exist');
+        $this->assertNotContains($main, $ids);
+    }
+
+    public function test_related_for_post_skips_non_post_types(): void {
+        $page = self::factory()->post->create(['post_type' => 'page', 'post_status' => 'publish']);
+        $this->assertSame([], DataSources::related_for_post(['id' => $page]));
+    }
+
+    public function test_related_for_post_returns_empty_for_missing_id(): void {
+        $this->assertSame([], DataSources::related_for_post([]));
+        $this->assertSame([], DataSources::related_for_post(['id' => 0]));
+        $this->assertSame([], DataSources::related_for_post(['id' => 'not-an-int']));
+    }
+
+    public function test_related_for_post_respects_count_filter(): void {
+        $cat = self::factory()->category->create();
+        $main = self::factory()->post->create(['post_status' => 'publish', 'post_category' => [$cat]]);
+        for ($i = 0; $i < 5; $i++) {
+            self::factory()->post->create(['post_status' => 'publish', 'post_category' => [$cat]]);
+        }
+
+        add_filter('dsgo_apps_related_posts_count', static fn () => 2);
+        $related = DataSources::related_for_post(['id' => $main]);
+        $this->assertCount(2, $related);
+    }
+
+    public function test_related_for_post_count_filter_clamps_to_safe_range(): void {
+        $cat = self::factory()->category->create();
+        $main = self::factory()->post->create(['post_status' => 'publish', 'post_category' => [$cat]]);
+        for ($i = 0; $i < 20; $i++) {
+            self::factory()->post->create(['post_status' => 'publish', 'post_category' => [$cat]]);
+        }
+
+        add_filter('dsgo_apps_related_posts_count', static fn () => 9999);
+        $related = DataSources::related_for_post(['id' => $main]);
+        $this->assertLessThanOrEqual(12, count($related), 'count must be clamped at 12');
+    }
+
+    public function test_related_filter_can_replace_the_resolved_set(): void {
+        $cat = self::factory()->category->create();
+        $main      = self::factory()->post->create(['post_status' => 'publish', 'post_category' => [$cat]]);
+        self::factory()->post->create(['post_status' => 'publish', 'post_category' => [$cat]]);
+        $curated_id = self::factory()->post->create(['post_title' => 'Curated', 'post_status' => 'publish']);
+
+        add_filter('dsgo_apps_related_posts', static function () use ($curated_id) {
+            return [get_post($curated_id)];
+        });
+        $related = DataSources::related_for_post(['id' => $main]);
+        $this->assertCount(1, $related);
+        $this->assertSame($curated_id, $related[0]['id']);
+        $this->assertSame('Curated', $related[0]['title']['rendered']);
+    }
+
+    public function test_related_shape_includes_card_fields_but_omits_content(): void {
+        $cat = self::factory()->category->create();
+        $main = self::factory()->post->create(['post_status' => 'publish', 'post_category' => [$cat]]);
+        self::factory()->post->create([
+            'post_title'   => 'Sibling',
+            'post_name'    => 'sibling',
+            'post_content' => 'Big body',
+            'post_excerpt' => 'Short hook.',
+            'post_status'  => 'publish',
+            'post_category' => [$cat],
+        ]);
+
+        $related = DataSources::related_for_post(['id' => $main]);
+        $this->assertNotEmpty($related);
+        $r = $related[0];
+        $this->assertArrayHasKey('id', $r);
+        $this->assertArrayHasKey('slug', $r);
+        $this->assertArrayHasKey('date', $r);
+        $this->assertArrayHasKey('date_iso', $r);
+        $this->assertArrayHasKey('title', $r);
+        $this->assertArrayHasKey('excerpt', $r);
+        $this->assertArrayHasKey('author_name', $r);
+        $this->assertArrayHasKey('featured_media_url', $r);
+        $this->assertArrayHasKey('permalink', $r);
+        $this->assertArrayNotHasKey('content', $r, 'compact shape omits content.rendered');
     }
 }

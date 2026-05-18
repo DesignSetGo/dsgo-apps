@@ -142,6 +142,130 @@ final class DataSources {
     }
 
     /**
+     * Resolve same-category sibling posts (with most-recent fallback) for a
+     * matched `wp:posts` entry. Returns an array of compact post shapes
+     * suitable for `{{#each related}}…{{/each}}` substitution in a dynamic-
+     * route template.
+     *
+     * Called from InlineRenderer::render_dynamic_route() AFTER the dataset
+     * has been resolved — once per request rather than once per dataset row
+     * — so the per-row dataset cache stays cheap.
+     *
+     * @param array<string, mixed> $entry Matched `wp:posts` shape (must have
+     *                                    integer `id`).
+     * @return array<int, array<string, mixed>>
+     */
+    public static function related_for_post(array $entry): array {
+        if (!isset($entry['id']) || !is_int($entry['id']) || $entry['id'] <= 0) {
+            return [];
+        }
+        $post = get_post($entry['id']);
+        if (!($post instanceof \WP_Post) || $post->post_type !== 'post') {
+            return [];
+        }
+
+        /**
+         * Filter the related-posts result count. Default 3, clamped 1–12 to
+         * keep the per-request WP_Query bounded.
+         *
+         * @param int     $count Default 3.
+         * @param WP_Post $post  The post the related list is for.
+         */
+        $count = (int) apply_filters('dsgo_apps_related_posts_count', 3, $post);
+        $count = max(1, min(12, $count));
+
+        $related_posts = self::compute_default_related($post, $count);
+
+        /**
+         * Filter the resolved related-post WP_Post objects before they are
+         * shaped for template substitution. Apps can replace the default
+         * same-category-with-recent-fallback algorithm here (cross-taxonomy
+         * joins, manually curated lists, etc.).
+         *
+         * @param WP_Post[] $related_posts Default same-category siblings
+         *                                  with most-recent fallback.
+         * @param WP_Post   $post           The matched post.
+         */
+        $related_posts = apply_filters('dsgo_apps_related_posts', $related_posts, $post);
+
+        $shaped = [];
+        foreach ($related_posts as $rp) {
+            if ($rp instanceof \WP_Post) {
+                $shaped[] = self::shape_related($rp);
+            }
+        }
+        return $shaped;
+    }
+
+    /**
+     * @return WP_Post[]
+     */
+    private static function compute_default_related(\WP_Post $post, int $count): array {
+        $cat_ids = wp_get_post_categories($post->ID, ['fields' => 'ids']);
+
+        $results = [];
+        if (is_array($cat_ids) && $cat_ids !== []) {
+            $q = new \WP_Query([
+                'post_type'           => 'post',
+                'post_status'         => 'publish',
+                'posts_per_page'      => $count,
+                'post__not_in'        => [$post->ID],
+                'category__in'        => array_map('intval', $cat_ids),
+                'orderby'             => 'date',
+                'order'               => 'DESC',
+                'ignore_sticky_posts' => true,
+                'no_found_rows'       => true,
+            ]);
+            $results = is_array($q->posts) ? $q->posts : [];
+        }
+
+        if ($results === []) {
+            $q = new \WP_Query([
+                'post_type'           => 'post',
+                'post_status'         => 'publish',
+                'posts_per_page'      => $count,
+                'post__not_in'        => [$post->ID],
+                'orderby'             => 'date',
+                'order'               => 'DESC',
+                'ignore_sticky_posts' => true,
+                'no_found_rows'       => true,
+            ]);
+            $results = is_array($q->posts) ? $q->posts : [];
+        }
+
+        return $results;
+    }
+
+    /**
+     * Compact post shape for related-post cards. Subset of shape_post(); omits
+     * `content.rendered` (expensive `the_content` filter, unneeded for cards)
+     * and `content_styles` (only the matched main post mounts block styles).
+     *
+     * @return array<string, mixed>
+     */
+    private static function shape_related(\WP_Post $p): array {
+        $thumb_id = (int) get_post_thumbnail_id($p);
+        $thumb_url = '';
+        if ($thumb_id > 0) {
+            $src = wp_get_attachment_image_src($thumb_id, 'medium');
+            if (is_array($src) && isset($src[0])) {
+                $thumb_url = (string) $src[0];
+            }
+        }
+        return [
+            'id'                 => (int) $p->ID,
+            'slug'               => (string) $p->post_name,
+            'date'               => mysql2date('M j, Y', $p->post_date),
+            'date_iso'           => mysql2date('c', $p->post_date),
+            'title'              => ['rendered' => get_the_title($p)],
+            'excerpt'            => ['rendered' => get_the_excerpt($p)],
+            'author_name'        => get_the_author_meta('display_name', (int) $p->post_author),
+            'featured_media_url' => $thumb_url,
+            'permalink'          => (string) get_permalink($p),
+        ];
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     private static function resolve_wc_products(): array {

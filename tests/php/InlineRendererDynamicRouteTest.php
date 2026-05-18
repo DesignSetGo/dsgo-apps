@@ -194,6 +194,108 @@ class InlineRendererDynamicRouteTest extends WP_UnitTestCase {
         $this->assertSame('<p><em>{{ literal }}</em></p>', $out);
     }
 
+    public function test_each_block_iterates_array_of_objects(): void {
+        $tpl = '<ul>{{#each items}}<li>{{name}}</li>{{/each}}</ul>';
+        $out = InlineRenderer::substitute($tpl, [
+            'items' => [
+                ['name' => 'Alice'],
+                ['name' => 'Bob'],
+            ],
+        ]);
+        $this->assertSame('<ul><li>Alice</li><li>Bob</li></ul>', $out);
+    }
+
+    public function test_each_block_double_brace_escapes_per_item(): void {
+        $tpl = '<ul>{{#each items}}<li>{{name}}</li>{{/each}}</ul>';
+        $out = InlineRenderer::substitute($tpl, [
+            'items' => [['name' => 'Acme & Co']],
+        ]);
+        $this->assertSame('<ul><li>Acme &amp; Co</li></ul>', $out);
+    }
+
+    public function test_each_block_triple_brace_emits_raw_per_item(): void {
+        $tpl = '<ul>{{#each items}}<li>{{{html}}}</li>{{/each}}</ul>';
+        $out = InlineRenderer::substitute($tpl, [
+            'items' => [['html' => '<em>x</em>']],
+        ]);
+        $this->assertSame('<ul><li><em>x</em></li></ul>', $out);
+    }
+
+    public function test_each_block_walks_dotted_paths_inside_body(): void {
+        $tpl = '{{#each posts}}[{{title.rendered}}]{{/each}}';
+        $out = InlineRenderer::substitute($tpl, [
+            'posts' => [
+                ['title' => ['rendered' => 'A']],
+                ['title' => ['rendered' => 'B']],
+            ],
+        ]);
+        $this->assertSame('[A][B]', $out);
+    }
+
+    public function test_each_block_collapses_when_field_missing(): void {
+        $out = InlineRenderer::substitute(
+            '<ul>{{#each missing}}<li>x</li>{{/each}}</ul>',
+            ['present' => []],
+        );
+        $this->assertSame('<ul></ul>', $out);
+    }
+
+    public function test_each_block_collapses_when_array_is_empty(): void {
+        $out = InlineRenderer::substitute(
+            '<ul>{{#each items}}<li>x</li>{{/each}}</ul>',
+            ['items' => []],
+        );
+        $this->assertSame('<ul></ul>', $out);
+    }
+
+    public function test_each_block_collapses_when_value_is_not_an_array(): void {
+        $out = InlineRenderer::substitute(
+            '{{#each items}}x{{/each}}',
+            ['items' => 'a string'],
+        );
+        $this->assertSame('', $out);
+    }
+
+    public function test_each_block_skips_non_array_items(): void {
+        $out = InlineRenderer::substitute(
+            '{{#each items}}[{{name}}]{{/each}}',
+            ['items' => ['scalar', ['name' => 'Real'], null]],
+        );
+        $this->assertSame('[Real]', $out);
+    }
+
+    public function test_each_block_does_not_run_inside_script(): void {
+        $tpl = '<script>{{#each items}}console.log({{name}});{{/each}}</script>';
+        $out = InlineRenderer::substitute($tpl, [
+            'items' => [['name' => 'Alice']],
+        ]);
+        // Script body must be byte-identical to input.
+        $this->assertStringContainsString('{{#each items}}', $out);
+        $this->assertStringContainsString('{{/each}}', $out);
+    }
+
+    public function test_each_block_leaves_nested_input_as_literal(): void {
+        // v1 deliberately rejects nested {{#each}} via the negative lookahead;
+        // unbalanced or nested input is left as literal text rather than
+        // silently expanded with the wrong context.
+        $tpl = '{{#each outer}}A{{#each inner}}B{{/each}}{{/each}}';
+        $out = InlineRenderer::substitute($tpl, ['outer' => [['inner' => ['x']]]]);
+        $this->assertStringContainsString('{{#each outer}}', $out);
+    }
+
+    public function test_each_block_strips_script_introduced_via_raw_body(): void {
+        // Security regression: a raw triple-brace inside an `{{#each}}` body
+        // must still be subject to the same post-expansion script strip that
+        // applies to top-level raw substitutions.
+        $tpl = '<ul>{{#each items}}<li>{{{html}}}</li>{{/each}}</ul>';
+        $out = InlineRenderer::substitute($tpl, [
+            'items' => [['html' => '<p>ok</p><script>alert(1)</script>']],
+        ]);
+        $this->assertStringContainsString('<p>ok</p>', $out);
+        $this->assertStringNotContainsString('<script', $out);
+        $this->assertStringNotContainsString('alert(1)', $out);
+    }
+
     public function test_substitute_leaves_empty_braces_as_literal(): void {
         $this->assertSame('<p>{{}}</p>',    InlineRenderer::substitute('<p>{{}}</p>',    []));
         $this->assertSame('<p>{{ }}</p>',  InlineRenderer::substitute('<p>{{ }}</p>',  []));

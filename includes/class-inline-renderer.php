@@ -526,6 +526,12 @@ final class InlineRenderer {
             return null; // 404
         }
 
+        // Sidecar enrichment runs AFTER dataset resolution so expensive lookups
+        // (e.g. per-post related queries) cost once per request rather than
+        // once per dataset row. Built-in: `wp:posts` gets a `related` array.
+        // Apps can extend via the `dsgo_apps_dynamic_route_entry` filter.
+        $entry = self::enrich_matched_entry($entry, $route['dataset']['source']);
+
         $abs = $bundle_dir . '/' . $route['file'];
         $template = is_file($abs) ? (file_get_contents($abs) ?: '') : '';
         $substituted = self::substitute($template, $entry);
@@ -1290,6 +1296,10 @@ final class InlineRenderer {
     //   strips disallowed tags/attrs, but ALL substitution is skipped inside
     //   <script> / <style> blocks. Apps that need dataset values in client JS
     //   read them from `dsgo.context.routeParams` instead.
+    // - `{{#each path.to.array}}BODY{{/each}}` — iterates over an array field;
+    //   the body is re-substituted with each element as the lookup root.
+    //   Non-array or empty values collapse the block. Nesting is unsupported
+    //   in v1 (the body regex rejects nested `{{#each}}` / `{{/each}}` tokens).
     // -------------------------------------------------------------------------
 
     private const PATH_PATTERN = '[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*';
@@ -1299,38 +1309,19 @@ final class InlineRenderer {
         //    JS-string or CSS-property contexts.
         [$stripped, $blocks] = self::extract_blocks($template);
 
-        // 2. Process triple-brace first; replace each match with a sentinel so
-        //    the double-brace pass cannot accidentally re-substitute literal
-        //    `{{...}}` text that may appear inside a raw value.
-        $raw_results = [];
-        $stripped = preg_replace_callback(
-            '/\{\{\{\s*(' . self::PATH_PATTERN . ')\s*\}\}\}/',
-            function (array $m) use ($entry, &$raw_results): string {
-                $value = self::render_value(self::lookup($entry, $m[1]), false);
-                $idx = count($raw_results);
-                $raw_results[] = $value;
-                return "\x00DSGO_RAW_{$idx}\x00";
-            },
-            $stripped,
-        ) ?? $stripped;
+        // 2. Expand `{{#each NAME}}BODY{{/each}}` blocks BEFORE the brace
+        //    passes. The body's own triple/double-brace tokens get rendered
+        //    against each iteration item, so the resulting flat string still
+        //    contains placeholders that the brace pass below substitutes
+        //    against the outer entry (mustache "context" semantics).
+        $stripped = self::process_each_blocks($stripped, $entry);
 
-        // 3. Process double-brace (HTML-escaped).
-        $stripped = preg_replace_callback(
-            '/\{\{\s*(' . self::PATH_PATTERN . ')\s*\}\}/',
-            fn(array $m) => self::render_value(self::lookup($entry, $m[1]), true),
-            $stripped,
-        ) ?? $stripped;
+        // 3. Triple/double brace passes against the outer entry.
+        $stripped = self::process_braces($stripped, $entry);
 
-        // 4. Reinsert raw values in place of their sentinels.
-        $stripped = preg_replace_callback(
-            '/\x00DSGO_RAW_(\d+)\x00/',
-            fn(array $m) => $raw_results[(int) $m[1]] ?? '',
-            $stripped,
-        ) ?? $stripped;
-
-        // 4b. Strip any `<script>` tag introduced by a raw value. Template
+        // 3b. Strip any `<script>` tag introduced by a raw value. Template
         //     scripts were stashed in $blocks at step 1 and will be restored
-        //     verbatim by step 5; anything matching `<script>` here can only
+        //     verbatim by step 4; anything matching `<script>` here can only
         //     have come from a `{{{field}}}` substitution. The downstream
         //     sanitizer intentionally allows inline scripts so the renderer
         //     can stamp a per-request CSP nonce on them — without this strip,
@@ -1343,8 +1334,68 @@ final class InlineRenderer {
         // recovers) leaves nothing exploitable behind.
         $stripped = preg_replace('#</?script\b[^>]*>?#i', '', $stripped) ?? $stripped;
 
-        // 5. Restore the original <script>/<style> blocks unchanged.
+        // 4. Restore the original <script>/<style> blocks unchanged.
         return self::restore_blocks($stripped, $blocks);
+    }
+
+    /**
+     * Expand `{{#each NAME}}BODY{{/each}}` blocks. The body regex rejects
+     * nested `{{#each}}` / `{{/each}}` tokens (the negative-lookahead inside
+     * the lazy body match) so unbalanced or nested input is left as literal
+     * text rather than silently misexpanded.
+     */
+    private static function process_each_blocks(string $stripped, array $entry): string {
+        $pattern = '/\{\{#each\s+(' . self::PATH_PATTERN . ')\s*\}\}((?:(?!\{\{[#\/]each\b).)*?)\{\{\/each\}\}/s';
+        return preg_replace_callback(
+            $pattern,
+            function (array $m) use ($entry): string {
+                $items = self::lookup($entry, $m[1]);
+                if (!is_array($items) || $items === []) {
+                    return '';
+                }
+                $body = $m[2];
+                $out = '';
+                foreach ($items as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    $out .= self::process_braces($body, $item);
+                }
+                return $out;
+            },
+            $stripped,
+        ) ?? $stripped;
+    }
+
+    private static function process_braces(string $stripped, array $entry): string {
+        // Triple-brace first; replace each match with a sentinel so the
+        // double-brace pass cannot accidentally re-substitute literal
+        // `{{...}}` text that may appear inside a raw value.
+        $raw_results = [];
+        $stripped = preg_replace_callback(
+            '/\{\{\{\s*(' . self::PATH_PATTERN . ')\s*\}\}\}/',
+            function (array $m) use ($entry, &$raw_results): string {
+                $value = self::render_value(self::lookup($entry, $m[1]), false);
+                $idx = count($raw_results);
+                $raw_results[] = $value;
+                return "\x00DSGO_RAW_{$idx}\x00";
+            },
+            $stripped,
+        ) ?? $stripped;
+
+        // Double-brace (HTML-escaped).
+        $stripped = preg_replace_callback(
+            '/\{\{\s*(' . self::PATH_PATTERN . ')\s*\}\}/',
+            fn(array $m) => self::render_value(self::lookup($entry, $m[1]), true),
+            $stripped,
+        ) ?? $stripped;
+
+        // Reinsert raw values in place of their sentinels.
+        return preg_replace_callback(
+            '/\x00DSGO_RAW_(\d+)\x00/',
+            fn(array $m) => $raw_results[(int) $m[1]] ?? '',
+            $stripped,
+        ) ?? $stripped;
     }
 
     /**
@@ -1532,5 +1583,36 @@ final class InlineRenderer {
     private static function bundle_dir_for(string $app_id): string {
         $upload = wp_upload_dir();
         return rtrim($upload['basedir'], '/') . '/designsetgo-apps/' . $app_id;
+    }
+
+    /**
+     * Attach sidecar fields to a matched dynamic-route entry that the per-row
+     * dataset shape intentionally omits — expensive lookups (e.g. per-post
+     * related queries) that would balloon the dataset cache if computed for
+     * every row. Runs once per request for the entry that actually matched.
+     *
+     * Built-in: `wp:posts` entries get a `related` array of same-category
+     * sibling posts (with most-recent fallback) so templates can render
+     * "Keep reading" sections via `{{#each related}}…{{/each}}`.
+     *
+     * @param array<string, mixed> $entry
+     * @return array<string, mixed>
+     */
+    private static function enrich_matched_entry(array $entry, string $source): array {
+        if ($source === 'wp:posts') {
+            $entry['related'] = DataSources::related_for_post($entry);
+        }
+        /**
+         * Filter the matched dynamic-route entry just before template
+         * substitution. Use to attach sidecar fields (related items,
+         * computed metadata) without baking them into every dataset row.
+         *
+         * @param array<string, mixed> $entry  Matched entry plus built-in
+         *                                      enrichment (`related` on
+         *                                      `wp:posts`).
+         * @param string               $source Dataset source string from
+         *                                      the manifest route.
+         */
+        return apply_filters('dsgo_apps_dynamic_route_entry', $entry, $source);
     }
 }
